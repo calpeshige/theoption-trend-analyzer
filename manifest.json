@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "TheOption Trend Analyzer",
+  "version": "4.1.7",
+  "description": "TheOptionのトレーディング画面で多次元指標分析とAI機械学習を統合し、超短期取引(15秒〜5分)の高精度予測を提供します",
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://jp.theoption.com/*",
+    "https://theoption.com/*",
+    "https://platformapi.theoption.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jp.theoption.com/trading*",
+        "https://theoption.com/trading*"
+      ],
+      "js": [
+        "trend-analyzer-engine.js",
+        "multi-indicator-system.js",
+        "price-pattern-analyzer.js",
+        "technical-timeseries-analyzer.js",
+        "detailed-segment-analyzer.js",
+        "segment-similarity-calculator.js",
+        "machine-learning-system.js",
+        "theoption-analyzer.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

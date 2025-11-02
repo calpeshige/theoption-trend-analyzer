@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Backups
+backups/
+*.backup
+
+# IDE
+.vscode/
+.idea/
+
+# Chrome Extension
+*.pem
+*.crx
+*.zip

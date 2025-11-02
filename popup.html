@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheOption分析</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 TheOption分析</h1>
+      <p class="subtitle">API調査モード v1.0.0</p>
+    </header>
+
+    <main class="panel-control">
+      <div class="status">
+        <span class="status-text">拡張機能の状態</span>
+        <div class="status-indicator">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">読み込み中...</span>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h3>🚧 開発中</h3>
+        <p>現在、TheOptionのAPI仕様を調査中です。</p>
+        <p class="mt-2">トレーディング画面でコンソールを開くと、API呼び出しが記録されます。</p>
+      </div>
+
+      <div class="instructions">
+        <h3>📋 調査手順</h3>
+        <ol>
+          <li>TheOptionのトレーディング画面を開く</li>
+          <li>F12でデベロッパーツールを開く</li>
+          <li>Consoleタブを選択</li>
+          <li>チャートを操作（通貨ペア変更等）</li>
+          <li>記録されたAPIコールを確認</li>
+        </ol>
+      </div>
+
+      <div class="info">
+        <strong>⚠️ 注意:</strong> APIエンドポイントを特定したら、実装を進めます。
+      </div>
+    </main>
+
+    <footer>
+      <p>TheOption Trend Analyzer v1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

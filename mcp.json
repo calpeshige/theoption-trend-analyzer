@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "theoption": {
+      "command": "node",
+      "args": [
+        "/Users/shige/Documents/拡張機能/theoption_trend/theoption-mcp-server.js"
+      ],
+      "env": {
+        "THEOPTION_API_BASE": "https://platformapi.theoption.com/Client.svc",
+        "THEOPTION_SESSION_STORAGE": "/Users/shige/Documents/拡張機能/theoption_trend/.session"
+      }
+    }
+  }
+}

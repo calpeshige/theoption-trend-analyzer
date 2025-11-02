@@ -1,0 +1,23 @@
+{
+  "name": "theoption-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for TheOption API integration",
+  "type": "module",
+  "main": "theoption-mcp-server.js",
+  "scripts": {
+    "start": "node theoption-mcp-server.js",
+    "dev": "node --watch theoption-mcp-server.js"
+  },
+  "keywords": [
+    "mcp",
+    "theoption",
+    "trading",
+    "api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "node-fetch": "^3.3.2"
+  }
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+</head>
+<body>
+  <canvas id="canvas16" width="16" height="16"></canvas>
+  <canvas id="canvas48" width="48" height="48"></canvas>
+  <canvas id="canvas128" width="128" height="128"></canvas>
+
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+
+      // 背景グラデーション
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+
+      // チャートアイコン
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = size / 16;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // トレンドライン
+      ctx.beginPath();
+      ctx.moveTo(size * 0.2, size * 0.7);
+      ctx.lineTo(size * 0.4, size * 0.5);
+      ctx.lineTo(size * 0.6, size * 0.4);
+      ctx.lineTo(size * 0.8, size * 0.3);
+      ctx.stroke();
+
+      // ポイント
+      ctx.fillStyle = 'white';
+      const pointSize = size / 12;
+      [0.2, 0.4, 0.6, 0.8].forEach((x, i) => {
+        const y = [0.7, 0.5, 0.4, 0.3][i];
+        ctx.beginPath();
+        ctx.arc(size * x, size * y, pointSize, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // 各サイズのアイコンを生成
+    drawIcon(document.getElementById('canvas16'), 16);
+    drawIcon(document.getElementById('canvas48'), 48);
+    drawIcon(document.getElementById('canvas128'), 128);
+
+    // 画像をダウンロード
+    function downloadCanvas(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+
+    setTimeout(() => {
+      downloadCanvas('canvas16', 'icon16.png');
+      setTimeout(() => downloadCanvas('canvas48', 'icon48.png'), 500);
+      setTimeout(() => downloadCanvas('canvas128', 'icon128.png'), 1000);
+    }, 100);
+  </script>
+</body>
+</html>
