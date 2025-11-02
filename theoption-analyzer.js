@@ -566,6 +566,7 @@ setTimeout(() => {
             <button class="download-tab" data-tab="price-history">価格履歴</button>
             <button class="download-tab" data-tab="predictions">予測パターン</button>
             <button class="download-tab" data-tab="trends">トレンド分析</button>
+            <button class="download-tab" data-tab="data-management">データ管理</button>
           </div>
 
           <div class="download-tab-content">
@@ -615,6 +616,45 @@ setTimeout(() => {
                 <li>各タイムフレームごとの分析履歴</li>
               </ul>
               <button class="download-execute-btn" data-type="trends">ダウンロード</button>
+            </div>
+
+            <!-- データ管理 -->
+            <div class="download-panel" id="panel-data-management">
+              <h4>💾 データ管理</h4>
+              <p>学習データの完全バックアップと復元</p>
+
+              <div style="margin-bottom: 24px;">
+                <h5 style="color: #fff; margin-bottom: 12px;">📥 完全バックアップ (JSON)</h5>
+                <p style="font-size: 13px; color: #b0b0b0; margin-bottom: 12px;">
+                  全ての学習データを完全な形式で保存します<br>
+                  ・セグメント詳細データを含む完全バックアップ<br>
+                  ・CSV形式より詳細な情報を保持<br>
+                  ・データ復元に使用可能
+                </p>
+                <button class="download-execute-btn" data-type="json-export" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                  JSONエクスポート
+                </button>
+              </div>
+
+              <div style="margin-bottom: 24px;">
+                <h5 style="color: #fff; margin-bottom: 12px;">📤 データ復元 (JSON)</h5>
+                <p style="font-size: 13px; color: #b0b0b0; margin-bottom: 12px;">
+                  バックアップしたJSONファイルからデータを復元します<br>
+                  ⚠️ 既存データは上書きされます
+                </p>
+                <input type="file" id="json-import-file" accept=".json" style="display: none;">
+                <button class="download-execute-btn" data-type="json-import" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                  JSONインポート
+                </button>
+              </div>
+
+              <div style="padding: 12px; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border-left: 4px solid #ffc107;">
+                <p style="font-size: 12px; color: #ffc107; margin: 0;">
+                  <strong>⚠️ 注意</strong><br>
+                  JSONインポートは既存データを上書きします。<br>
+                  必ず事前にバックアップを取ってください。
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -3472,6 +3512,12 @@ setTimeout(() => {
       case 'trends':
         downloadTrendsAsCSV();
         break;
+      case 'json-export':
+        exportDataAsJSON();
+        break;
+      case 'json-import':
+        importDataFromJSON();
+        break;
       default:
         alert('不明なデータタイプです');
     }
@@ -3945,6 +3991,182 @@ setTimeout(() => {
         document.body.removeChild(notification);
       }, 300);
     }, 3000);
+  }
+
+  // ========================================
+  // JSONエクスポート・インポート機能
+  // ========================================
+
+  function exportDataAsJSON() {
+    console.log('[JSON Export] エクスポート開始...');
+
+    chrome.storage.local.get(null, (allData) => {
+      // theoption_ml_で始まるキーのみ抽出
+      const mlData = {};
+      let totalRecords = 0;
+      let currencyPairs = 0;
+
+      Object.keys(allData).forEach(key => {
+        if (key.startsWith('theoption_ml_')) {
+          mlData[key] = allData[key];
+          if (Array.isArray(allData[key])) {
+            totalRecords += allData[key].length;
+            currencyPairs++;
+          }
+        }
+      });
+
+      if (totalRecords === 0) {
+        alert('エクスポート可能な学習データがありません');
+        return;
+      }
+
+      console.log(`[JSON Export] ${currencyPairs}通貨ペア, ${totalRecords}件のデータをエクスポート`);
+
+      // JSON形式で生成
+      const json = JSON.stringify(mlData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+
+      // ダウンロード
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `theoption_backup_${timestamp}.json`;
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+
+      console.log(`[JSON Export] ✅ エクスポート完了: ${filename}`);
+
+      // モーダルを閉じる
+      document.getElementById('download-modal').classList.remove('active');
+
+      // 通知
+      showDownloadNotification(`完全バックアップ (${currencyPairs}通貨ペア, ${totalRecords}件)`);
+    });
+  }
+
+  function importDataFromJSON() {
+    console.log('[JSON Import] インポート開始...');
+
+    const fileInput = document.getElementById('json-import-file');
+    fileInput.click();
+
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) {
+        console.log('[JSON Import] ファイルが選択されませんでした');
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+
+          // データ検証
+          const validation = validateImportData(data);
+          if (!validation.valid) {
+            alert(`❌ データ検証エラー\n\n${validation.error}`);
+            console.error('[JSON Import] 検証エラー:', validation.error);
+            return;
+          }
+
+          // 確認ダイアログ
+          const confirmed = confirm(
+            `${validation.currencyPairs}通貨ペア, ${validation.totalRecords}件のデータをインポートします。\n\n` +
+            `⚠️ 既存のデータは上書きされます。\n\n続行しますか？`
+          );
+
+          if (!confirmed) {
+            console.log('[JSON Import] キャンセルされました');
+            return;
+          }
+
+          // Chrome Storageに復元
+          chrome.storage.local.set(data, () => {
+            if (chrome.runtime.lastError) {
+              console.error('[JSON Import] エラー:', chrome.runtime.lastError);
+              alert('❌ インポートに失敗しました\n\n' + chrome.runtime.lastError.message);
+            } else {
+              console.log(`[JSON Import] ✅ インポート完了: ${validation.totalRecords}件`);
+
+              // モーダルを閉じる
+              document.getElementById('download-modal').classList.remove('active');
+
+              // 通知
+              alert(
+                `✅ データをインポートしました\n\n` +
+                `通貨ペア: ${validation.currencyPairs}\n` +
+                `データ件数: ${validation.totalRecords}件\n\n` +
+                `ページをリロードします。`
+              );
+
+              // ページリロード
+              setTimeout(() => {
+                location.reload();
+              }, 1000);
+            }
+          });
+
+        } catch (error) {
+          console.error('[JSON Import] ファイル読み込みエラー:', error);
+          alert('❌ ファイルの読み込みに失敗しました\n\nJSON形式が正しいか確認してください。');
+        }
+      };
+
+      reader.readAsText(file);
+    };
+  }
+
+  function validateImportData(data) {
+    // 基本構造チェック
+    if (!data || typeof data !== 'object') {
+      return { valid: false, error: 'データ形式が不正です' };
+    }
+
+    let currencyPairs = 0;
+    let totalRecords = 0;
+
+    for (let key in data) {
+      // キー名チェック
+      if (!key.startsWith('theoption_ml_')) {
+        return { valid: false, error: `無効なキー: ${key}` };
+      }
+
+      // 配列チェック
+      if (!Array.isArray(data[key])) {
+        return { valid: false, error: `${key}のデータ形式が配列ではありません` };
+      }
+
+      currencyPairs++;
+
+      // 各データの構造チェック
+      for (let item of data[key]) {
+        if (!item.timestamp || !item.price) {
+          return { valid: false, error: `${key}に必須フィールド(timestamp/price)がありません` };
+        }
+        totalRecords++;
+      }
+    }
+
+    if (totalRecords === 0) {
+      return { valid: false, error: 'データが空です' };
+    }
+
+    return {
+      valid: true,
+      currencyPairs: currencyPairs,
+      totalRecords: totalRecords
+    };
   }
 
   // ========================================
