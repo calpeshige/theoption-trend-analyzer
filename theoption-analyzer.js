@@ -1961,8 +1961,8 @@ setTimeout(() => {
       const price = getCurrentPriceFromDOM();
       const now = Date.now();
 
-      // 通貨ペア切り替え検出（2秒ごと）
-      if (now - lastAssetCheck > 2000) {
+      // 通貨ペア切り替え検出（5秒ごと・パフォーマンス最適化）
+      if (now - lastAssetCheck > 5000) {
         const detectedAsset = getCurrentAssetPair();
 
         if (detectedAsset !== currentAsset) {
@@ -2098,13 +2098,13 @@ setTimeout(() => {
           updateAssetDisplay(currentAsset, priceHistory.length);
         }
 
-        // 10秒ごとに進捗ログとデータ保存
-        if (now - lastLogTime > 10000) {
+        // 30秒ごとに進捗ログとデータ保存（パフォーマンス最適化）
+        if (now - lastLogTime > 30000) {
           const config = TIMEFRAME_CONFIGS[currentTimeframe];
           console.log(`[TheOption Analyzer] 📊 ${currentAsset || 'データ'} 収集中: ${priceHistory.length}/${config.minDataPoints}秒 (価格: ${price})`);
           lastLogTime = now;
 
-          // 10秒ごとにストレージに保存（ログと同じタイミング）
+          // 30秒ごとにストレージに保存（パフォーマンス最適化）
           if (currentAsset && priceHistory.length > 0) {
             savePriceData(currentAsset, {
               priceHistory: priceHistory,
@@ -2143,7 +2143,7 @@ setTimeout(() => {
           lastLogTime = now;
         }
       }
-    }, 1000);
+    }, 2000); // パフォーマンス最適化: 2秒ごとに変更
   }
 
   // ========================================
