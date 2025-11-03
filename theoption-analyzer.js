@@ -1957,6 +1957,10 @@ setTimeout(() => {
     let lastLogTime = 0;
     let lastAssetCheck = 0;
 
+    // UI更新のスロットリング用（パフォーマンス最適化）
+    let lastDisplayedCount = -1;
+    let lastDisplayedCountdown = -1;
+
     priceUpdateInterval = setInterval(async () => {
       const price = getCurrentPriceFromDOM();
       const now = Date.now();
@@ -1978,6 +1982,9 @@ setTimeout(() => {
               180: null,
               300: null
             };
+            // UI更新キャッシュもリセット
+            lastDisplayedCount = -1;
+            lastDisplayedCountdown = -1;
             console.log('[TheOption Analyzer] 🗑️ 表示キャッシュをクリアしました');
 
             // ローディング表示
@@ -2093,9 +2100,10 @@ setTimeout(() => {
 
         tickCount++;
 
-        // リアルタイムでデータ件数を更新（1秒ごと）
-        if (currentAsset) {
+        // データ件数が変わった時だけUI更新（パフォーマンス最適化）
+        if (currentAsset && lastDisplayedCount !== priceHistory.length) {
           updateAssetDisplay(currentAsset, priceHistory.length);
+          lastDisplayedCount = priceHistory.length;
         }
 
         // 30秒ごとに進捗ログとデータ保存（パフォーマンス最適化）
@@ -2118,8 +2126,12 @@ setTimeout(() => {
         const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
         const currentTimeSinceLastAnalysis = (now - lastAnalysisTimes[currentTimeframe]) / 1000;
 
-        // 選択中の時間枠のカウントダウン更新
-        updateCountdown(currentTimeSinceLastAnalysis, currentConfig.updateInterval);
+        // カウントダウンが変わった時だけUI更新（パフォーマンス最適化）
+        const countdownSeconds = Math.floor(currentTimeSinceLastAnalysis);
+        if (lastDisplayedCountdown !== countdownSeconds) {
+          updateCountdown(currentTimeSinceLastAnalysis, currentConfig.updateInterval);
+          lastDisplayedCountdown = countdownSeconds;
+        }
 
         // 各時間枠ごとに独立して分析実行
         [15, 30, 60, 180, 300].forEach(tf => {
