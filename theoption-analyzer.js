@@ -10,7 +10,7 @@
 // ========================================
 // グローバル変数として定義（他のファイルと共有）
 if (typeof window.DEBUG_MODE === 'undefined') {
-  window.DEBUG_MODE = true; // true=デバッグ表示, false=本番（ログなし）
+  window.DEBUG_MODE = false; // true=デバッグ表示, false=本番（ログなし）
 }
 
 if (!window.DEBUG_MODE) {
