@@ -48,15 +48,15 @@ class DetailedSegmentAnalyzer {
         dataRange: 240,
         segmentDuration: 40,
         segmentCount: 6,
-        atrMultiplier: 0.64,   // ATRの64%（BTC/JPY 0.035円相当）
-        minThreshold: 0.023    // 最小閾値 0.023%
+        atrMultiplier: 0.36,   // ATRの36%（ドル円 0.020円 = 2銭相当）
+        minThreshold: 0.013    // 最小閾値 0.013%
       },
       300: {
         dataRange: 300,
         segmentDuration: 50,
         segmentCount: 6,
-        atrMultiplier: 0.90,   // ATRの90%（BTC/JPY 0.050円相当）
-        minThreshold: 0.0325   // 最小閾値 0.0325%
+        atrMultiplier: 0.54,   // ATRの54%（ドル円 0.030円 = 3銭相当）
+        minThreshold: 0.020    // 最小閾値 0.020%
       }
     };
 

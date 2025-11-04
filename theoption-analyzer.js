@@ -284,6 +284,9 @@ setTimeout(() => {
   // トレンド分析履歴（最大1000件）
   let trendHistory = [];
 
+  // 予測品質ログ（最大1000件）
+  let predictionQualityLog = [];
+
   // ========================================
   // 時間枠別設定
   // ========================================
@@ -3598,6 +3601,76 @@ setTimeout(() => {
   // 履歴記録機能
   // ========================================
 
+  /**
+   * 予測品質スコアを計算
+   */
+  function calculatePredictionQuality(pred, mlStats) {
+    if (!pred || !mlStats) return { score: 0, label: '不明', details: {} };
+
+    const sampleSize = pred.sampleSize || 0;
+    const avgSimilarity = pred.avgSimilarity || 0;
+    const confidence = pred.confidence || 0;
+
+    // データカバレッジ（インデックス化率）
+    const indexedData = mlStats.dataCountWithResults || mlStats.dataCount || 0;
+    const totalData = mlStats.dataCount || 1;
+    const coverage = (indexedData / totalData) * 100;
+
+    // パターン多様性スコア（200種類で満点）
+    const patternCount = mlStats.optimizationStats?.segmentPatterns || 0;
+    const diversityScore = Math.min(100, (patternCount / 2) * 100);
+
+    // データ量充足度（50,000件で満点）
+    const dataSufficiency = Math.min(100, (indexedData / 50000) * 100);
+
+    // サンプルサイズスコア（100件で満点）
+    const sampleScore = Math.min(100, sampleSize);
+
+    // 品質スコア計算
+    const score = Math.round(
+      (coverage * 0.2) +          // カバレッジ 20%
+      (diversityScore * 0.3) +    // 多様性 30%
+      (dataSufficiency * 0.2) +   // データ量 20%
+      (avgSimilarity * 0.2) +     // 類似度 20%
+      (sampleScore * 0.1)         // サンプル数 10%
+    );
+
+    // ラベル判定
+    let label = '不明';
+    if (score >= 85) label = '優秀';
+    else if (score >= 70) label = '良好';
+    else if (score >= 55) label = '標準';
+    else if (score >= 40) label = '要注意';
+    else label = '低品質';
+
+    // 予測品質判定（別の基準）
+    let predictionQuality = '不明';
+    if (sampleSize >= 50 && avgSimilarity >= 85) {
+      predictionQuality = '優秀';
+    } else if (sampleSize >= 30 && avgSimilarity >= 75) {
+      predictionQuality = '良好';
+    } else if (sampleSize >= 20 && avgSimilarity >= 65) {
+      predictionQuality = '標準';
+    } else {
+      predictionQuality = '要注意';
+    }
+
+    return {
+      score: score,
+      label: label,
+      predictionQuality: predictionQuality,
+      details: {
+        coverage: coverage.toFixed(1),
+        diversity: diversityScore.toFixed(1),
+        dataSufficiency: dataSufficiency.toFixed(1),
+        avgSimilarity: avgSimilarity,
+        sampleScore: sampleScore.toFixed(1),
+        sampleSize: sampleSize,
+        patternCount: patternCount
+      }
+    };
+  }
+
   function recordPrediction(timeframe, mlPredictions, multiDim) {
     if (!mlPredictions || !mlPredictions.predictions) return;
 
@@ -3626,6 +3699,52 @@ setTimeout(() => {
       }
 
       console.log(`[History] 予測履歴記録: ${timeframe}秒 - ${pred.prediction} ${pred.confidence !== null ? `(${pred.confidence}%)` : ''} - 総件数: ${predictionHistory.length}`);
+
+      // 予測品質ログを記録
+      if (mlSystem) {
+        const mlStats = mlSystem.getStatistics();
+        const system = mlSystem.getCurrentSystem();
+        const optimizationStatus = system?.patternMatcher?.getOptimizationStatus ?
+          system.patternMatcher.getOptimizationStatus() : null;
+
+        const quality = calculatePredictionQuality(pred, mlStats);
+
+        predictionQualityLog.push({
+          timestamp: Date.now(),
+          timeframe: timeframe,
+          prediction: pred.prediction,
+          confidence: pred.confidence !== null ? pred.confidence : 0,
+          // パターン分析情報
+          sampleSize: pred.sampleSize || 0,
+          avgSimilarity: pred.avgSimilarity || 0,
+          segmentPattern: pred.segmentPattern || '',
+          // 品質スコア
+          qualityScore: quality.score,
+          qualityLabel: quality.label,
+          predictionQuality: quality.predictionQuality,
+          // 最適化情報
+          optimizationEnabled: optimizationStatus?.enabled || false,
+          indexedData: mlStats.dataCountWithResults || mlStats.dataCount || 0,
+          totalData: mlStats.dataCount || 0,
+          coveragePercent: quality.details.coverage,
+          patternCount: quality.details.patternCount,
+          // 市場情報
+          currentPrice: getCurrentPriceFromDOM() || 0,
+          rsi: multiDim?.breakdown?.rsi?.value || 50,
+          macdStrength: multiDim?.breakdown?.macd?.strength || 0,
+          adxValue: multiDim?.breakdown?.adx?.adx || 0,
+          // 予測詳細
+          upRate: pred.upRate || 0,
+          downRate: pred.downRate || 0
+        });
+
+        // 最大1000件に制限
+        if (predictionQualityLog.length > 1000) {
+          predictionQualityLog.shift();
+        }
+
+        console.log(`[Quality] 品質ログ記録: ${timeframe}秒 - スコア:${quality.score} (${quality.label}) - 総件数: ${predictionQualityLog.length}`);
+      }
     }
   }
 
@@ -3708,6 +3827,9 @@ setTimeout(() => {
         break;
       case 'trends':
         downloadTrendsAsCSV();
+        break;
+      case 'prediction-quality':
+        downloadPredictionQualityAsCSV();
         break;
       case 'json-export':
         exportDataAsJSON();
@@ -4161,6 +4283,113 @@ setTimeout(() => {
 
     // 通知
     showDownloadNotification('トレンド分析データ');
+  }
+
+  function downloadPredictionQualityAsCSV() {
+    if (!predictionQualityLog || predictionQualityLog.length === 0) {
+      alert('予測品質ログがありません\n\n予測が実行されると自動的に記録されます。');
+      return;
+    }
+
+    console.log(`[CSV Download] 予測品質ログデータ件数: ${predictionQualityLog.length}件`);
+
+    // CSVヘッダー
+    const headers = [
+      'タイムスタンプ',
+      '日時',
+      'タイムフレーム(秒)',
+      '予測結果',
+      '信頼度(%)',
+      '上昇確率(%)',
+      '下降確率(%)',
+      // パターン分析
+      '類似パターン数',
+      '平均類似度(%)',
+      'セグメントパターン',
+      // 品質スコア
+      '品質スコア',
+      '品質ラベル',
+      '予測品質',
+      // 最適化情報
+      '最適化使用',
+      'インデックス化データ数',
+      '総データ数',
+      'カバレッジ(%)',
+      'パターン種類数',
+      // 市場情報
+      '現在価格',
+      'RSI',
+      'MACD強度',
+      'ADX'
+    ];
+
+    // CSVデータ行を生成
+    const rows = predictionQualityLog.map(record => {
+      const date = new Date(record.timestamp);
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+
+      return [
+        record.timestamp,
+        dateStr,
+        record.timeframe,
+        record.prediction,
+        record.confidence,
+        record.upRate,
+        record.downRate,
+        // パターン分析
+        record.sampleSize,
+        record.avgSimilarity,
+        record.segmentPattern,
+        // 品質スコア
+        record.qualityScore,
+        record.qualityLabel,
+        record.predictionQuality,
+        // 最適化情報
+        record.optimizationEnabled ? 'YES' : 'NO',
+        record.indexedData,
+        record.totalData,
+        record.coveragePercent,
+        record.patternCount,
+        // 市場情報
+        record.currentPrice.toFixed(5),
+        record.rsi.toFixed(2),
+        record.macdStrength.toFixed(4),
+        record.adxValue.toFixed(2)
+      ].join(',');
+    });
+
+    // CSV文字列を生成
+    const csvContent = [headers.join(','), ...rows].join('\n');
+
+    // BOM付きでUTF-8エンコード
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    // ダウンロード
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const assetName = currentAsset || 'unknown';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `theoption_prediction_quality_${assetName.replace(/[\/\s]/g, '_')}_${timestamp}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+
+    console.log(`[CSV Download] ダウンロード完了: ${filename} (${predictionQualityLog.length}件)`);
+
+    // モーダルを閉じる
+    document.getElementById('download-modal').classList.remove('active');
+
+    // 通知
+    showDownloadNotification('予測品質ログ');
   }
 
   function showDownloadNotification(dataName) {
