@@ -10,7 +10,8 @@
   "host_permissions": [
     "https://jp.theoption.com/*",
     "https://theoption.com/*",
-    "https://platformapi.theoption.com/*"
+    "https://platformapi.theoption.com/*",
+    "https://firestore.googleapis.com/*"
   ],
   "content_scripts": [
     {
@@ -19,6 +20,7 @@
         "https://theoption.com/trading*"
       ],
       "js": [
+        "license-manager.js",
         "trend-analyzer-engine.js",
         "multi-indicator-system.js",
         "price-pattern-analyzer.js",

@@ -23,6 +23,17 @@ if (!window.DEBUG_MODE) {
 console.log('[TheOption Analyzer] 拡張機能を読み込みました v4.1.4 (バイアス表示版)');
 
 // ========================================
+// ライセンスチェック
+// ========================================
+// license-manager.jsが先に読み込まれ、window.licenseManager が設定される
+// ライセンスが無効な場合は拡張機能を起動しない
+if (typeof window.licenseManager !== 'undefined' && !window.licenseManager.isLicenseValid) {
+  console.warn('[TheOption Analyzer] ⚠️ ライセンスが無効なため、拡張機能を起動しません');
+  // 以降のコードを実行しないようにthrow（エラーではなく意図的な停止）
+  throw new Error('License validation required');
+}
+
+// ========================================
 // デバッグ用グローバル関数（即座に定義）
 // ========================================
 

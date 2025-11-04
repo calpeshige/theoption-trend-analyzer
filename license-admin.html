@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ライセンスキー管理ツール - TheOption Trend Analyzer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      font-size: 28px;
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #718096;
+      margin-bottom: 32px;
+    }
+
+    .section {
+      margin-bottom: 40px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    .button-secondary {
+      background: #718096;
+    }
+
+    .generated-key {
+      display: none;
+      padding: 16px;
+      background: #f7fafc;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      margin-top: 16px;
+    }
+
+    .generated-key.show {
+      display: block;
+    }
+
+    .key-display {
+      font-family: 'Courier New', monospace;
+      font-size: 20px;
+      font-weight: bold;
+      color: #667eea;
+      margin: 12px 0;
+      word-break: break-all;
+    }
+
+    .alert {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .alert-success {
+      background: #c6f6d5;
+      border-left: 4px solid #48bb78;
+      color: #22543d;
+    }
+
+    .alert-error {
+      background: #fed7d7;
+      border-left: 4px solid #f56565;
+      color: #742a2a;
+    }
+
+    .alert-warning {
+      background: #feebc8;
+      border-left: 4px solid #ed8936;
+      color: #7c2d12;
+    }
+
+    .instructions {
+      background: #edf2f7;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 32px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #2d3748;
+    }
+
+    .instructions h3 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #1a202c;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+    }
+
+    .instructions li {
+      margin-bottom: 8px;
+    }
+
+    .firestore-link {
+      display: inline-block;
+      padding: 12px 20px;
+      background: #4285f4;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      margin-top: 16px;
+      transition: background 0.2s;
+    }
+
+    .firestore-link:hover {
+      background: #357ae8;
+    }
+
+    .copy-btn {
+      padding: 8px 16px;
+      background: #48bb78;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-left: 12px;
+    }
+
+    .copy-btn:hover {
+      background: #38a169;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔑 ライセンスキー管理ツール</h1>
+    <p class="subtitle">TheOption Trend Analyzer</p>
+
+    <div class="instructions">
+      <h3>📋 使い方</h3>
+      <ol>
+        <li>下のフォームで購入者情報を入力</li>
+        <li>「ライセンスキーを生成」ボタンをクリック</li>
+        <li>生成されたライセンスキーをコピー</li>
+        <li>「Firestoreに登録」ボタンをクリックしてFirebaseコンソールを開く</li>
+        <li>Firestoreで手動でドキュメントを追加（詳細は下記参照）</li>
+        <li>購入者にライセンスキーを送信</li>
+      </ol>
+    </div>
+
+    <div id="alert-success" class="alert alert-success"></div>
+    <div id="alert-error" class="alert alert-error"></div>
+
+    <!-- ライセンスキー生成フォーム -->
+    <div class="section">
+      <h2 class="section-title">新規ライセンスキーの発行</h2>
+
+      <div class="form-group">
+        <label for="userName">購入者名 *</label>
+        <input type="text" id="userName" placeholder="例: 山田太郎" required>
+      </div>
+
+      <div class="form-group">
+        <label for="maxDevices">最大デバイス数</label>
+        <input type="number" id="maxDevices" value="1" min="1" max="10">
+      </div>
+
+      <div class="form-group">
+        <label for="expiryDate">有効期限（省略可）</label>
+        <input type="date" id="expiryDate">
+      </div>
+
+      <button class="button" onclick="generateLicenseKey()">ライセンスキーを生成</button>
+
+      <!-- 生成されたライセンスキー表示 -->
+      <div id="generated-key-box" class="generated-key">
+        <h3>✅ ライセンスキーを生成しました</h3>
+        <div class="key-display" id="license-key-display"></div>
+        <button class="copy-btn" onclick="copyToClipboard()">📋 コピー</button>
+
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid #e2e8f0;">
+          <h4 style="margin-bottom: 12px;">次のステップ：</h4>
+          <p style="margin-bottom: 12px;">以下のボタンからFirebaseコンソールを開き、手動でライセンスキーを登録してください。</p>
+          <a id="firestore-link" class="firestore-link" target="_blank">🔥 Firebaseコンソールを開く</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Firestore登録手順 -->
+    <div class="section">
+      <h2 class="section-title">Firestore登録手順</h2>
+      <div class="instructions">
+        <ol>
+          <li>上の「Firebaseコンソールを開く」ボタンをクリック</li>
+          <li>Firestore Database を開く</li>
+          <li>「licenses」コレクションを選択（なければ作成）</li>
+          <li>「ドキュメントを追加」をクリック</li>
+          <li><strong>ドキュメントID</strong>に生成したライセンスキーを貼り付け</li>
+          <li>以下のフィールドを追加：
+            <ul>
+              <li><code>active</code> (boolean): <code>true</code></li>
+              <li><code>userName</code> (string): 購入者名</li>
+              <li><code>maxDevices</code> (number): <code>1</code></li>
+              <li><code>expiryDate</code> (timestamp): 有効期限（省略可）</li>
+            </ul>
+          </li>
+          <li>「保存」をクリック</li>
+        </ol>
+        <p style="margin-top: 12px; color: #e53e3e; font-weight: 600;">
+          ⚠️ セキュリティ上の理由により、ライセンスキーはFirebaseコンソールから手動で登録する必要があります。
+        </p>
+      </div>
+    </div>
+
+    <!-- ライセンスキーフォーマット -->
+    <div class="section">
+      <h2 class="section-title">ライセンスキーについて</h2>
+      <div class="instructions">
+        <p><strong>フォーマット:</strong> <code>THEO-XXXX-XXXX-XXXX</code></p>
+        <p style="margin-top: 8px;">
+          ライセンスキーは16文字のランダムな英数字で構成されています。<br>
+          推測されにくく、ユニークなキーが自動生成されます。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ライセンスキーを生成
+    function generateLicenseKey() {
+      const userName = document.getElementById('userName').value.trim();
+
+      if (!userName) {
+        showAlert('error', '購入者名を入力してください');
+        return;
+      }
+
+      // ランダムな16文字の英数字を生成
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字を除外
+      let key = 'THEO-';
+
+      for (let i = 0; i < 12; i++) {
+        if (i > 0 && i % 4 === 0) {
+          key += '-';
+        }
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      // 結果を表示
+      document.getElementById('license-key-display').textContent = key;
+      document.getElementById('generated-key-box').classList.add('show');
+
+      // Firestoreリンクを設定（プロジェクトIDは後で設定してください）
+      const projectId = 'YOUR_PROJECT_ID'; // TODO: Firebaseプロジェクト IDに置き換える
+      document.getElementById('firestore-link').href =
+        `https://console.firebase.google.com/project/${projectId}/firestore`;
+
+      showAlert('success', `ライセンスキーを生成しました: ${key}`);
+    }
+
+    // クリップボードにコピー
+    function copyToClipboard() {
+      const key = document.getElementById('license-key-display').textContent;
+      navigator.clipboard.writeText(key).then(() => {
+        showAlert('success', 'ライセンスキーをクリップボードにコピーしました');
+      }).catch(() => {
+        showAlert('error', 'コピーに失敗しました');
+      });
+    }
+
+    // アラート表示
+    function showAlert(type, message) {
+      const alertId = type === 'error' ? 'alert-error' : 'alert-success';
+      const alertEl = document.getElementById(alertId);
+      alertEl.textContent = message;
+      alertEl.classList.add('show');
+
+      setTimeout(() => {
+        alertEl.classList.remove('show');
+      }, 5000);
+    }
+  </script>
+</body>
+</html>
