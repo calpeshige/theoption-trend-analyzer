@@ -453,28 +453,18 @@ setTimeout(() => {
         <div class="timeframe-analysis-tabs">
           <button class="timeframe-analysis-tab" data-timeframe="15">
             <div class="tab-time">15秒</div>
-            <div class="tab-signal-icon" id="tab-icon-15" data-signal="wait">●</div>
-            <div class="tab-confidence" id="tab-confidence-15">--%</div>
           </button>
           <button class="timeframe-analysis-tab" data-timeframe="30">
             <div class="tab-time">30秒</div>
-            <div class="tab-signal-icon" id="tab-icon-30" data-signal="wait">●</div>
-            <div class="tab-confidence" id="tab-confidence-30">--%</div>
           </button>
           <button class="timeframe-analysis-tab active" data-timeframe="60">
             <div class="tab-time">60秒</div>
-            <div class="tab-signal-icon" id="tab-icon-60" data-signal="wait">●</div>
-            <div class="tab-confidence" id="tab-confidence-60">--%</div>
           </button>
           <button class="timeframe-analysis-tab" data-timeframe="180">
             <div class="tab-time">3分</div>
-            <div class="tab-signal-icon" id="tab-icon-180" data-signal="wait">●</div>
-            <div class="tab-confidence" id="tab-confidence-180">--%</div>
           </button>
           <button class="timeframe-analysis-tab" data-timeframe="300">
             <div class="tab-time">5分</div>
-            <div class="tab-signal-icon" id="tab-icon-300" data-signal="wait">●</div>
-            <div class="tab-confidence" id="tab-confidence-300">--%</div>
           </button>
         </div>
 
@@ -1831,27 +1821,10 @@ setTimeout(() => {
     console.log('[TheOption Analyzer] ✅ 全時間枠の予測再計算完了');
   }
 
-  // タブアイコンを更新
+  // タブアイコンを更新（パフォーマンス最適化のため無効化）
   function updateTabIcon(timeframe, prediction) {
-    const icon = document.getElementById(`tab-icon-${timeframe}`);
-    const confidence = document.getElementById(`tab-confidence-${timeframe}`);
-
-    if (!icon || !confidence) return;
-
-    // 信頼度70%以上の場合のみ色を変更
-    if (prediction.prediction === 'HIGH' && prediction.confidence !== null && prediction.confidence >= 70) {
-      icon.dataset.signal = 'high';
-      icon.textContent = '▲';
-      confidence.textContent = `${prediction.confidence}%`;
-    } else if (prediction.prediction === 'LOW' && prediction.confidence !== null && prediction.confidence >= 70) {
-      icon.dataset.signal = 'low';
-      icon.textContent = '▼';
-      confidence.textContent = `${prediction.confidence}%`;
-    } else {
-      icon.dataset.signal = 'wait';
-      icon.textContent = '●';
-      confidence.textContent = prediction.confidence !== null ? `${prediction.confidence}%` : '--';
-    }
+    // タブボタンからアイコンと信頼度表示を削除したため、この関数は何もしない
+    return;
   }
 
   function updateCountdown(elapsed, interval) {
@@ -2646,7 +2619,10 @@ setTimeout(() => {
     return { technical, ai };
   }
 
+  // タブからアイコンと信頼度表示を削除したため、この関数は何もしない
   function updateSignalLights(multiDim, ml) {
+    return;
+
     const timeframes = [
       { id: 'signal-15s', tabId: 'tab-confidence-15', iconId: 'tab-icon-15', seconds: 15 },
       { id: 'signal-30s', tabId: 'tab-confidence-30', iconId: 'tab-icon-30', seconds: 30 },
