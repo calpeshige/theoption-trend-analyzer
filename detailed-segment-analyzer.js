@@ -6,9 +6,12 @@
 // ========================================
 // デバッグモード設定
 // ========================================
-const DEBUG_MODE = false; // true=デバッグ表示, false=本番（ログなし）
+// グローバル変数として定義（他のファイルと共有）
+if (typeof window.DEBUG_MODE === 'undefined') {
+  window.DEBUG_MODE = true; // true=デバッグ表示, false=本番（ログなし）
+}
 
-if (!DEBUG_MODE) {
+if (!window.DEBUG_MODE) {
   console.log = () => {};
   console.warn = () => {};
   // console.errorはエラー確認のため残す
