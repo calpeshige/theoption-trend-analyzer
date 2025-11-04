@@ -591,6 +591,7 @@ setTimeout(() => {
             <button class="download-tab" data-tab="price-history">価格履歴</button>
             <button class="download-tab" data-tab="predictions">予測パターン</button>
             <button class="download-tab" data-tab="trends">トレンド分析</button>
+            <button class="download-tab" data-tab="prediction-quality">💎 予測品質</button>
             <button class="download-tab" data-tab="data-management">データ管理</button>
           </div>
 
@@ -641,6 +642,27 @@ setTimeout(() => {
                 <li>各タイムフレームごとの分析履歴</li>
               </ul>
               <button class="download-execute-btn" data-type="trends">ダウンロード</button>
+            </div>
+
+            <!-- 予測品質ログ -->
+            <div class="download-panel" id="panel-prediction-quality">
+              <h4>💎 予測品質ログ</h4>
+              <p>AI予測の品質分析と信頼性指標</p>
+              <ul>
+                <li>品質スコア(0-100)、品質ラベル</li>
+                <li>類似パターン数、平均類似度</li>
+                <li>データカバレッジ、パターン多様性</li>
+                <li>最適化使用状況、インデックス化率</li>
+                <li>予測実行時の詳細記録</li>
+              </ul>
+              <p style="font-size: 12px; color: #4CAF50; margin-top: 8px;">
+                ✓ 予測の信頼性を可視化<br>
+                ✓ 最適化効果を確認<br>
+                ✓ パターンの多様性を分析
+              </p>
+              <button class="download-execute-btn" data-type="prediction-quality" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                ダウンロード
+              </button>
             </div>
 
             <!-- データ管理 -->
@@ -4654,15 +4676,57 @@ setTimeout(() => {
 
           console.log('[ML Optimize] ✅ 最適化完了:', stats);
 
+          // 品質スコアを計算
+          const mlStats = mlSystem.getStatistics();
+          const coverage = (stats.indexedData / stats.totalData) * 100;
+          const diversityScore = Math.min(100, (stats.segmentPatterns / 2) * 100);
+          const dataSufficiency = Math.min(100, (stats.indexedData / 50000) * 100);
+
+          const qualityScore = Math.round(
+            (coverage * 0.3) +           // カバレッジ 30%
+            (diversityScore * 0.4) +     // 多様性 40%
+            (dataSufficiency * 0.3)      // データ量 30%
+          );
+
+          let qualityLabel = '不明';
+          let qualityStars = '⭐';
+          if (qualityScore >= 85) {
+            qualityLabel = '優秀';
+            qualityStars = '⭐⭐⭐⭐⭐';
+          } else if (qualityScore >= 70) {
+            qualityLabel = '良好';
+            qualityStars = '⭐⭐⭐⭐';
+          } else if (qualityScore >= 55) {
+            qualityLabel = '標準';
+            qualityStars = '⭐⭐⭐';
+          } else if (qualityScore >= 40) {
+            qualityLabel = '要注意';
+            qualityStars = '⭐⭐';
+          } else {
+            qualityLabel = '低品質';
+            qualityStars = '⭐';
+          }
+
           // ステータス更新
           if (statusDiv) {
             statusDiv.innerHTML = `
               ✅ 最適化完了<br>
-              <span style="font-size: 11px;">
-              ・インデックス化: ${stats.indexedData}/${stats.totalData}件<br>
-              ・パターン種類: ${stats.segmentPatterns}種<br>
+              <span style="font-size: 11px; color: #b0b0b0;">
+              ──────────────────<br>
+              📊 予測品質:<br>
+              <span style="font-size: 13px; color: #38ef7d; font-weight: bold;">
+              ・品質スコア: ${qualityScore}/100 (${qualityLabel})<br>
+              ・信頼性: ${qualityStars}<br>
+              </span>
+              ──────────────────<br>
+              💎 品質詳細:<br>
+              ・データカバレッジ: ${coverage.toFixed(1)}%<br>
+              ・パターン多様性: ${stats.segmentPatterns}種類<br>
+              ・データ量: ${stats.indexedData}/${stats.totalData}件<br>
+              ──────────────────<br>
+              ⚙️ その他:<br>
               ・構築時間: ${stats.buildTime}ms<br>
-              ・最終更新: ${new Date(stats.lastBuildDate).toLocaleString('ja-JP')}
+              ・最終更新: ${new Date(stats.lastBuildDate).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
               </span>
             `;
             statusDiv.style.color = '#38ef7d';
