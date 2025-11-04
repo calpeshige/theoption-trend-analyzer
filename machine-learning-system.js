@@ -126,6 +126,15 @@ class DataCollectionSystem {
       }
     };
 
+    // ===== データ保存フィルター =====
+    // 相場の動きが小さい場合はデータを保存しない（パフォーマンス最適化）
+    const shouldSaveData = this.hasMarketMovement(situation);
+    if (!shouldSaveData) {
+      console.log('[ML] 📉 相場変動が閾値以下のためデータ保存をスキップ');
+      return null; // データ未保存を示すためnullを返す
+    }
+
+    console.log('[ML] ✅ 相場変動検出 - データを保存');
     this.trainingData.push(situation);
 
     // メモリ制限: 60000件を超えたら重要度ベースでダウンサンプリング
@@ -193,6 +202,38 @@ class DataCollectionSystem {
         divergence: 0
       }
     };
+  }
+
+  /**
+   * 相場に動きがあるかチェック（データ保存フィルター）
+   * どれか1つの時間枠で動きがあるセグメントがあればtrue
+   * @param {Object} situation - データポイント
+   * @returns {boolean} 保存すべきデータならtrue
+   */
+  hasMarketMovement(situation) {
+    const timeframes = [15, 30, 60, 180, 300];
+
+    for (const tf of timeframes) {
+      const segments = situation[`priceSegments${tf}s`];
+
+      // セグメントデータが存在しない場合はスキップ
+      if (!segments || !segments.segments || !Array.isArray(segments.segments)) {
+        continue;
+      }
+
+      // セグメント配列をチェック
+      for (const segment of segments.segments) {
+        // UPまたはDOWNのセグメントが1つでもあれば「動きあり」
+        if (segment.direction === 'UP' || segment.direction === 'DOWN') {
+          console.log(`[ML] 🎯 ${tf}秒セグメント${segment.index}で動き検出: ${segment.direction} (${(segment.changePercent * 100).toFixed(4)}%)`);
+          return true;
+        }
+      }
+    }
+
+    // 全時間枠で全セグメントがFLAT → 動きなし
+    console.log('[ML] 全時間枠でFLAT判定');
+    return false;
   }
 
   // 結果記録のスケジュール
@@ -495,11 +536,34 @@ class PatternMatchingSystem {
     // セグメント分析システムを初期化
     this.segmentAnalyzer = new DetailedSegmentAnalyzer();
     this.similarityCalculator = new SegmentSimilarityCalculator();
+
+    // インデックスマッチャー（最適化機能）
+    this.indexedMatcher = null;
+    this.useIndexedSearch = false;
   }
 
   // 類似パターンを検索（段階的マッチング）
   findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50) {
     console.log(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%, データ総数=${this.trainingData.length}`);
+
+    // インデックス検索が有効な場合
+    if (this.useIndexedSearch && this.indexedMatcher && this.indexedMatcher.isIndexed) {
+      console.log('[ML] ⚡ インデックス検索を使用');
+      const indexed = this.indexedMatcher.findSimilarPatterns(
+        currentSituation,
+        timeframe,
+        this
+      );
+
+      // 類似度でフィルタリング
+      const filtered = indexed.filter(p => p.similarity >= minSimilarity);
+      console.log(`[ML] 🔍 インデックス検索結果: ${indexed.length}件 → 閾値${minSimilarity}%以上: ${filtered.length}件`);
+
+      return filtered;
+    }
+
+    // 従来の全件検索
+    console.log('[ML] 🐌 従来の全件検索を使用');
     const similarPatterns = [];
     let totalChecked = 0;
     let passedThreshold = 0;
@@ -850,6 +914,57 @@ class PatternMatchingSystem {
       }
     };
   }
+
+  /**
+   * インデックス最適化を実行（ボタン押下時）
+   */
+  buildOptimizedIndex(timeframe = 60) {
+    console.log('[ML] 🔄 インデックス最適化開始...');
+
+    // IndexedPatternMatcherのインスタンス化
+    if (!window.IndexedPatternMatcher) {
+      console.error('[ML] ❌ IndexedPatternMatcher が読み込まれていません');
+      return {
+        success: false,
+        error: 'IndexedPatternMatcher が読み込まれていません'
+      };
+    }
+
+    if (!this.indexedMatcher) {
+      this.indexedMatcher = new window.IndexedPatternMatcher();
+    }
+
+    // インデックスを構築
+    const stats = this.indexedMatcher.buildIndexes(this.trainingData, timeframe);
+
+    // インデックス検索を有効化
+    this.useIndexedSearch = true;
+
+    console.log('[ML] ✅ インデックス最適化完了');
+    return {
+      success: true,
+      stats: stats
+    };
+  }
+
+  /**
+   * インデックス最適化を無効化
+   */
+  disableOptimizedIndex() {
+    this.useIndexedSearch = false;
+    console.log('[ML] ⚠️ インデックス検索を無効化しました');
+  }
+
+  /**
+   * 最適化状態を取得
+   */
+  getOptimizationStatus() {
+    return {
+      enabled: this.useIndexedSearch,
+      indexed: this.indexedMatcher ? this.indexedMatcher.isIndexed : false,
+      stats: this.indexedMatcher ? this.indexedMatcher.getStatistics() : null
+    };
+  }
 }
 
 // ========================================
@@ -1067,6 +1182,48 @@ class MachineLearningSystem {
       status: dataCountWithResults >= 100 ? 'READY' : 'COLLECTING',
       requiredData: Math.max(0, 100 - dataCountWithResults)
     };
+  }
+
+  /**
+   * インデックス最適化を実行（ボタン押下時）
+   */
+  buildOptimizedIndex(timeframe = 60) {
+    const system = this.getCurrentSystem();
+    if (!system || !system.patternMatcher) {
+      console.error('[ML] ❌ パターンマッチャーが初期化されていません');
+      return {
+        success: false,
+        error: 'パターンマッチャーが初期化されていません'
+      };
+    }
+
+    return system.patternMatcher.buildOptimizedIndex(timeframe);
+  }
+
+  /**
+   * インデックス最適化を無効化
+   */
+  disableOptimizedIndex() {
+    const system = this.getCurrentSystem();
+    if (system && system.patternMatcher) {
+      system.patternMatcher.disableOptimizedIndex();
+    }
+  }
+
+  /**
+   * 最適化状態を取得
+   */
+  getOptimizationStatus() {
+    const system = this.getCurrentSystem();
+    if (!system || !system.patternMatcher) {
+      return {
+        enabled: false,
+        indexed: false,
+        stats: null
+      };
+    }
+
+    return system.patternMatcher.getOptimizationStatus();
   }
 }
 

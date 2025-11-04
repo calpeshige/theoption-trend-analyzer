@@ -21,18 +21,52 @@ if (!window.DEBUG_MODE) {
 class DetailedSegmentAnalyzer {
   constructor() {
     // 各判定時間のセグメント設定（全て6セグメントに統一）
+    // BTC/JPY基準（154円）: 15秒=0.005円, 30秒=0.010円, 60秒=0.020円, 180秒=0.035円, 300秒=0.050円
     this.segmentConfigs = {
-      15:  { dataRange: 60,  segmentDuration: 10, segmentCount: 6 },  // 15秒判定: 60秒を10秒×6
-      30:  { dataRange: 90,  segmentDuration: 15, segmentCount: 6 },  // 30秒判定: 90秒を15秒×6
-      60:  { dataRange: 120, segmentDuration: 20, segmentCount: 6 },  // 60秒判定: 120秒を20秒×6
-      180: { dataRange: 240, segmentDuration: 40, segmentCount: 6 },  // 3分判定: 240秒を40秒×6
-      300: { dataRange: 300, segmentDuration: 50, segmentCount: 6 }   // 5分判定: 300秒を50秒×6
+      15:  {
+        dataRange: 60,
+        segmentDuration: 10,
+        segmentCount: 6,
+        atrMultiplier: 0.09,   // ATRの9%（BTC/JPY 0.005円相当）
+        minThreshold: 0.0032   // 最小閾値 0.0032%
+      },
+      30:  {
+        dataRange: 90,
+        segmentDuration: 15,
+        segmentCount: 6,
+        atrMultiplier: 0.18,   // ATRの18%（BTC/JPY 0.010円相当）
+        minThreshold: 0.0065   // 最小閾値 0.0065%
+      },
+      60:  {
+        dataRange: 120,
+        segmentDuration: 20,
+        segmentCount: 6,
+        atrMultiplier: 0.36,   // ATRの36%（BTC/JPY 0.020円相当）
+        minThreshold: 0.013    // 最小閾値 0.013%
+      },
+      180: {
+        dataRange: 240,
+        segmentDuration: 40,
+        segmentCount: 6,
+        atrMultiplier: 0.64,   // ATRの64%（BTC/JPY 0.035円相当）
+        minThreshold: 0.023    // 最小閾値 0.023%
+      },
+      300: {
+        dataRange: 300,
+        segmentDuration: 50,
+        segmentCount: 6,
+        atrMultiplier: 0.90,   // ATRの90%（BTC/JPY 0.050円相当）
+        minThreshold: 0.0325   // 最小閾値 0.0325%
+      }
     };
 
-    // 動的閾値計算用のキャッシュ
+    // 動的閾値計算用のキャッシュ（時間枠別）
     this.thresholdCache = {
-      value: null,           // 計算済みの閾値
-      lastCalculated: 0,     // 最終計算時刻
+      15: { value: null, lastCalculated: 0 },
+      30: { value: null, lastCalculated: 0 },
+      60: { value: null, lastCalculated: 0 },
+      180: { value: null, lastCalculated: 0 },
+      300: { value: null, lastCalculated: 0 },
       cacheValidityMs: 60000 // キャッシュ有効期限（1分）
     };
 
@@ -48,80 +82,43 @@ class DetailedSegmentAnalyzer {
   }
 
   /**
-   * 動的閾値を計算（ATRベース + 統計ベース）
+   * 動的閾値を計算（時間枠別のATRベース閾値）
+   * @param {number} timeframe - 判定時間（15, 30, 60, 180, 300）
+   * @param {number} atrPercent - ATRパーセント
+   * @returns {number} 計算された閾値（パーセント単位）
    */
-  calculateDynamicThreshold(priceHistory, atrPercent) {
+  calculateDynamicThreshold(timeframe, atrPercent) {
     const now = Date.now();
+    const config = this.segmentConfigs[timeframe];
+
+    if (!config) {
+      console.warn(`[DynamicThreshold] 未対応の時間枠: ${timeframe}`);
+      return 0.01; // デフォルト値
+    }
 
     // キャッシュが有効ならそれを返す
-    if (this.thresholdCache.value !== null &&
-        (now - this.thresholdCache.lastCalculated) < this.thresholdCache.cacheValidityMs) {
-      return this.thresholdCache.value;
+    const cache = this.thresholdCache[timeframe];
+    if (cache && cache.value !== null &&
+        (now - cache.lastCalculated) < this.thresholdCache.cacheValidityMs) {
+      return cache.value;
     }
 
-    let threshold = this.thresholdParams.minThreshold;
+    let threshold = config.minThreshold;
 
-    // === 方法1: ATRベースの閾値 ===
-    let atrBasedThreshold = this.thresholdParams.minThreshold;
+    // ATRベースの閾値計算
     if (atrPercent && atrPercent > 0) {
-      // ATRの10%をノイズレベルとする
-      atrBasedThreshold = atrPercent * 0.1;
-      atrBasedThreshold = Math.max(
-        this.thresholdParams.minThreshold,
-        Math.min(this.thresholdParams.maxThreshold, atrBasedThreshold)
-      );
+      const atrBasedThreshold = atrPercent * config.atrMultiplier;
+      // ATRベースと最小閾値の大きい方を使用
+      threshold = Math.max(config.minThreshold, atrBasedThreshold);
     }
-
-    // === 方法2: 統計ベースの閾値 ===
-    let statsBasedThreshold = this.thresholdParams.minThreshold;
-    if (priceHistory && priceHistory.length >= 10) {
-      const sampleSize = Math.min(this.thresholdParams.sampleSize, priceHistory.length - 1);
-      const recentPrices = priceHistory.slice(-sampleSize - 1);
-
-      // 1秒ごとの変化率を計算
-      const changes = [];
-      for (let i = 1; i < recentPrices.length; i++) {
-        const changePercent = Math.abs(
-          (recentPrices[i].price - recentPrices[i-1].price) / recentPrices[i-1].price * 100
-        );
-        changes.push(changePercent);
-      }
-
-      if (changes.length > 0) {
-        // 平均と標準偏差を計算
-        const mean = changes.reduce((a, b) => a + b, 0) / changes.length;
-        const variance = changes.reduce((sum, c) => sum + Math.pow(c - mean, 2), 0) / changes.length;
-        const stdDev = Math.sqrt(variance);
-
-        // 標準偏差の25%をノイズレベルとする
-        statsBasedThreshold = stdDev * this.thresholdParams.stdDevMultiplier;
-        statsBasedThreshold = Math.max(
-          this.thresholdParams.minThreshold,
-          Math.min(this.thresholdParams.maxThreshold, statsBasedThreshold)
-        );
-      }
-    }
-
-    // === 方法1と方法2を加重平均で統合 ===
-    threshold = (
-      atrBasedThreshold * this.thresholdParams.atrWeight +
-      statsBasedThreshold * this.thresholdParams.statsWeight
-    );
-
-    // 最終的な範囲チェック
-    threshold = Math.max(
-      this.thresholdParams.minThreshold,
-      Math.min(this.thresholdParams.maxThreshold, threshold)
-    );
 
     // キャッシュに保存
-    this.thresholdCache.value = threshold;
-    this.thresholdCache.lastCalculated = now;
+    if (cache) {
+      cache.value = threshold;
+      cache.lastCalculated = now;
+    }
 
-    console.log(`[DynamicThreshold] 計算完了:`);
-    console.log(`  ATRベース: ${(atrBasedThreshold * 100).toFixed(4)}%`);
-    console.log(`  統計ベース: ${(statsBasedThreshold * 100).toFixed(4)}%`);
-    console.log(`  最終閾値: ${(threshold * 100).toFixed(4)}%`);
+    console.log(`[DynamicThreshold] ${timeframe}秒: ATR=${(atrPercent * 100).toFixed(4)}%, 係数=${config.atrMultiplier}, 閾値=${(threshold * 100).toFixed(4)}%`);
 
     return threshold;
   }
@@ -143,8 +140,8 @@ class DetailedSegmentAnalyzer {
       return this.getEmptyPriceSegmentAnalysis(config.segmentCount);
     }
 
-    // 動的閾値を計算（全セグメントで共通）
-    const dynamicThreshold = this.calculateDynamicThreshold(priceHistory, atrPercent);
+    // 動的閾値を計算（時間枠別）
+    const dynamicThreshold = this.calculateDynamicThreshold(timeframe, atrPercent);
 
     // セグメントごとに詳細分析
     const segments = [];
