@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ライセンスキー管理ツール - TheOption Trend Analyzer</title>
+  <title>TheOption Trend Analyzer - ライセンス管理ツール</title>
   <style>
     * {
       margin: 0;
@@ -13,42 +13,34 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       min-height: 100vh;
       padding: 40px 20px;
+      color: #ffffff;
     }
 
     .container {
       max-width: 800px;
       margin: 0 auto;
-      background: #ffffff;
-      border-radius: 16px;
-      padding: 40px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
 
     h1 {
-      font-size: 28px;
-      color: #1a202c;
+      font-size: 32px;
       margin-bottom: 8px;
+      color: #667eea;
     }
 
     .subtitle {
-      color: #718096;
-      margin-bottom: 32px;
-    }
-
-    .section {
+      color: #a0aec0;
       margin-bottom: 40px;
     }
 
-    .section-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #2d3748;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #e2e8f0;
+    .card {
+      background: #2d3748;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
 
     .form-group {
@@ -57,10 +49,10 @@
 
     label {
       display: block;
+      margin-bottom: 8px;
+      color: #cbd5e0;
       font-size: 14px;
       font-weight: 500;
-      color: #4a5568;
-      margin-bottom: 8px;
     }
 
     input[type="text"],
@@ -68,19 +60,34 @@
     input[type="date"] {
       width: 100%;
       padding: 12px 16px;
-      border: 2px solid #e2e8f0;
+      border: 2px solid #4a5568;
       border-radius: 8px;
+      background: #1a202c;
+      color: #ffffff;
       font-size: 16px;
+      outline: none;
       transition: border-color 0.2s;
     }
 
     input:focus {
-      outline: none;
       border-color: #667eea;
     }
 
-    .button {
-      padding: 12px 24px;
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #ffffff;
       border: none;
@@ -91,274 +98,329 @@
       transition: transform 0.2s, box-shadow 0.2s;
     }
 
-    .button:hover {
+    button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
 
-    .button:active {
+    button:active {
       transform: translateY(0);
     }
 
-    .button-secondary {
-      background: #718096;
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
     }
 
-    .generated-key {
-      display: none;
-      padding: 16px;
-      background: #f7fafc;
-      border: 2px solid #667eea;
-      border-radius: 8px;
-      margin-top: 16px;
-    }
-
-    .generated-key.show {
-      display: block;
-    }
-
-    .key-display {
-      font-family: 'Courier New', monospace;
-      font-size: 20px;
-      font-weight: bold;
-      color: #667eea;
-      margin: 12px 0;
-      word-break: break-all;
-    }
-
-    .alert {
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      display: none;
-    }
-
-    .alert.show {
-      display: block;
-    }
-
-    .alert-success {
-      background: #c6f6d5;
-      border-left: 4px solid #48bb78;
-      color: #22543d;
-    }
-
-    .alert-error {
-      background: #fed7d7;
-      border-left: 4px solid #f56565;
-      color: #742a2a;
-    }
-
-    .alert-warning {
-      background: #feebc8;
-      border-left: 4px solid #ed8936;
-      color: #7c2d12;
-    }
-
-    .instructions {
-      background: #edf2f7;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 32px;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #2d3748;
-    }
-
-    .instructions h3 {
-      font-size: 16px;
+    .generate-btn {
+      background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
       margin-bottom: 12px;
-      color: #1a202c;
     }
 
-    .instructions ol {
-      margin-left: 20px;
-    }
-
-    .instructions li {
-      margin-bottom: 8px;
-    }
-
-    .firestore-link {
-      display: inline-block;
-      padding: 12px 20px;
-      background: #4285f4;
-      color: #ffffff;
-      text-decoration: none;
+    .result {
+      padding: 16px;
       border-radius: 8px;
-      font-weight: 600;
-      margin-top: 16px;
-      transition: background 0.2s;
+      margin-top: 20px;
+      display: none;
+      white-space: pre-wrap;
     }
 
-    .firestore-link:hover {
-      background: #357ae8;
+    .result.success {
+      background: rgba(72, 187, 120, 0.2);
+      border-left: 3px solid #48bb78;
+      color: #9ae6b4;
     }
 
-    .copy-btn {
-      padding: 8px 16px;
-      background: #48bb78;
-      color: #ffffff;
-      border: none;
-      border-radius: 6px;
+    .result.error {
+      background: rgba(245, 101, 101, 0.2);
+      border-left: 3px solid #f56565;
+      color: #fc8181;
+    }
+
+    .license-key-display {
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: bold;
+      padding: 12px;
+      background: #1a202c;
+      border-radius: 4px;
+      margin: 12px 0;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    .info-text {
       font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-left: 12px;
+      color: #a0aec0;
+      margin-top: 8px;
     }
 
-    .copy-btn:hover {
-      background: #38a169;
+    .history {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      padding: 12px;
+      background: #1a202c;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .history-key {
+      font-family: 'Courier New', monospace;
+      color: #667eea;
+      font-weight: 600;
+    }
+
+    .history-user {
+      color: #cbd5e0;
+      font-size: 14px;
+    }
+
+    .history-expiry {
+      color: #718096;
+      font-size: 12px;
+      margin-top: 4px;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔑 ライセンスキー管理ツール</h1>
-    <p class="subtitle">TheOption Trend Analyzer</p>
+    <h1>🔑 ライセンス管理ツール</h1>
+    <p class="subtitle">TheOption Trend Analyzer - 完全自動発行システム</p>
 
-    <div class="instructions">
-      <h3>📋 使い方</h3>
-      <ol>
-        <li>下のフォームで購入者情報を入力</li>
-        <li>「ライセンスキーを生成」ボタンをクリック</li>
-        <li>生成されたライセンスキーをコピー</li>
-        <li>「Firestoreに登録」ボタンをクリックしてFirebaseコンソールを開く</li>
-        <li>Firestoreで手動でドキュメントを追加（詳細は下記参照）</li>
-        <li>購入者にライセンスキーを送信</li>
-      </ol>
-    </div>
-
-    <div id="alert-success" class="alert alert-success"></div>
-    <div id="alert-error" class="alert alert-error"></div>
-
-    <!-- ライセンスキー生成フォーム -->
-    <div class="section">
-      <h2 class="section-title">新規ライセンスキーの発行</h2>
+    <!-- ライセンス発行フォーム -->
+    <div class="card">
+      <h2 style="margin-bottom: 20px;">新規ライセンス発行</h2>
 
       <div class="form-group">
-        <label for="userName">購入者名 *</label>
-        <input type="text" id="userName" placeholder="例: 山田太郎" required>
+        <label>ライセンスキー</label>
+        <input type="text" id="licenseKey" placeholder="THEO-XXXX-XXXX-XXXX" readonly>
+        <p class="info-text">「ランダム生成」ボタンでライセンスキーを自動生成できます</p>
+      </div>
+
+      <button class="generate-btn" onclick="generateLicenseKey()">🎲 ランダム生成</button>
+
+      <div class="form-group">
+        <label>購入者名</label>
+        <input type="text" id="userName" placeholder="例: 山田太郎">
       </div>
 
       <div class="form-group">
-        <label for="maxDevices">最大デバイス数</label>
+        <label>最大デバイス数</label>
         <input type="number" id="maxDevices" value="1" min="1" max="10">
       </div>
 
       <div class="form-group">
-        <label for="expiryDate">有効期限（省略可）</label>
+        <div class="checkbox-group">
+          <input type="checkbox" id="hasExpiry" onchange="toggleExpiryDate()">
+          <label style="margin: 0;">有効期限を設定する</label>
+        </div>
+      </div>
+
+      <div class="form-group" id="expiryGroup" style="display: none;">
+        <label>有効期限</label>
         <input type="date" id="expiryDate">
       </div>
 
-      <button class="button" onclick="generateLicenseKey()">ライセンスキーを生成</button>
+      <button onclick="createLicense()">✅ ライセンスを発行（Firestoreに自動登録）</button>
 
-      <!-- 生成されたライセンスキー表示 -->
-      <div id="generated-key-box" class="generated-key">
-        <h3>✅ ライセンスキーを生成しました</h3>
-        <div class="key-display" id="license-key-display"></div>
-        <button class="copy-btn" onclick="copyToClipboard()">📋 コピー</button>
-
-        <div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid #e2e8f0;">
-          <h4 style="margin-bottom: 12px;">次のステップ：</h4>
-          <p style="margin-bottom: 12px;">以下のボタンからFirebaseコンソールを開き、手動でライセンスキーを登録してください。</p>
-          <a id="firestore-link" class="firestore-link" target="_blank">🔥 Firebaseコンソールを開く</a>
-        </div>
-      </div>
+      <div class="result" id="result"></div>
     </div>
 
-    <!-- Firestore登録手順 -->
-    <div class="section">
-      <h2 class="section-title">Firestore登録手順</h2>
-      <div class="instructions">
-        <ol>
-          <li>上の「Firebaseコンソールを開く」ボタンをクリック</li>
-          <li>Firestore Database を開く</li>
-          <li>「licenses」コレクションを選択（なければ作成）</li>
-          <li>「ドキュメントを追加」をクリック</li>
-          <li><strong>ドキュメントID</strong>に生成したライセンスキーを貼り付け</li>
-          <li>以下のフィールドを追加：
-            <ul>
-              <li><code>active</code> (boolean): <code>true</code></li>
-              <li><code>userName</code> (string): 購入者名</li>
-              <li><code>maxDevices</code> (number): <code>1</code></li>
-              <li><code>expiryDate</code> (timestamp): 有効期限（省略可）</li>
-            </ul>
-          </li>
-          <li>「保存」をクリック</li>
-        </ol>
-        <p style="margin-top: 12px; color: #e53e3e; font-weight: 600;">
-          ⚠️ セキュリティ上の理由により、ライセンスキーはFirebaseコンソールから手動で登録する必要があります。
-        </p>
-      </div>
-    </div>
-
-    <!-- ライセンスキーフォーマット -->
-    <div class="section">
-      <h2 class="section-title">ライセンスキーについて</h2>
-      <div class="instructions">
-        <p><strong>フォーマット:</strong> <code>THEO-XXXX-XXXX-XXXX</code></p>
-        <p style="margin-top: 8px;">
-          ライセンスキーは16文字のランダムな英数字で構成されています。<br>
-          推測されにくく、ユニークなキーが自動生成されます。
-        </p>
+    <!-- 発行履歴 -->
+    <div class="card">
+      <h2 style="margin-bottom: 20px;">発行履歴</h2>
+      <div class="history" id="history">
+        <p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>
       </div>
     </div>
   </div>
 
   <script>
-    // ライセンスキーを生成
-    function generateLicenseKey() {
-      const userName = document.getElementById('userName').value.trim();
+    // Firebase設定（license-manager.jsと同じ）
+    const FIREBASE_CONFIG = {
+      projectId: 'theoption-license',
+      apiKey: 'AIzaSyCuPbyOoP3-ILBBNLzx70ox2grmgjhknEQ'
+    };
 
-      if (!userName) {
-        showAlert('error', '購入者名を入力してください');
+    const LICENSE_COLLECTION = 'licenses';
+
+    // 発行履歴（ローカルストレージに保存）
+    let licenseHistory = JSON.parse(localStorage.getItem('licenseHistory') || '[]');
+
+    // ページ読み込み時
+    window.onload = function() {
+      displayHistory();
+
+      // デフォルトの有効期限を1年後に設定
+      const oneYearLater = new Date();
+      oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+      document.getElementById('expiryDate').value = oneYearLater.toISOString().split('T')[0];
+    };
+
+    // ランダムなライセンスキーを生成
+    function generateLicenseKey() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const segments = [];
+
+      for (let i = 0; i < 4; i++) {
+        let segment = '';
+        for (let j = 0; j < 4; j++) {
+          segment += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        segments.push(segment);
+      }
+
+      const licenseKey = `THEO-${segments.join('-')}`;
+      document.getElementById('licenseKey').value = licenseKey;
+    }
+
+    // 有効期限入力の表示/非表示
+    function toggleExpiryDate() {
+      const hasExpiry = document.getElementById('hasExpiry').checked;
+      document.getElementById('expiryGroup').style.display = hasExpiry ? 'block' : 'none';
+    }
+
+    // ライセンスを作成（Firestore REST APIで自動登録）
+    async function createLicense() {
+      const licenseKey = document.getElementById('licenseKey').value.trim();
+      const userName = document.getElementById('userName').value.trim();
+      const maxDevices = parseInt(document.getElementById('maxDevices').value);
+      const hasExpiry = document.getElementById('hasExpiry').checked;
+      const expiryDate = document.getElementById('expiryDate').value;
+
+      // バリデーション
+      if (!licenseKey) {
+        showResult('error', 'ライセンスキーを生成してください');
         return;
       }
 
-      // ランダムな16文字の英数字を生成
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字を除外
-      let key = 'THEO-';
-
-      for (let i = 0; i < 12; i++) {
-        if (i > 0 && i % 4 === 0) {
-          key += '-';
-        }
-        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      if (!userName) {
+        showResult('error', '購入者名を入力してください');
+        return;
       }
 
-      // 結果を表示
-      document.getElementById('license-key-display').textContent = key;
-      document.getElementById('generated-key-box').classList.add('show');
+      if (maxDevices < 1) {
+        showResult('error', '最大デバイス数は1以上にしてください');
+        return;
+      }
 
-      // Firestoreリンクを設定（プロジェクトIDは後で設定してください）
-      const projectId = 'YOUR_PROJECT_ID'; // TODO: Firebaseプロジェクト IDに置き換える
-      document.getElementById('firestore-link').href =
-        `https://console.firebase.google.com/project/${projectId}/firestore`;
+      // ボタンを無効化
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '発行中...';
 
-      showAlert('success', `ライセンスキーを生成しました: ${key}`);
+      try {
+        // Firestoreドキュメントのフィールド構造
+        const fields = {
+          active: { booleanValue: true },
+          userName: { stringValue: userName },
+          maxDevices: { integerValue: maxDevices.toString() }
+        };
+
+        // 有効期限がある場合のみ追加
+        if (hasExpiry && expiryDate) {
+          const expiryTimestamp = new Date(expiryDate).toISOString();
+          fields.expiryDate = { timestampValue: expiryTimestamp };
+        }
+
+        // Firestore REST APIでドキュメント作成
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?documentId=${licenseKey}&key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ fields })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+        }
+
+        // 成功
+        const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
+        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}\n\nFirestoreへの登録も完了しました。\nこのライセンスキーを購入者に送信してください。`);
+
+        // 履歴に追加
+        licenseHistory.unshift({
+          key: licenseKey,
+          userName: userName,
+          maxDevices: maxDevices,
+          hasExpiry: hasExpiry,
+          expiryDate: hasExpiry ? expiryDate : null,
+          createdAt: new Date().toISOString()
+        });
+
+        // 最大20件まで保存
+        if (licenseHistory.length > 20) {
+          licenseHistory = licenseHistory.slice(0, 20);
+        }
+
+        localStorage.setItem('licenseHistory', JSON.stringify(licenseHistory));
+        displayHistory();
+
+        // フォームをリセット
+        document.getElementById('userName').value = '';
+        generateLicenseKey();
+
+      } catch (error) {
+        console.error('[Admin] エラー:', error);
+        showResult('error', `❌ エラー: ${error.message}\n\nFirestoreへの接続に失敗しました。\nインターネット接続とFirebase設定を確認してください。`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ ライセンスを発行（Firestoreに自動登録）';
+      }
     }
 
-    // クリップボードにコピー
-    function copyToClipboard() {
-      const key = document.getElementById('license-key-display').textContent;
-      navigator.clipboard.writeText(key).then(() => {
-        showAlert('success', 'ライセンスキーをクリップボードにコピーしました');
-      }).catch(() => {
-        showAlert('error', 'コピーに失敗しました');
-      });
-    }
+    // 結果を表示
+    function showResult(type, message) {
+      const resultEl = document.getElementById('result');
+      resultEl.className = `result ${type}`;
+      resultEl.style.display = 'block';
+      resultEl.textContent = message;
 
-    // アラート表示
-    function showAlert(type, message) {
-      const alertId = type === 'error' ? 'alert-error' : 'alert-success';
-      const alertEl = document.getElementById(alertId);
-      alertEl.textContent = message;
-      alertEl.classList.add('show');
-
+      // 10秒後に非表示
       setTimeout(() => {
-        alertEl.classList.remove('show');
-      }, 5000);
+        resultEl.style.display = 'none';
+      }, 10000);
+    }
+
+    // 履歴を表示
+    function displayHistory() {
+      const historyEl = document.getElementById('history');
+
+      if (licenseHistory.length === 0) {
+        historyEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>';
+        return;
+      }
+
+      historyEl.innerHTML = licenseHistory.map(item => {
+        const expiryText = item.hasExpiry
+          ? `<div class="history-expiry">有効期限: ${item.expiryDate}</div>`
+          : `<div class="history-expiry">有効期限: 無期限</div>`;
+
+        return `
+          <div class="history-item">
+            <div>
+              <div class="history-key">${item.key}</div>
+              <div class="history-user">${item.userName} (${item.maxDevices}台)</div>
+              ${expiryText}
+            </div>
+            <div style="text-align: right; font-size: 12px; color: #718096;">
+              ${new Date(item.createdAt).toLocaleDateString('ja-JP')}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
   </script>
 </body>

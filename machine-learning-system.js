@@ -677,10 +677,11 @@ class PatternMatchingSystem {
       return 0;
     }
 
-    // 詳細セグメント分析を使用
+    // 詳細セグメント分析を使用（時間枠を渡す）
     const priceComparison = this.similarityCalculator.comparePriceSegments(
       currentPriceSegments,
-      pastPriceSegments
+      pastPriceSegments,
+      timeframe
     );
 
     const priceScore = priceComparison.similarity * 40; // 40点満点

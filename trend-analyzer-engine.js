@@ -122,14 +122,14 @@ class SimpleTrendAnalyzer {
     // 各取引時間ごとの期間を取得
     const tf_config = this.timeframes[tradingTime];
 
-    // 長期トレンド判定（全体の流れ）
+    // 長期トレンド判定（全体の流れ）- 重み増加: 4→5
     const longTrend = maMid > maLong ? 'UP' : 'DOWN';
     hierarchicalTrend.long = longTrend;
     if (longTrend === 'UP') {
-      score += 4;
+      score += 5;
       signals.push(`長期↑ (${tf_config.long}秒)`);
     } else {
-      score -= 4;
+      score -= 5;
       signals.push(`長期↓ (${tf_config.long}秒)`);
     }
 

@@ -77,7 +77,7 @@ service cloud.firestore {
 2. **「全般」タブで下にスクロール**
 
 3. **「ウェブ API キー」をコピー**
-   - 例: `AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
+   - 例: `AIzaSyCuPbyOoP3-ILBBNLzx70ox2grmgjhknEQ`
 
 4. **「プロジェクト ID」もコピー**
    - 例: `theoption-license`

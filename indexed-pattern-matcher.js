@@ -198,22 +198,50 @@ class IndexedPatternMatcher {
     let matchingIndexes = this._intersection(candidateSets);
     console.log(`[IndexedMatcher] 🎯 積集合: ${matchingIndexes.length}件`);
 
-    // 4. マッチ数が少なすぎる場合は条件を緩和
+    // 4. マッチ数が少なすぎる場合は条件を緩和（段階的）
     if (matchingIndexes.length < 30) {
       console.log('[IndexedMatcher] ⚠️ マッチ数が少ないため条件を緩和');
 
-      // セグメントとモメンタムだけで再検索
-      const relaxedSets = [];
+      // レベル1: セグメントとモメンタムだけで再検索
+      const relaxedSets1 = [];
       if (this.indexes.segment[conditions.segment]) {
-        relaxedSets.push(this.indexes.segment[conditions.segment]);
+        relaxedSets1.push(this.indexes.segment[conditions.segment]);
       }
       if (this.indexes.momentum[conditions.momentum]) {
-        relaxedSets.push(this.indexes.momentum[conditions.momentum]);
+        relaxedSets1.push(this.indexes.momentum[conditions.momentum]);
       }
 
-      if (relaxedSets.length > 0) {
-        matchingIndexes = this._intersection(relaxedSets);
-        console.log(`[IndexedMatcher] 🔄 緩和後: ${matchingIndexes.length}件`);
+      if (relaxedSets1.length > 0) {
+        matchingIndexes = this._intersection(relaxedSets1);
+        console.log(`[IndexedMatcher] 🔄 緩和レベル1（セグメント+モメンタム）: ${matchingIndexes.length}件`);
+      }
+
+      // レベル2: まだ少ない場合はセグメントのみ
+      if (matchingIndexes.length < 20) {
+        console.log('[IndexedMatcher] ⚠️ さらに緩和が必要');
+
+        if (this.indexes.segment[conditions.segment]) {
+          matchingIndexes = this.indexes.segment[conditions.segment];
+          console.log(`[IndexedMatcher] 🔄 緩和レベル2（セグメントのみ）: ${matchingIndexes.length}件`);
+        }
+      }
+
+      // レベル3: セグメントがない場合はモメンタムとトレンドで検索
+      if (matchingIndexes.length < 10) {
+        console.log('[IndexedMatcher] ⚠️ セグメントパターンが少ない、別の条件で検索');
+
+        const relaxedSets2 = [];
+        if (this.indexes.momentum[conditions.momentum]) {
+          relaxedSets2.push(this.indexes.momentum[conditions.momentum]);
+        }
+        if (this.indexes.trend[conditions.trend]) {
+          relaxedSets2.push(this.indexes.trend[conditions.trend]);
+        }
+
+        if (relaxedSets2.length > 0) {
+          matchingIndexes = this._intersection(relaxedSets2);
+          console.log(`[IndexedMatcher] 🔄 緩和レベル3（モメンタム+トレンド）: ${matchingIndexes.length}件`);
+        }
       }
     }
 

@@ -9,10 +9,9 @@
   // ========================================
   // 設定（Firebaseプロジェクト情報）
   // ========================================
-  // TODO: Firebaseプロジェクト作成後、以下を設定してください
   const FIREBASE_CONFIG = {
-    projectId: 'YOUR_PROJECT_ID',  // Firebaseプロジェクト ID
-    apiKey: 'YOUR_API_KEY'         // Firebase Web API キー
+    projectId: 'theoption-license',  // Firebaseプロジェクト ID
+    apiKey: 'AIzaSyCuPbyOoP3-ILBBNLzx70ox2grmgjhknEQ'  // Firebase Web API キー
   };
 
   const LICENSE_COLLECTION = 'licenses';  // Firestoreコレクション名
@@ -21,8 +20,22 @@
   // グローバル変数
   window.licenseManager = {
     isLicenseValid: false,
-    licenseInfo: null
+    licenseInfo: null,
+    isInitialized: false
   };
+
+  // ライセンス初期化完了を通知するヘルパー関数
+  function notifyLicenseReady() {
+    window.licenseManager.isInitialized = true;
+    // カスタムイベントを発火
+    window.dispatchEvent(new CustomEvent('licenseReady', {
+      detail: {
+        isValid: window.licenseManager.isLicenseValid,
+        licenseInfo: window.licenseManager.licenseInfo
+      }
+    }));
+    console.log('[License] ✅ ライセンス初期化完了イベント発火');
+  }
 
   // ========================================
   // ライセンスキー検証
@@ -312,6 +325,7 @@
       console.warn('[License] ⚠️ Firebase設定が未完了です。license-manager.js の FIREBASE_CONFIG を設定してください。');
       // 開発モードとして動作を許可（本番環境では削除してください）
       window.licenseManager.isLicenseValid = true;
+      notifyLicenseReady();
       return;
     }
 
@@ -321,6 +335,7 @@
     if (!saved.licenseKey) {
       // ライセンスキーがない場合
       console.log('[License] ライセンスキーが未登録です');
+      notifyLicenseReady(); // 初期化完了を通知（isValid = false）
       showLicenseInputDialog();
       return;
     }
@@ -331,12 +346,14 @@
 
     if (timeSinceLastCheck < RECHECK_INTERVAL) {
       // 最近検証済み
-      console.log('[License] ✓ ライセンス有効（次回検証まで ${Math.floor((RECHECK_INTERVAL - timeSinceLastCheck) / 1000 / 60 / 60)}時間）');
+      const hoursUntilRecheck = Math.floor((RECHECK_INTERVAL - timeSinceLastCheck) / 1000 / 60 / 60);
+      console.log(`[License] ✓ ライセンス有効（次回検証まで ${hoursUntilRecheck}時間）`);
       window.licenseManager.isLicenseValid = true;
 
       // ライセンス情報を復元
       chrome.storage.local.get(['licenseInfo'], (result) => {
         window.licenseManager.licenseInfo = result.licenseInfo || null;
+        notifyLicenseReady(); // 初期化完了を通知
       });
       return;
     }
@@ -351,10 +368,12 @@
       await saveLicenseKey(saved.licenseKey, result.licenseInfo);
       window.licenseManager.isLicenseValid = true;
       window.licenseManager.licenseInfo = result.licenseInfo;
+      notifyLicenseReady(); // 初期化完了を通知
     } else {
       // 検証失敗
       console.error('[License] ✗ ライセンス検証失敗:', result.reason);
       await clearLicenseKey();
+      notifyLicenseReady(); // 初期化完了を通知（isValid = false）
       alert(`ライセンス検証エラー\n\n${result.reason}\n\n再度ライセンスキーを入力してください。`);
       showLicenseInputDialog();
     }

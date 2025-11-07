@@ -23,15 +23,39 @@ if (!window.DEBUG_MODE) {
 console.log('[TheOption Analyzer] 拡張機能を読み込みました v4.1.4 (バイアス表示版)');
 
 // ========================================
-// ライセンスチェック
+// ライセンスチェック（非同期）
 // ========================================
-// license-manager.jsが先に読み込まれ、window.licenseManager が設定される
-// ライセンスが無効な場合は拡張機能を起動しない
-if (typeof window.licenseManager !== 'undefined' && !window.licenseManager.isLicenseValid) {
-  console.warn('[TheOption Analyzer] ⚠️ ライセンスが無効なため、拡張機能を起動しません');
-  // 以降のコードを実行しないようにthrow（エラーではなく意図的な停止）
-  throw new Error('License validation required');
+// license-manager.jsの初期化完了を待つ
+(async function waitForLicense() {
+  console.log('[TheOption Analyzer] ライセンス初期化を待機中...');
+
+  // 既に初期化済みの場合
+  if (window.licenseManager && window.licenseManager.isInitialized) {
+    console.log('[TheOption Analyzer] ライセンスは既に初期化済み');
+    checkLicenseAndStart();
+    return;
+  }
+
+  // licenseReadyイベントを待つ
+  window.addEventListener('licenseReady', function onLicenseReady(event) {
+    console.log('[TheOption Analyzer] ライセンス初期化完了イベント受信:', event.detail);
+    window.removeEventListener('licenseReady', onLicenseReady);
+    checkLicenseAndStart();
+  }, { once: true });
+})();
+
+function checkLicenseAndStart() {
+  if (!window.licenseManager || !window.licenseManager.isLicenseValid) {
+    console.warn('[TheOption Analyzer] ⚠️ ライセンスが無効なため、拡張機能を起動しません');
+    return; // エラーではなく静かに終了
+  }
+
+  console.log('[TheOption Analyzer] ✅ ライセンス有効 - 拡張機能を起動します');
+  initializeAnalyzer(); // 実際の初期化処理を呼び出す
 }
+
+// メイン初期化関数
+function initializeAnalyzer() {
 
 // ========================================
 // デバッグ用グローバル関数（即座に定義）
@@ -309,8 +333,8 @@ setTimeout(() => {
     30: {
       label: '30秒',
       updateInterval: 30,  // 30秒ごとに更新
-      dataWindow: 180,  // 直近3分のデータを使用
-      minDataPoints: 180,  // 最低3分(180秒)のデータが必要
+      dataWindow: 300,  // 直近5分のデータを使用（長期MA300秒に対応）
+      minDataPoints: 300,  // 最低5分(300秒)のデータが必要
       weights: {
         macd: 1.8,
         adx: 1.2,
@@ -323,8 +347,8 @@ setTimeout(() => {
     60: {
       label: '60秒',
       updateInterval: 60,  // 60秒ごとに更新
-      dataWindow: 240,  // 直近4分のデータを使用
-      minDataPoints: 240,  // 最低4分(240秒)のデータが必要
+      dataWindow: 480,  // 直近8分のデータを使用（長期MA480秒に対応）
+      minDataPoints: 480,  // 最低8分(480秒)のデータが必要
       weights: {
         macd: 2.0,
         adx: 1.5,
@@ -337,8 +361,8 @@ setTimeout(() => {
     180: {
       label: '3分',
       updateInterval: 180,  // 180秒ごとに更新
-      dataWindow: 300,  // 直近5分のデータを使用
-      minDataPoints: 180,
+      dataWindow: 540,  // 直近9分のデータを使用（長期MA540秒に対応）
+      minDataPoints: 540,
       weights: {
         macd: 2.5,  // 長期はトレンド重視
         adx: 2.0,
@@ -351,8 +375,8 @@ setTimeout(() => {
     300: {
       label: '5分',
       updateInterval: 300,  // 300秒ごとに更新
-      dataWindow: 300,  // 全データ使用
-      minDataPoints: 240,
+      dataWindow: 600,  // 直近10分のデータを使用（長期MA600秒に対応）
+      minDataPoints: 600,
       weights: {
         macd: 2.5,
         adx: 2.5,  // 最長期はトレンドの強さを最重視
@@ -370,6 +394,9 @@ setTimeout(() => {
 
   async function initialize() {
     console.log('[TheOption Analyzer] 🔧 初期化開始');
+
+    // LocalStorageから履歴データを復元
+    loadHistoryFromStorage();
 
     // 多次元分析システム初期化
     if (typeof MultiDimensionalAnalyzer !== 'undefined') {
@@ -545,6 +572,16 @@ setTimeout(() => {
         <div class="detail-section">
           <div class="detail-title">AI予測根拠</div>
           <div class="detail-content" id="detail-ml-reason">-</div>
+        </div>
+
+        <!-- 予測品質レポート -->
+        <div class="detail-section" style="margin-top: 16px;">
+          <div class="detail-title">📊 予測品質レポート（24時間）</div>
+          <div class="detail-content" id="detail-quality-report">
+            <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px; text-align: center; color: #a0aec0; font-size: 12px;">
+              予測を実行するとレポートが表示されます
+            </div>
+          </div>
         </div>
 
         <!-- AI学習状況 -->
@@ -2144,7 +2181,7 @@ setTimeout(() => {
 
         // 価格履歴記録
         priceHistory.push(price);
-        if (priceHistory.length > 300) priceHistory.shift();
+        if (priceHistory.length > 600) priceHistory.shift();  // 10分間保持（長期MA計算に必要）
 
         tickCount++;
 
@@ -2643,20 +2680,13 @@ setTimeout(() => {
       const currentData = dataCount || priceHistory.length;
 
       if (currentData < requiredData) {
-        // まだデータが足りない - カウントダウン表示
-        const remaining = requiredData - currentData;
-        const minutes = Math.floor(remaining / 60);
-        const seconds = remaining % 60;
+        // まだデータが足りない - 進捗率表示
+        const progressPercent = Math.floor((currentData / requiredData) * 100);
 
         techLightEl.textContent = '⏳';
         techLightEl.setAttribute('data-signal', 'wait');
-
-        if (minutes > 0) {
-          techDirectionEl.textContent = `あと${minutes}分${seconds}秒`;
-        } else {
-          techDirectionEl.textContent = `あと${seconds}秒`;
-        }
-        techConfidenceEl.textContent = '---';
+        techDirectionEl.textContent = 'データ取得中';
+        techConfidenceEl.textContent = `${progressPercent}%`;
       } else {
         // データが十分 - 通常の分析表示
 
@@ -2743,26 +2773,13 @@ setTimeout(() => {
         const requiredMlData = 100;
 
         if (mlDataCount < requiredMlData) {
-          const remaining = requiredMlData - mlDataCount;
-
-          // 時間枠ごとのデータ収集間隔
-          const config = TIMEFRAME_CONFIGS[currentTimeframe];
-          const collectionInterval = config.updateInterval; // 15秒取引=10秒, 30秒=15秒, 60秒=20秒
-
-          // 実際の残り時間を計算
-          const remainingSeconds = remaining * collectionInterval;
-          const minutes = Math.floor(remainingSeconds / 60);
-          const seconds = remainingSeconds % 60;
+          // 進捗率表示
+          const progressPercent = Math.floor((mlDataCount / requiredMlData) * 100);
 
           aiLightEl.textContent = '⏳';
           aiLightEl.setAttribute('data-signal', 'wait');
-
-          if (minutes > 0) {
-            aiDirectionEl.textContent = `あと約${minutes}分`;
-          } else {
-            aiDirectionEl.textContent = `あと約${seconds}秒`;
-          }
-          aiConfidenceEl.textContent = '---';
+          aiDirectionEl.textContent = 'データ取得中';
+          aiConfidenceEl.textContent = `${progressPercent}%`;
         } else {
           aiLightEl.textContent = '⏳';
           aiLightEl.setAttribute('data-signal', 'wait');
@@ -3241,6 +3258,28 @@ setTimeout(() => {
 
       const remaining = nextRankThreshold > 0 ? nextRankThreshold - mlDataCount : 0;
 
+      // 予測品質を計算
+      let predictionQuality = '不明';
+      let predictionQualityColor = '#9E9E9E';
+      if (pred15s.prediction !== 'INSUFFICIENT_DATA' && pred15s.sampleSize && pred15s.avgSimilarity) {
+        const sampleSize = pred15s.sampleSize || 0;
+        const avgSimilarity = pred15s.avgSimilarity || 0;
+
+        if (sampleSize >= 50 && avgSimilarity >= 85) {
+          predictionQuality = '優秀';
+          predictionQualityColor = '#E91E63';
+        } else if (sampleSize >= 30 && avgSimilarity >= 75) {
+          predictionQuality = '良好';
+          predictionQualityColor = '#4CAF50';
+        } else if (sampleSize >= 20 && avgSimilarity >= 65) {
+          predictionQuality = '標準';
+          predictionQualityColor = '#2196F3';
+        } else {
+          predictionQuality = '要注意';
+          predictionQualityColor = '#FFA726';
+        }
+      }
+
       // AI予測の方向と信頼度
       let aiDirection = '';
       let aiIndicator = '●';
@@ -3306,11 +3345,25 @@ setTimeout(() => {
                 </span>
               ` : `
                 類似パターン: ${pred15s.sampleSize}件<br>
+                平均類似度: ${pred15s.avgSimilarity ? pred15s.avgSimilarity.toFixed(1) : 0}%<br>
                 上昇確率: ${pred15s.upRate}%<br>
                 下降確率: ${pred15s.downRate}%
               `}
             </div>
           </div>
+
+          ${pred15s.prediction !== 'INSUFFICIENT_DATA' && pred15s.sampleSize ? `
+            <div style="padding: 8px; background: rgba(0,0,0,0.15); border-radius: 8px; margin-bottom: 8px; border: 1px solid ${predictionQualityColor}33;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 11px; color: #b0b0b0;">💎 予測品質</span>
+                <span style="font-size: 12px; color: ${predictionQualityColor}; font-weight: bold;">${predictionQuality}</span>
+              </div>
+              ${mlSystem && mlSystem.getCurrentSystem()?.patternMatcher?.getOptimizationStatus ?
+                `<div style="font-size: 10px; color: #b0b0b0; margin-top: 4px; opacity: 0.8;">
+                  ${mlSystem.getCurrentSystem().patternMatcher.getOptimizationStatus().enabled ? '⚡ 最適化: 有効' : '💤 最適化: 無効'}
+                </div>` : ''}
+            </div>
+          ` : ''}
 
           ${remaining > 0 ? `
             <div style="font-size: 11px; opacity: 0.7;">
@@ -3370,6 +3423,9 @@ setTimeout(() => {
         </div>
       `;
     }
+
+    // 品質レポートを更新
+    updateQualityReport();
   }
 
   function updateAssetDisplay(assetName, dataCount) {
@@ -3693,6 +3749,122 @@ setTimeout(() => {
     };
   }
 
+  /**
+   * 予測品質レポートを更新
+   */
+  function updateQualityReport() {
+    const reportDiv = document.getElementById('detail-quality-report');
+    if (!reportDiv) return;
+
+    if (!predictionQualityLog || predictionQualityLog.length === 0) {
+      reportDiv.innerHTML = `
+        <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px; text-align: center; color: #a0aec0; font-size: 12px;">
+          予測を実行するとレポートが表示されます
+        </div>
+      `;
+      return;
+    }
+
+    // 過去24時間のデータをフィルタ
+    const now = Date.now();
+    const last24h = now - (24 * 60 * 60 * 1000);
+    const recentLogs = predictionQualityLog.filter(log => log.timestamp >= last24h);
+
+    if (recentLogs.length === 0) {
+      reportDiv.innerHTML = `
+        <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px; text-align: center; color: #a0aec0; font-size: 12px;">
+          過去24時間の予測データがありません
+        </div>
+      `;
+      return;
+    }
+
+    // 統計計算
+    const totalPredictions = recentLogs.length;
+    const avgQualityScore = (recentLogs.reduce((sum, log) => sum + log.qualityScore, 0) / totalPredictions).toFixed(1);
+    const avgConfidence = (recentLogs.reduce((sum, log) => sum + log.confidence, 0) / totalPredictions).toFixed(1);
+    const avgSampleSize = Math.round(recentLogs.reduce((sum, log) => sum + log.sampleSize, 0) / totalPredictions);
+
+    // 品質分布を集計
+    const qualityDistribution = {
+      '優秀': 0,
+      '良好': 0,
+      '標準': 0,
+      '要注意': 0,
+      '低品質': 0
+    };
+    recentLogs.forEach(log => {
+      if (qualityDistribution[log.predictionQuality] !== undefined) {
+        qualityDistribution[log.predictionQuality]++;
+      }
+    });
+
+    // パターン使用頻度を集計
+    const patternCounts = {};
+    recentLogs.forEach(log => {
+      if (log.segmentPattern) {
+        patternCounts[log.segmentPattern] = (patternCounts[log.segmentPattern] || 0) + 1;
+      }
+    });
+
+    // 上位3パターンを取得
+    const topPatterns = Object.entries(patternCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    // 品質分布の最大値を計算（バーの長さ調整用）
+    const maxCount = Math.max(...Object.values(qualityDistribution));
+
+    // 品質カラーマッピング
+    const qualityColors = {
+      '優秀': '#E91E63',
+      '良好': '#4CAF50',
+      '標準': '#2196F3',
+      '要注意': '#FFA726',
+      '低品質': '#9E9E9E'
+    };
+
+    // HTML生成
+    reportDiv.innerHTML = `
+      <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px;">
+        <!-- 統計サマリー -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+          <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <div style="font-size: 10px; color: #b0b0b0; margin-bottom: 2px;">予測回数</div>
+            <div style="font-size: 16px; font-weight: bold; color: #fff;">${totalPredictions}回</div>
+          </div>
+          <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <div style="font-size: 10px; color: #b0b0b0; margin-bottom: 2px;">平均品質</div>
+            <div style="font-size: 16px; font-weight: bold; color: #4CAF50;">${avgQualityScore}</div>
+          </div>
+          <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <div style="font-size: 10px; color: #b0b0b0; margin-bottom: 2px;">平均信頼度</div>
+            <div style="font-size: 16px; font-weight: bold; color: #2196F3;">${avgConfidence}%</div>
+          </div>
+          <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <div style="font-size: 10px; color: #b0b0b0; margin-bottom: 2px;">平均パターン数</div>
+            <div style="font-size: 16px; font-weight: bold; color: #667eea;">${avgSampleSize}件</div>
+          </div>
+        </div>
+
+        <!-- Top 3パターン -->
+        ${topPatterns.length > 0 ? `
+          <div>
+            <div style="font-size: 11px; color: #b0b0b0; margin-bottom: 6px;">🔥 よく使われるパターン</div>
+            ${topPatterns.map(([pattern, count], index) => `
+              <div style="padding: 6px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 10px; color: #fff;">${index + 1}. ${pattern}</span>
+                  <span style="font-size: 10px; color: #4CAF50; font-weight: bold;">${count}回</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
   function recordPrediction(timeframe, mlPredictions, multiDim) {
     if (!mlPredictions || !mlPredictions.predictions) return;
 
@@ -3718,6 +3890,24 @@ setTimeout(() => {
       // 最大1000件に制限
       if (predictionHistory.length > 1000) {
         predictionHistory.shift(); // 古いものを削除
+      }
+
+      // LocalStorageに保存（最新500件のみ）
+      try {
+        const dataToSave = predictionHistory.slice(-500);
+        localStorage.setItem('theoption_prediction_history', JSON.stringify(dataToSave));
+      } catch (error) {
+        console.error('[History] 予測履歴の保存に失敗:', error);
+        // 容量超過の場合は古いデータを削除
+        if (error.name === 'QuotaExceededError') {
+          console.warn('[History] LocalStorage容量超過 - 最新300件のみ保存');
+          try {
+            const reducedData = predictionHistory.slice(-300);
+            localStorage.setItem('theoption_prediction_history', JSON.stringify(reducedData));
+          } catch (retryError) {
+            console.error('[History] 再試行も失敗:', retryError);
+          }
+        }
       }
 
       console.log(`[History] 予測履歴記録: ${timeframe}秒 - ${pred.prediction} ${pred.confidence !== null ? `(${pred.confidence}%)` : ''} - 総件数: ${predictionHistory.length}`);
@@ -3766,6 +3956,9 @@ setTimeout(() => {
         }
 
         console.log(`[Quality] 品質ログ記録: ${timeframe}秒 - スコア:${quality.score} (${quality.label}) - 総件数: ${predictionQualityLog.length}`);
+
+        // 品質レポートを更新
+        updateQualityReport();
       }
     }
   }
@@ -3799,6 +3992,24 @@ setTimeout(() => {
       trendHistory.shift();
     }
 
+    // LocalStorageに保存（最新500件のみ）
+    try {
+      const dataToSave = trendHistory.slice(-500);
+      localStorage.setItem('theoption_trend_history', JSON.stringify(dataToSave));
+    } catch (error) {
+      console.error('[History] トレンド履歴の保存に失敗:', error);
+      // 容量超過の場合は古いデータを削除
+      if (error.name === 'QuotaExceededError') {
+        console.warn('[History] LocalStorage容量超過 - 最新300件のみ保存');
+        try {
+          const reducedData = trendHistory.slice(-300);
+          localStorage.setItem('theoption_trend_history', JSON.stringify(reducedData));
+        } catch (retryError) {
+          console.error('[History] 再試行も失敗:', retryError);
+        }
+      }
+    }
+
     console.log(`[History] トレンド履歴記録: ${timeframe}秒 - ${hierarchicalTrend.long}/${hierarchicalTrend.mid}/${hierarchicalTrend.short} - 総件数: ${trendHistory.length}`);
   }
 
@@ -3811,6 +4022,41 @@ setTimeout(() => {
     const rocScore = Math.abs(multiDim.breakdown.roc?.roc || 0) * 10;
 
     return Math.min(100, Math.round((adxScore + macdScore + rocScore) / 3));
+  }
+
+  /**
+   * LocalStorageから全履歴データを復元
+   */
+  function loadHistoryFromStorage() {
+    console.log('[History] LocalStorageから履歴データを復元中...');
+
+    // 予測履歴を復元
+    try {
+      const savedPredictions = localStorage.getItem('theoption_prediction_history');
+      if (savedPredictions) {
+        const loaded = JSON.parse(savedPredictions);
+        predictionHistory.length = 0;
+        predictionHistory.push(...loaded);
+        console.log(`[History] 予測履歴を復元: ${predictionHistory.length}件`);
+      }
+    } catch (error) {
+      console.error('[History] 予測履歴の復元に失敗:', error);
+    }
+
+    // トレンド履歴を復元
+    try {
+      const savedTrends = localStorage.getItem('theoption_trend_history');
+      if (savedTrends) {
+        const loaded = JSON.parse(savedTrends);
+        trendHistory.length = 0;
+        trendHistory.push(...loaded);
+        console.log(`[History] トレンド履歴を復元: ${trendHistory.length}件`);
+      }
+    } catch (error) {
+      console.error('[History] トレンド履歴の復元に失敗:', error);
+    }
+
+    console.log('[History] 履歴データの復元完了');
   }
 
   function getHierarchicalTrend(timeframe) {
@@ -4787,3 +5033,5 @@ setTimeout(() => {
   }
 
 })();
+
+} // initializeAnalyzer() の終了

@@ -40,7 +40,7 @@ class SegmentSimilarityCalculator {
   /**
    * 価格パターンのセグメント類似度を計算（新システム統合版）
    */
-  comparePriceSegments(currentAnalysis, historicalAnalysis) {
+  comparePriceSegments(currentAnalysis, historicalAnalysis, timeframe = 60) {
     if (!currentAnalysis || !historicalAnalysis) {
       return { similarity: 0, details: {} };
     }
@@ -78,10 +78,10 @@ class SegmentSimilarityCalculator {
     }
 
     // 2. 一致パターンを評価
-    const patternEval = patternEvaluator.evaluate(matches);
+    const patternEval = patternEvaluator.evaluate(matches, timeframe);
 
-    // 3. 総合スコア計算（アクティビティフィルター付き）
-    const result = enhancedScoring.calculateTotalScore(currentSegments, historicalSegments);
+    // 3. 総合スコア計算（アクティビティフィルター付き、時間枠考慮）
+    const result = enhancedScoring.calculateTotalScore(currentSegments, historicalSegments, timeframe);
 
     // === 低ボラティリティパターンの除外 ===
     if (result.lowVolatility) {
@@ -493,8 +493,8 @@ window.SegmentSimilarityCalculator = SegmentSimilarityCalculator;
  */
 class EnhancedSegmentScoring {
   constructor() {
-    // セグメント位置の指数重み
-    this.segmentWeights = [1, 2, 4, 8, 16, 32];
+    // セグメント位置の指数重み（全時間枠3セグメント統一）
+    this.segmentWeights = [1, 4, 16];
 
     // 一致レベルの定義
     this.matchLevels = {
@@ -523,9 +523,30 @@ class EnhancedSegmentScoring {
     // アクティブセグメント判定の閾値
     this.activityThresholds = {
       minMagnitude: 0.05,        // 最小変化量: 0.05%
-      minActiveSegments: 3,      // 最低限必要なアクティブセグメント数 (50%)
+      minActiveSegments: 3,      // 最低限必要なアクティブセグメント数 (50%) - デフォルト値
       minActiveRatio: 0.5        // 最低限必要なアクティブ比率 (50%)
     };
+  }
+
+  /**
+   * 最小アクティブセグメント数を取得（全時間枠統一: 1/3 = 33%）
+   */
+  getMinActiveSegments(timeframe) {
+    return 1;
+  }
+
+  /**
+   * セグメント重みを取得（全時間枠統一）
+   */
+  getSegmentWeights(timeframe) {
+    return this.segmentWeights;
+  }
+
+  /**
+   * セグメント数を取得（全時間枠統一）
+   */
+  getSegmentCount(timeframe) {
+    return 3;
   }
 
   /**
@@ -626,10 +647,11 @@ class EnhancedSegmentScoring {
   }
 
   /**
-   * 全6セグメントの総合スコアを計算（アクティビティフィルター付き）
+   * 全セグメントの総合スコアを計算（アクティビティフィルター付き）
    */
-  calculateTotalScore(currentSegments, historicalSegments) {
-    const maxScore = this.segmentWeights.reduce((a, b) => a + b, 0) * 1.2; // 63 * 1.2 = 75.6
+  calculateTotalScore(currentSegments, historicalSegments, timeframe = 60) {
+    const segmentCount = 3;
+    const maxScore = this.segmentWeights.reduce((a, b) => a + b, 0) * 1.2;
 
     // === アクティブセグメント数をカウント ===
     const currentActiveCount = currentSegments.filter(s => this.isActiveSegment(s)).length;
@@ -637,11 +659,13 @@ class EnhancedSegmentScoring {
 
     // 両方のパターンでアクティブセグメント数の少ない方を採用
     const minActiveCount = Math.min(currentActiveCount, historicalActiveCount);
-    const activeRatio = minActiveCount / 6;
+    const activeRatio = minActiveCount / segmentCount;
 
-    // === 低ボラティリティ判定 ===
-    if (minActiveCount < this.activityThresholds.minActiveSegments) {
-      console.log(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/6 (${(activeRatio*100).toFixed(0)}%)`);
+    // === 時間枠別の低ボラティリティ判定 ===
+    const minRequired = this.getMinActiveSegments(timeframe);
+
+    if (minActiveCount < minRequired) {
+      console.log(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) [${timeframe}秒]`);
       return {
         percentage: 0,
         totalScore: 0,
@@ -650,7 +674,9 @@ class EnhancedSegmentScoring {
         lowVolatility: true,
         activeSegments: minActiveCount,
         activeRatio: activeRatio,
-        reason: `全セグメントが低ボラティリティ (アクティブ: ${minActiveCount}/6, 閾値: ${this.activityThresholds.minActiveSegments}/6)`
+        timeframe: timeframe,
+        minRequired: minRequired,
+        reason: `全セグメントが低ボラティリティ (アクティブ: ${minActiveCount}/${segmentCount}, 閾値: ${minRequired}/${segmentCount}, 時間枠: ${timeframe}秒)`
       };
     }
 
@@ -658,7 +684,7 @@ class EnhancedSegmentScoring {
     let totalScore = 0;
     const segmentScores = [];
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 3; i++) {
       const segScore = this.scoreSegment(
         currentSegments[i],
         historicalSegments[i],
@@ -671,7 +697,7 @@ class EnhancedSegmentScoring {
     // パーセンテージに変換
     const percentage = (totalScore / maxScore) * 100;
 
-    console.log(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/6 (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
+    console.log(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
 
     return {
       percentage: Math.min(100, percentage),
@@ -691,11 +717,12 @@ class EnhancedSegmentScoring {
  */
 class MatchPatternEvaluator {
   /**
-   * 一致パターンを評価 (改善版)
-   * @param {Array} matches - 一致したセグメントのインデックス [0-5]
+   * 一致パターンを評価（全時間枠3セグメント統一）
+   * @param {Array} matches - 一致したセグメントのインデックス [0-2]
+   * @param {number} timeframe - 時間枠（秒）※互換性のため残すが使用しない
    * @returns {Object} - スコアと詳細
    */
-  evaluate(matches) {
+  evaluate(matches, timeframe = 60) {
     if (matches.length === 0) return {
       score: 0,
       recency: 0,
@@ -703,6 +730,8 @@ class MatchPatternEvaluator {
       coverage: 0,
       pattern: 'NO_MATCH'
     };
+
+    const segmentCount = 3;
 
     // === 軸1: 直近性 (Recency) ===
     const recency = this.evaluateRecency(matches);
@@ -729,32 +758,32 @@ class MatchPatternEvaluator {
   }
 
   /**
-   * 直近性を評価 (改善版)
+   * 直近性を評価（全時間枠3セグメント統一）
    */
   evaluateRecency(matches) {
-    const weights = [1, 2, 4, 8, 16, 32]; // 指数重み
-    const maxWeight = 32;
+    const weights = [1, 4, 16];
+    const maxWeight = 16;
 
     // 最新の一致セグメント
     const latestMatch = Math.max(...matches);
     const latestWeight = weights[latestMatch];
 
-    // 直近3つ([3][4][5])のうちいくつ一致しているか
-    const recent3 = matches.filter(i => i >= 3).length;
+    // 直近セグメント([2])の一致数
+    const recentCount = matches.filter(i => i >= 2).length;
 
-    // 直近5つ([1][2][3][4][5])のうちいくつ一致しているか
-    const recent5 = matches.filter(i => i >= 1).length;
+    // 中盤以降([1][2])の一致数
+    const midCount = matches.filter(i => i >= 1).length;
 
     // スコア計算 (改善版: ボーナス強化)
     const baseScore = (latestWeight / maxWeight) * 100; // 0-100
-    const bonusScore = recent3 * 12; // 直近3つで+12点ずつ (10 → 12)
-    const extraBonus = recent5 * 2;  // 直近5つで+2点ずつ (新規)
+    const bonusScore = recentCount * 12; // 直近で+12点ずつ
+    const extraBonus = midCount * 2;     // 中盤以降で+2点ずつ
 
     return Math.min(100, baseScore + bonusScore + extraBonus);
   }
 
   /**
-   * 連続性を評価 (改善版)
+   * 連続性を評価（全時間枠3セグメント統一）
    */
   evaluateContinuity(matches) {
     const sorted = [...matches].sort((a, b) => a - b);
@@ -782,19 +811,17 @@ class MatchPatternEvaluator {
       consecutiveGroups.push(currentConsecutive);
     }
 
-    // 連続数に応じてスコア (改善版: スコア調整)
+    // 連続数に応じてスコア（3セグメント統一）
     const consecutiveScore = {
       1: 0,
-      2: 45,   // 40 → 45
-      3: 75,   // 70 → 75
-      4: 88,   // 85 → 88
-      5: 96,   // 95 → 96
-      6: 100
+      2: 70,
+      3: 100
     }[maxConsecutive] || 0;
 
-    // 直近から連続している場合、ボーナス (改善版: 1.3 → 1.25)
-    const isRecentContinuous = sorted[sorted.length - 1] === 5 &&
-                               sorted[sorted.length - 2] === 4;
+    // 直近から連続している場合、ボーナス
+    const isRecentContinuous = sorted.length >= 2 &&
+                               sorted[sorted.length - 1] === 2 &&
+                               sorted[sorted.length - 2] === 1;
     const recentBonus = isRecentContinuous ? 1.25 : 1.0;
 
     // 複数の連続グループがある場合、軽微なボーナス (新規)
@@ -807,37 +834,29 @@ class MatchPatternEvaluator {
    * カバレッジを評価（一致数の割合）
    */
   evaluateCoverage(matches) {
-    return (matches.length / 6) * 100; // 0-100
+    return (matches.length / 3) * 100; // 0-100
   }
 
   /**
-   * パターンを説明
+   * パターンを説明（3セグメント統一）
    */
   describePattern(matches) {
     const sorted = [...matches].sort((a, b) => a - b);
 
-    // 直近3連続 ([3][4][5])
-    if (sorted.includes(3) && sorted.includes(4) && sorted.includes(5)) {
-      return 'RECENT_TRIPLE';
+    // 全て一致 ([0][1][2])
+    if (sorted.length === 3) {
+      return 'PERFECT_MATCH';
     }
-    // 直近2連続 ([4][5])
-    if (sorted.includes(4) && sorted.includes(5)) {
+    // 直近2連続 ([1][2])
+    if (sorted.includes(1) && sorted.includes(2)) {
       return 'RECENT_DOUBLE';
     }
     // 最新含む
-    if (sorted.includes(5)) {
+    if (sorted.includes(2)) {
       return 'INCLUDES_LATEST';
     }
-    // 中間連続
-    if (sorted.includes(2) && sorted.includes(3) && sorted.includes(4)) {
-      return 'MIDDLE_CONTINUOUS';
-    }
     // 古いデータのみ
-    if (Math.max(...sorted) <= 2) {
-      return 'OLD_ONLY';
-    }
-    // 散発的
-    return 'SCATTERED';
+    return 'OLD_ONLY';
   }
 }
 

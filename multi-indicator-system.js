@@ -21,13 +21,17 @@ class MACDIndicator {
     return ema;
   }
 
-  calculate(prices, scaleFactor = 1) {
-    if (prices.length < 26) {
+  calculate(prices, scaleFactor = 1, periodScaleFactor = 1) {
+    // 期間をスケーリング（最小値を確保）
+    const period26 = Math.max(10, Math.round(26 * periodScaleFactor));
+    const period12 = Math.max(5, Math.round(12 * periodScaleFactor));
+
+    if (prices.length < period26) {
       return { macd: 0, signal: 0, histogram: 0, strength: 0 };
     }
 
-    const ema12 = this.calculateEMA(prices.slice(-26), 12);
-    const ema26 = this.calculateEMA(prices.slice(-26), 26);
+    const ema12 = this.calculateEMA(prices.slice(-period26), period12);
+    const ema26 = this.calculateEMA(prices.slice(-period26), period26);
     const macd = ema12 - ema26;
 
     // シグナルライン（簡易版）
@@ -84,12 +88,15 @@ class ADXIndicator {
 // ========================================
 
 class StochasticIndicator {
-  calculate(candles, period = 14) {
-    if (candles.length < period) {
+  calculate(candles, period = 14, periodScaleFactor = 1) {
+    // 期間をスケーリング（最小値を確保）
+    const scaledPeriod = Math.max(5, Math.round(period * periodScaleFactor));
+
+    if (candles.length < scaledPeriod) {
       return { k: 50, d: 50, signal: 'NEUTRAL', strength: 0 };
     }
 
-    const recentCandles = candles.slice(-period);
+    const recentCandles = candles.slice(-scaledPeriod);
     const currentClose = recentCandles[recentCandles.length - 1].close;
 
     const highest = Math.max(...recentCandles.map(c => c.high));
@@ -175,13 +182,16 @@ class ATRIndicator {
 // ========================================
 
 class ROCIndicator {
-  calculate(prices, period = 10, scaleFactor = 1) {
-    if (prices.length < period + 1) {
+  calculate(prices, period = 10, scaleFactor = 1, periodScaleFactor = 1) {
+    // 期間をスケーリング（最小値を確保）
+    const scaledPeriod = Math.max(3, Math.round(period * periodScaleFactor));
+
+    if (prices.length < scaledPeriod + 1) {
       return { roc: 0, signal: 'NEUTRAL', strength: 0 };
     }
 
     const currentPrice = prices[prices.length - 1];
-    const pastPrice = prices[prices.length - 1 - period];
+    const pastPrice = prices[prices.length - 1 - scaledPeriod];
 
     const roc = ((currentPrice - pastPrice) / pastPrice) * 100;
 
@@ -217,12 +227,15 @@ class ROCIndicator {
 // ========================================
 
 class MarketSentimentAnalyzer {
-  analyze(ticks, scaleFactor = 1) {
-    if (ticks.length < 30) {
+  analyze(ticks, scaleFactor = 1, periodScaleFactor = 1) {
+    // 期間をスケーリング（最小値を確保）
+    const scaledPeriod = Math.max(20, Math.round(60 * periodScaleFactor));
+
+    if (ticks.length < Math.round(30 * periodScaleFactor)) {
       return { sentiment: 'NEUTRAL', intensity: 'LOW', strength: 0 };
     }
 
-    const recent = ticks.slice(-60);
+    const recent = ticks.slice(-scaledPeriod);
 
     // 上昇ティック比率
     const upTicks = recent.filter(t => t.change > 0).length;
@@ -283,6 +296,16 @@ class MultiDimensionalAnalyzer {
     if (timeframeSeconds <= 60) return 20;     // 60秒: 20倍（中感度）
     if (timeframeSeconds <= 180) return 5;     // 3分: 5倍（低感度）
     return 1;                                   // 5分: 通常感度
+  }
+
+  // 時間枠に応じた期間スケーリング係数を取得（判定時間に比例）
+  getPeriodScaleFactor(timeframeSeconds) {
+    // 基準: 60秒判定 = 1.0倍
+    if (timeframeSeconds <= 15) return 0.25;   // 15秒: 1/4
+    if (timeframeSeconds <= 30) return 0.5;    // 30秒: 1/2
+    if (timeframeSeconds <= 60) return 1.0;    // 60秒: 基準
+    if (timeframeSeconds <= 180) return 3.0;   // 180秒: 3倍
+    return 5.0;                                 // 300秒: 5倍
   }
 
   analyze(data) {
@@ -381,9 +404,10 @@ class MultiDimensionalAnalyzer {
   analyzeTimeframe(data, timeframeSeconds) {
     const { prices, candles, ticks } = data;
 
-    // 時間枠に応じた感度調整係数を取得
+    // 時間枠に応じた係数を取得
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
-    console.log(`[Multi-Indicator] 時間枠=${timeframeSeconds}秒, 感度係数=${scaleFactor}倍`);
+    const periodScaleFactor = this.getPeriodScaleFactor(timeframeSeconds);
+    console.log(`[Multi-Indicator] 時間枠=${timeframeSeconds}秒, 感度係数=${scaleFactor}倍, 期間係数=${periodScaleFactor}倍`);
     console.log(`[Multi-Indicator] ${timeframeSeconds}秒 入力データ: prices=${prices.length}件, 最新5件=${prices.slice(-5).map(p => p.toFixed(3)).join(', ')}`);
 
     // 時間枠に応じてデータをフィルタリング
@@ -397,35 +421,20 @@ class MultiDimensionalAnalyzer {
       relevantPrices = prices.slice(-120);
       relevantCandles = candles.slice(-120);
       relevantTicks = ticks.slice(-120);
-    } else if (timeframeSeconds <= 30) {
-      // 30秒: 短期（直近3分のデータで精度向上）
-      relevantPrices = prices.slice(-180);
-      relevantCandles = candles.slice(-180);
-      relevantTicks = ticks.slice(-180);
-    } else if (timeframeSeconds <= 60) {
-      // 60秒: 中期（直近4分のデータで精度向上）
-      relevantPrices = prices.slice(-240);
-      relevantCandles = candles.slice(-240);
-      relevantTicks = ticks.slice(-240);
-    } else if (timeframeSeconds <= 180) {
-      // 3分: 長期（直近3-5分のデータ）
-      relevantPrices = prices.slice(-300);
-      relevantCandles = candles.slice(-300);
-      relevantTicks = ticks.slice(-300);
     } else {
-      // 5分: 超長期（全データ）
+      // 30秒以上: 渡されたデータをそのまま使用（長期MA計算のため制限しない）
       relevantPrices = prices;
       relevantCandles = candles;
       relevantTicks = ticks;
     }
 
-    // 各指標を計算（感度係数を渡す）
-    const macdResult = this.macd.calculate(relevantPrices, scaleFactor);
+    // 各指標を計算（感度係数と期間係数を渡す）
+    const macdResult = this.macd.calculate(relevantPrices, scaleFactor, periodScaleFactor);
     const adxResult = this.adx.calculate(relevantCandles);
-    const stochasticResult = this.stochastic.calculate(relevantCandles);
+    const stochasticResult = this.stochastic.calculate(relevantCandles, 14, periodScaleFactor);
     const atrResult = this.atr.calculate(relevantCandles, 14, scaleFactor);
-    const rocResult = this.roc.calculate(relevantPrices, 10, scaleFactor);
-    const sentimentResult = this.sentiment.analyze(relevantTicks, scaleFactor);
+    const rocResult = this.roc.calculate(relevantPrices, 10, scaleFactor, periodScaleFactor);
+    const sentimentResult = this.sentiment.analyze(relevantTicks, scaleFactor, periodScaleFactor);
 
     // 時間枠による重み調整
     let macdWeight = 2.0;

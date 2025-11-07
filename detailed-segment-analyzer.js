@@ -20,43 +20,43 @@ if (!window.DEBUG_MODE) {
 
 class DetailedSegmentAnalyzer {
   constructor() {
-    // 各判定時間のセグメント設定（全て6セグメントに統一）
-    // BTC/JPY基準（154円）: 15秒=0.005円, 30秒=0.010円, 60秒=0.020円, 180秒=0.035円, 300秒=0.050円
+    // 各判定時間のセグメント設定（全て3セグメントに統一）
+    // より長いセグメント期間で詳細な特徴を捉える
     this.segmentConfigs = {
       15:  {
         dataRange: 60,
-        segmentDuration: 10,
-        segmentCount: 6,
+        segmentDuration: 20,   // 10秒 → 20秒（3セグメント化）
+        segmentCount: 3,        // 6 → 3
         atrMultiplier: 0.09,   // ATRの9%（BTC/JPY 0.005円相当）
         minThreshold: 0.0032   // 最小閾値 0.0032%
       },
       30:  {
         dataRange: 90,
-        segmentDuration: 15,
-        segmentCount: 6,
+        segmentDuration: 30,   // 15秒 → 30秒（3セグメント化）
+        segmentCount: 3,        // 6 → 3
         atrMultiplier: 0.18,   // ATRの18%（BTC/JPY 0.010円相当）
         minThreshold: 0.0065   // 最小閾値 0.0065%
       },
       60:  {
         dataRange: 120,
-        segmentDuration: 20,
-        segmentCount: 6,
+        segmentDuration: 40,   // 20秒 → 40秒（3セグメント化）
+        segmentCount: 3,        // 6 → 3
         atrMultiplier: 0.36,   // ATRの36%（BTC/JPY 0.020円相当）
         minThreshold: 0.013    // 最小閾値 0.013%
       },
       180: {
         dataRange: 240,
-        segmentDuration: 40,
-        segmentCount: 6,
+        segmentDuration: 80,   // 40秒 → 80秒（3セグメント化）
+        segmentCount: 3,        // 6 → 3
         atrMultiplier: 0.36,   // ATRの36%（ドル円 0.020円 = 2銭相当）
         minThreshold: 0.013    // 最小閾値 0.013%
       },
       300: {
         dataRange: 300,
-        segmentDuration: 50,
-        segmentCount: 6,
-        atrMultiplier: 0.54,   // ATRの54%（ドル円 0.030円 = 3銭相当）
-        minThreshold: 0.020    // 最小閾値 0.020%
+        segmentDuration: 100,  // 50秒 → 100秒（3セグメント化）
+        segmentCount: 3,        // 6 → 3
+        atrMultiplier: 0.36,   // ATRの36%（ドル円 0.020円 = 2銭相当）
+        minThreshold: 0.013    // 最小閾値 0.013%
       }
     };
 
@@ -188,7 +188,6 @@ class DetailedSegmentAnalyzer {
 
     // === フェーズ2: トレンド特徴 ===
     const slope = this.calculateLinearRegressionSlope(data);
-    const direction = this.classifyDirection(slope, changePercent, dynamicThreshold);
 
     // ボラティリティ（標準偏差）
     const variance = data.reduce((sum, p) => sum + Math.pow(p - avgPrice, 2), 0) / data.length;
@@ -197,6 +196,9 @@ class DetailedSegmentAnalyzer {
     // レンジ
     const range = maxPrice - minPrice;
     const rangePercent = (range / avgPrice) * 100;
+
+    // 方向判定（rangePercentも考慮）
+    const direction = this.classifyDirection(slope, changePercent, dynamicThreshold, rangePercent);
 
     // 上昇/下降の比率
     let upCount = 0, downCount = 0, flatCount = 0;
@@ -348,15 +350,18 @@ class DetailedSegmentAnalyzer {
   }
 
   /**
-   * 方向を分類（動的閾値ベース）
+   * 方向を分類（動的閾値ベース + range考慮）
    */
-  classifyDirection(slope, changePercent, dynamicThreshold = null) {
+  classifyDirection(slope, changePercent, dynamicThreshold = null, rangePercent = null) {
     // 動的閾値が渡されていない場合は、デフォルト値を使用
     const threshold = dynamicThreshold !== null
       ? dynamicThreshold
       : this.thresholdParams.minThreshold;
 
-    if (Math.abs(changePercent) < threshold) {
+    // changePercent と rangePercent の両方が小さい場合のみFLAT
+    // （始値=終値でも変動があればUP/DOWN判定される）
+    if (Math.abs(changePercent) < threshold &&
+        (rangePercent === null || rangePercent < threshold)) {
       return 'FLAT';
     }
 
