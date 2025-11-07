@@ -3765,15 +3765,22 @@ setTimeout(() => {
       return;
     }
 
-    // 過去24時間のデータをフィルタ
+    // 過去24時間のデータをフィルタ + 現在の通貨ペアでフィルタ
     const now = Date.now();
     const last24h = now - (24 * 60 * 60 * 1000);
-    const recentLogs = predictionQualityLog.filter(log => log.timestamp >= last24h);
+    const recentLogs = predictionQualityLog.filter(log =>
+      log.timestamp >= last24h &&
+      log.assetName === currentAsset  // 現在の通貨ペアのみ
+    );
 
     if (recentLogs.length === 0) {
+      // 現在の通貨ペア名を表示
+      const assetDisplayName = currentAsset || '現在の通貨ペア';
       reportDiv.innerHTML = `
         <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px; text-align: center; color: #a0aec0; font-size: 12px;">
-          過去24時間の予測データがありません
+          <div style="margin-bottom: 8px;">📊 ${assetDisplayName}</div>
+          <div style="font-size: 11px; opacity: 0.8;">データ収集中...</div>
+          <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">AI予測が実行されるとレポートが表示されます</div>
         </div>
       `;
       return;
@@ -3923,6 +3930,7 @@ setTimeout(() => {
 
         predictionQualityLog.push({
           timestamp: Date.now(),
+          assetName: currentAsset || 'UNKNOWN',  // 通貨ペア名を記録
           timeframe: timeframe,
           prediction: pred.prediction,
           confidence: pred.confidence !== null ? pred.confidence : 0,
@@ -4565,6 +4573,7 @@ setTimeout(() => {
     const headers = [
       'タイムスタンプ',
       '日時',
+      '通貨ペア',
       'タイムフレーム(秒)',
       '予測結果',
       '信頼度(%)',
@@ -4599,6 +4608,7 @@ setTimeout(() => {
       return [
         record.timestamp,
         dateStr,
+        record.assetName || 'UNKNOWN',
         record.timeframe,
         record.prediction,
         record.confidence,

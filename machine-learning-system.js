@@ -774,9 +774,9 @@ class PatternMatchingSystem {
     const avgChangePercent = similarPatterns.reduce((sum, p) =>
       sum + p.result.changePercent, 0) / totalCount;
 
-    // 予測（改善版: 70%に厳格化 - 低ボラティリティ対策）
+    // 予測（60%以上でHIGH/LOW判定 - テクニカル分析と統一）
     let prediction, confidence;
-    const CONFIDENCE_THRESHOLD = 70;  // 60% → 70%に引き上げ
+    const CONFIDENCE_THRESHOLD = 60;  // テクニカル分析と同じ閾値
 
     if (upRate >= CONFIDENCE_THRESHOLD) {
       prediction = 'HIGH';
