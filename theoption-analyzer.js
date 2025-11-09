@@ -2095,15 +2095,24 @@ setTimeout(() => {
     // 判定時間をストレージに保存
     chrome.storage.local.set({ currentTimeframe: newTimeframe });
 
-    // タブ切り替え時に即座に分析実行（パフォーマンス最適化）
-    const currentPrice = getCurrentPriceFromDOM();
+    // タブ切り替え時は次回分析まで待機
     const minDataPoints = TIMEFRAME_CONFIGS[newTimeframe].minDataPoints;
 
-    if (currentPrice && priceHistory.length >= minDataPoints) {
-      console.log(`[TheOption Analyzer] 🔄 ${TIMEFRAME_CONFIGS[newTimeframe].label}に切り替え - 即座に分析実行`);
-      performAnalysis(currentPrice, { timeframe: newTimeframe, isTabSwitch: true });
+    if (priceHistory.length >= minDataPoints) {
+      // 現在時刻を設定して、次回の分析インターバルまで待機
       lastAnalysisTimes[newTimeframe] = Date.now();
-      lastAnalysisTime = Date.now();
+
+      console.log(`[TheOption Analyzer] ⏳ ${TIMEFRAME_CONFIGS[newTimeframe].label}に切り替え - 次回分析まで待機中`);
+      console.log(`[TheOption Analyzer] 📋 updateUIを呼び出し: status=WAITING, message=次回分析まで待機中...`);
+
+      // 待機中メッセージを表示
+      updateUI({
+        status: 'WAITING',
+        message: `次回分析まで待機中...`,
+        timeframe: newTimeframe
+      });
+
+      console.log(`[TheOption Analyzer] ✅ updateUI呼び出し完了`);
     } else {
       console.log(`[TheOption Analyzer] ⏳ ${TIMEFRAME_CONFIGS[newTimeframe].label} - データ不足（${priceHistory.length}/${minDataPoints}秒）`);
       updateUI({
@@ -3039,6 +3048,17 @@ setTimeout(() => {
       return;
     }
 
+    if (data.status === 'WAITING') {
+      console.log('[TheOption Analyzer] ⏳ WAITING状態のUI更新:', data.message);
+      analyzerText.textContent = data.message;
+      // メインシグナルも更新（テクニカルとAI両方とも待機中）
+      updateMainSignal(
+        { signal: 'WAIT', confidence: null, direction: '待機中' },
+        { signal: 'WAIT', confidence: null, direction: '待機中', available: true, isWaiting: true }
+      );
+      return;
+    }
+
     if (data.status === 'ACTIVE') {
       // 選択中の時間枠の分析結果を取得（テクニカルとAI別々）
       const signals = getCurrentTimeframeSignal(data.multiDim, data.ml);
@@ -3129,6 +3149,12 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           techConfidenceEl.textContent = techSignal.confidence !== null ? `${techSignal.confidence}%` : '--';
+        } else if (techSignal.signal === 'WAIT') {
+          // 待機中
+          techLightEl.textContent = '⏳';
+          techLightEl.setAttribute('data-signal', 'wait');
+          techDirectionEl.textContent = '待機中';
+          techConfidenceEl.textContent = '--';
         } else {
           // NEUTRAL - パーセンテージ非表示
           techLightEl.textContent = '⚪';
@@ -3172,6 +3198,12 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           aiConfidenceEl.textContent = aiSignal.confidence !== null ? `${aiSignal.confidence}%` : '--';
+        } else if (aiSignal.signal === 'WAIT') {
+          // 待機中
+          aiLightEl.textContent = '⏳';
+          aiLightEl.setAttribute('data-signal', 'wait');
+          aiDirectionEl.textContent = '待機中';
+          aiConfidenceEl.textContent = '--';
         } else {
           // NEUTRAL - パーセンテージ非表示
           aiLightEl.textContent = '⚪';
