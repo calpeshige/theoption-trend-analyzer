@@ -85,7 +85,8 @@ class SegmentSimilarityCalculator {
 
     // === 低ボラティリティパターンの除外 ===
     if (result.lowVolatility) {
-      console.log(`[SegmentSimilarity] ⚠️ 低ボラティリティのため類似度0を返却: ${result.reason}`);
+      // 🔬 診断用：低ボラティリティフィルターの影響を確認
+      console.log(`[🔬 低ボラティリティ] 類似度0を返却: ${result.reason}`);
       return {
         similarity: 0,
         enhancedScore: 0,
@@ -107,8 +108,14 @@ class SegmentSimilarityCalculator {
       };
     }
 
-    // 4. パターン評価を乗算して最終スコア
+    // 4. パターン評価を掛け合わせて最終スコア（元々の計算式）
+    // セグメント一致度とパターン評価の両方が高い場合のみ高スコアになる
     const finalScore = (result.percentage / 100) * (patternEval.score / 100);
+
+    // 🔬 診断用：高スコア（70%以上）の場合のみログ出力
+    if (finalScore * 100 >= 70) {
+      console.log(`[🔬 高スコア検出] 最終=${Math.round(finalScore * 100)}%, セグメント=${result.percentage}%, パターン評価=${patternEval.score}%`);
+    }
 
     return {
       similarity: finalScore,
@@ -128,6 +135,34 @@ class SegmentSimilarityCalculator {
         matchLevels: segmentScores.map(s => s.matchLevelName)
       }
     };
+  }
+
+  /**
+   * 類似度計算（comparePriceSegmentsのエイリアス）
+   * machine-learning-system.jsとの互換性のため
+   */
+  calculateSimilarity(currentSituation, historicalSituation, timeframe = 15) {
+    // currentSituationとhistoricalSituationから必要なデータを抽出
+    const currentAnalysis = currentSituation[`priceSegments${timeframe}s`];
+    const historicalAnalysis = historicalSituation[`priceSegments${timeframe}s`];
+
+    // 🔬 診断用：リアルタイム計算時のデータ構造確認
+    if (!currentAnalysis || !historicalAnalysis) {
+      console.log('[🔬 データ構造] currentAnalysis存在:', !!currentAnalysis, ', historicalAnalysis存在:', !!historicalAnalysis);
+      return 0;
+    }
+
+    // comparePriceSegmentsを呼び出し
+    const result = this.comparePriceSegments(currentAnalysis, historicalAnalysis, timeframe);
+
+    // 🔬 診断用：リアルタイム計算で70%以上の場合のみログ出力
+    const finalScore = result.similarity * 100;
+    if (finalScore >= 70) {
+      console.log(`[🔬 リアルタイム高スコア] 最終=${Math.round(finalScore)}%, current=${currentAnalysis.pattern}, historical=${historicalAnalysis.pattern}`);
+    }
+
+    // similarityの値をパーセンテージで返す（0-100）
+    return finalScore;
   }
 
   /**
@@ -665,7 +700,8 @@ class EnhancedSegmentScoring {
     const minRequired = this.getMinActiveSegments(timeframe);
 
     if (minActiveCount < minRequired) {
-      console.log(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) [${timeframe}秒]`);
+      // パフォーマンス最適化のため無効化（大量データ時に負荷が高い）
+      // console.log(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) [${timeframe}秒]`);
       return {
         percentage: 0,
         totalScore: 0,
@@ -697,7 +733,8 @@ class EnhancedSegmentScoring {
     // パーセンテージに変換
     const percentage = (totalScore / maxScore) * 100;
 
-    console.log(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
+    // パフォーマンス最適化のため無効化（大量データ時に負荷が高い）
+    // console.log(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
 
     return {
       percentage: Math.min(100, percentage),

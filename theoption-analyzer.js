@@ -103,6 +103,89 @@ window.checkMLStorage = function() {
   });
 };
 
+// 類似度計算テスト用関数（70%以上のパターンが存在するか確認）
+window.testSimilarityCalculation = function() {
+  if (typeof chrome === 'undefined' || !chrome.storage) {
+    console.error('❌ chrome.storage が利用できません');
+    return;
+  }
+
+  chrome.storage.local.get(['theoption_ml_BTC_JPY'], (result) => {
+    const data = result.theoption_ml_BTC_JPY;
+    if (!data || data.length < 100) {
+      console.log('❌ データ不足');
+      return;
+    }
+
+    // 結果が記録されているデータを抽出
+    const withResults = data.filter(d => d.result15s && !d.result15s.pending);
+    console.log(`📊 結果記録済みデータ: ${withResults.length}件`);
+
+    // 真ん中のデータを1つ取り出す
+    const testIndex = Math.floor(withResults.length / 2);
+    const testPattern = withResults[testIndex];
+
+    console.log(`🔍 テストパターン: インデックス=${testIndex}`);
+    console.log(`  価格: ${testPattern.price}`);
+    console.log(`  タイムスタンプ: ${new Date(testPattern.timestamp).toLocaleString('ja-JP')}`);
+
+    // 類似度計算
+    const calculator = new SegmentSimilarityCalculator();
+    const similarities = [];
+
+    console.log('🔄 類似度計算中...');
+    const startTime = Date.now();
+
+    for (let i = 0; i < Math.min(500, withResults.length); i++) {
+      const similarity = calculator.calculateSimilarity(
+        testPattern,
+        withResults[i],
+        15
+      );
+      if (similarity >= 70) {
+        similarities.push({ index: i, similarity });
+      }
+    }
+
+    const calcTime = Date.now() - startTime;
+
+    // ソート
+    similarities.sort((a, b) => b.similarity - a.similarity);
+
+    console.log('\n📊 類似度70%以上の結果:');
+    console.log(`  計算時間: ${calcTime}ms`);
+    console.log(`  件数: ${similarities.length}件`);
+    if (similarities.length > 0) {
+      console.log(`  最大類似度: ${Math.round(similarities[0].similarity)}%`);
+      console.log(`  上位10件:`, similarities.slice(0, 10).map(s => `${Math.round(s.similarity)}%`).join(', '));
+    } else {
+      console.log('  ❌ 70%以上なし（類似度計算に問題がある可能性）');
+    }
+
+    // 全体の類似度分布
+    const allSims = withResults.slice(0, 500).map((d, i) => {
+      const sim = calculator.calculateSimilarity(testPattern, d, 15);
+      return { index: i, similarity: sim };
+    });
+    allSims.sort((a, b) => b.similarity - a.similarity);
+
+    console.log('\n📊 類似度分布（上位20件）:');
+    console.log(allSims.slice(0, 20).map(s => Math.round(s.similarity)).join(', '));
+
+    // 統計情報
+    const above80 = allSims.filter(s => s.similarity >= 80).length;
+    const above70 = allSims.filter(s => s.similarity >= 70).length;
+    const above60 = allSims.filter(s => s.similarity >= 60).length;
+    const above50 = allSims.filter(s => s.similarity >= 50).length;
+
+    console.log('\n📊 類似度別件数（500件中）:');
+    console.log(`  80%以上: ${above80}件`);
+    console.log(`  70%以上: ${above70}件`);
+    console.log(`  60%以上: ${above60}件`);
+    console.log(`  50%以上: ${above50}件`);
+  });
+};
+
 // セグメント分析データの自動診断関数
 window.autoCheckSegmentData = function() {
   if (typeof chrome === 'undefined' || !chrome.storage) {
@@ -204,6 +287,7 @@ window.autoCheckSegmentData = function() {
 };
 
 console.log('[TheOption Analyzer] 💡 ストレージ容量確認: コンソールで checkMLStorage() を実行してください');
+console.log('[TheOption Analyzer] 🧪 類似度計算テスト: コンソールで testSimilarityCalculation() を実行してください');
 console.log('[TheOption Analyzer] 🔬 セグメント分析診断: 自動実行されます');
 
 // 診断機能を即座に実行可能にする
@@ -213,6 +297,16 @@ setTimeout(() => {
     window.autoCheckSegmentData();
   } else {
     console.warn('[TheOption Analyzer] ⚠️ autoCheckSegmentData関数が見つかりません');
+  }
+}, 5000);
+
+// 類似度計算テストを自動実行（BTC/JPYデータ読み込み後）
+setTimeout(() => {
+  if (typeof window.testSimilarityCalculation === 'function') {
+    console.log('[TheOption Analyzer] 🧪 類似度計算テストを15秒後に自動実行します...');
+    setTimeout(() => {
+      window.testSimilarityCalculation();
+    }, 10000); // さらに10秒待つ（BTC/JPYデータ読み込み待ち）
   }
 }, 5000);
 
@@ -277,6 +371,7 @@ setTimeout(() => {
   let currentTimeframe = 60;  // 現在選択中の時間枠（秒）- デフォルトは60秒
   let lastAnalysisTime = 0;  // 最後に分析を実行した時刻（後方互換のため保持）
   let currentSimilarityThreshold = 50;  // 類似度閾値（デフォルト50%）
+  let currentDataLimit = null;  // データ件数制限（null = 全期間, 500/1000/2000/3000）
 
   // 時間枠ごとの分析結果キャッシュ
   let timeframeResults = {
@@ -410,6 +505,30 @@ setTimeout(() => {
     // 機械学習システム初期化
     if (typeof MachineLearningSystem !== 'undefined') {
       mlSystem = new MachineLearningSystem();
+
+      // コンテンツスクリプトのwindowに公開
+      window.mlSystem = mlSystem;
+
+      // ページコンテキストに初期化状態を注入（コンソールアクセス用）
+      console.log('[TheOption Analyzer] 🔧 ページコンテキストへスクリプト注入開始');
+      try {
+        const script = document.createElement('script');
+        script.textContent = `
+          (function() {
+            window.mlSystemInitialized = true;
+            window.checkMLSystemStatus = function() {
+              return window.mlSystemInitialized ? "初期化済み" : "未初期化";
+            };
+            console.log('[TheOption Analyzer] 💡 MLシステム状態確認: コンソールで checkMLSystemStatus() を実行');
+          })();
+        `;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+        console.log('[TheOption Analyzer] ✅ ページコンテキストへスクリプト注入成功');
+      } catch (e) {
+        console.error('[TheOption Analyzer] ❌ スクリプト注入失敗:', e);
+      }
+
       // 初期化は通貨ペア検出後に実行
       console.log('[TheOption Analyzer] ✅ 機械学習システム準備完了（通貨ペア検出待ち）');
     } else {
@@ -460,6 +579,56 @@ setTimeout(() => {
 
       // 表示テキストを更新
       document.getElementById('current-threshold').textContent = currentSimilarityThreshold;
+    });
+
+    // 保存されたデータ件数制限を復元（保存がなければデフォルトnull = 全期間）
+    chrome.storage.local.get(['dataLimit'], (result) => {
+      if (result.dataLimit !== undefined) {
+        currentDataLimit = result.dataLimit;
+        console.log(`[TheOption Analyzer] データ件数制限を復元: ${currentDataLimit === null ? '全期間' : currentDataLimit + '件'}`);
+      } else {
+        // 初回起動時はデフォルトnull（全期間）をストレージに保存
+        chrome.storage.local.set({ dataLimit: currentDataLimit });
+        console.log(`[TheOption Analyzer] データ件数制限をデフォルト値に設定: 全期間`);
+      }
+
+      // UIボタンの状態を更新
+      document.querySelectorAll('.data-limit-btn').forEach(btn => {
+        const limit = btn.dataset.limit === 'all' ? null : parseInt(btn.dataset.limit);
+        if (limit === currentDataLimit) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      // 表示テキストを更新
+      const displayText = currentDataLimit === null ? '全期間' : `直近${currentDataLimit}件`;
+      document.getElementById('current-data-limit').textContent = displayText;
+    });
+
+    // 保存された判定時間を復元（保存がなければデフォルト60秒）
+    chrome.storage.local.get(['currentTimeframe'], (result) => {
+      if (result.currentTimeframe !== undefined) {
+        currentTimeframe = result.currentTimeframe;
+        console.log(`[TheOption Analyzer] 判定時間を復元: ${TIMEFRAME_CONFIGS[currentTimeframe].label}`);
+      } else {
+        // 初回起動時はデフォルト60秒をストレージに保存
+        chrome.storage.local.set({ currentTimeframe: currentTimeframe });
+        console.log(`[TheOption Analyzer] 判定時間をデフォルト値に設定: ${TIMEFRAME_CONFIGS[currentTimeframe].label}`);
+      }
+
+      // UIタブのアクティブ状態を更新
+      document.querySelectorAll('.timeframe-analysis-tab').forEach(tab => {
+        if (parseInt(tab.dataset.timeframe) === currentTimeframe) {
+          tab.classList.add('active');
+        } else {
+          tab.classList.remove('active');
+        }
+      });
+
+      // 時間枠情報を更新
+      updateTimeframeInfo();
     });
 
     // 価格データ取得開始
@@ -574,16 +743,6 @@ setTimeout(() => {
           <div class="detail-content" id="detail-ml-reason">-</div>
         </div>
 
-        <!-- 予測品質レポート -->
-        <div class="detail-section" style="margin-top: 16px;">
-          <div class="detail-title">📊 予測品質レポート（24時間）</div>
-          <div class="detail-content" id="detail-quality-report">
-            <div style="padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 12px; text-align: center; color: #a0aec0; font-size: 12px;">
-              予測を実行するとレポートが表示されます
-            </div>
-          </div>
-        </div>
-
         <!-- AI学習状況 -->
         <div class="ml-status" id="ml-status">
           <div class="ml-title">AI学習状況</div>
@@ -609,7 +768,25 @@ setTimeout(() => {
             現在: <span id="current-threshold">70</span>%以上のパターンを使用
           </div>
         </div>
+
+        <!-- データ件数制限設定 -->
+        <div class="data-limit-section">
+          <div class="data-limit-title">使用データ範囲</div>
+          <div class="data-limit-buttons">
+            <button class="data-limit-btn" data-limit="500">500件</button>
+            <button class="data-limit-btn" data-limit="1000">1K</button>
+            <button class="data-limit-btn" data-limit="2000">2K</button>
+            <button class="data-limit-btn" data-limit="3000">3K</button>
+            <button class="data-limit-btn active" data-limit="all">全期間</button>
+          </div>
+          <div class="data-limit-info">
+            現在: <span id="current-data-limit">全期間</span>のデータを使用
+          </div>
+        </div>
       </div>
+
+      <!-- リサイズハンドル（ドロップダウンの外に配置） -->
+      <div class="resize-handle" id="resize-handle"></div>
     `;
 
     // ダウンロードモーダル（別要素として作成）
@@ -628,7 +805,6 @@ setTimeout(() => {
             <button class="download-tab" data-tab="price-history">価格履歴</button>
             <button class="download-tab" data-tab="predictions">予測パターン</button>
             <button class="download-tab" data-tab="trends">トレンド分析</button>
-            <button class="download-tab" data-tab="prediction-quality">💎 予測品質</button>
             <button class="download-tab" data-tab="data-management">データ管理</button>
           </div>
 
@@ -681,27 +857,6 @@ setTimeout(() => {
               <button class="download-execute-btn" data-type="trends">ダウンロード</button>
             </div>
 
-            <!-- 予測品質ログ -->
-            <div class="download-panel" id="panel-prediction-quality">
-              <h4>💎 予測品質ログ</h4>
-              <p>AI予測の品質分析と信頼性指標</p>
-              <ul>
-                <li>品質スコア(0-100)、品質ラベル</li>
-                <li>類似パターン数、平均類似度</li>
-                <li>データカバレッジ、パターン多様性</li>
-                <li>最適化使用状況、インデックス化率</li>
-                <li>予測実行時の詳細記録</li>
-              </ul>
-              <p style="font-size: 12px; color: #4CAF50; margin-top: 8px;">
-                ✓ 予測の信頼性を可視化<br>
-                ✓ 最適化効果を確認<br>
-                ✓ パターンの多様性を分析
-              </p>
-              <button class="download-execute-btn" data-type="prediction-quality" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                ダウンロード
-              </button>
-            </div>
-
             <!-- データ管理 -->
             <div class="download-panel" id="panel-data-management">
               <h4>💾 データ管理</h4>
@@ -740,23 +895,6 @@ setTimeout(() => {
                 </p>
               </div>
 
-              <div style="margin-top: 24px; margin-bottom: 24px; border-top: 1px solid rgba(255,255,255,0.1);"></div>
-
-              <div style="margin-bottom: 24px;">
-                <h5 style="color: #fff; margin-bottom: 12px;">⚡ AI予測高速化</h5>
-                <p style="font-size: 13px; color: #b0b0b0; margin-bottom: 12px;">
-                  インデックス最適化で予測速度を95%改善<br>
-                  ・処理時間: 2秒 → 0.1秒<br>
-                  ・精度維持: 97%以上<br>
-                  ・大量データでも高速動作
-                </p>
-                <div id="optimization-status" style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #b0b0b0;">
-                  ステータス: 未最適化
-                </div>
-                <button class="download-execute-btn" id="optimize-ml-button" data-type="ml-optimize" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
-                  🚀 AIを最適化
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -782,7 +920,6 @@ setTimeout(() => {
         display: flex;
         align-items: center;
         justify-content: center;
-        cursor: move;
         gap: 8px;
         background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
         border: 1px solid #e0e0e0;
@@ -791,11 +928,12 @@ setTimeout(() => {
         color: #2c3e50;
         font-size: 14px;
         font-weight: 600;
-        cursor: pointer;
+        cursor: move;
         transition: all 0.3s;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         white-space: nowrap;
         min-width: 400px;
+        user-select: none;
       }
 
       .analyzer-button:hover {
@@ -825,7 +963,8 @@ setTimeout(() => {
         left: 50%;
         transform: translateX(-50%);
         width: 400px;
-        max-height: 600px;
+        height: 600px;
+        min-height: 400px;
         background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
         border-radius: 12px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
@@ -874,6 +1013,18 @@ setTimeout(() => {
         background: rgba(255, 215, 0, 0.1);
         border-bottom: 2px solid rgba(255, 215, 0, 0.3);
         text-align: center;
+      }
+
+      .asset-drag-handle {
+        cursor: move;
+        user-select: none;
+        padding: 4px 0;
+        margin: -4px 0;
+      }
+
+      .asset-drag-handle:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
       }
 
       .asset-label {
@@ -1541,6 +1692,57 @@ setTimeout(() => {
         text-align: center;
       }
 
+      /* データ件数制限設定 */
+      .data-limit-section {
+        padding: 16px 20px;
+        background: rgba(0,0,0,0.15);
+        border-top: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .data-limit-title {
+        font-size: 12px;
+        color: #ffa726;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+
+      .data-limit-buttons {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .data-limit-btn {
+        flex: 1;
+        padding: 8px 10px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 6px;
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .data-limit-btn:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.3);
+      }
+
+      .data-limit-btn.active {
+        background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%);
+        border-color: #ffa726;
+        box-shadow: 0 2px 8px rgba(255, 167, 38, 0.4);
+      }
+
+      .data-limit-info {
+        font-size: 11px;
+        color: #e0e0e0;
+        opacity: 0.7;
+        text-align: center;
+      }
+
       .details-toggle {
         padding: 12px 20px;
         text-align: center;
@@ -1584,26 +1786,64 @@ setTimeout(() => {
         opacity: 0.9;
         line-height: 1.6;
       }
+
+      /* リサイズハンドル */
+      .resize-handle {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 400px;
+        height: 12px;
+        cursor: ns-resize;
+        z-index: 10;
+        background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%);
+        border-radius: 0 0 12px 12px;
+        display: none;
+      }
+
+      .resize-handle:hover {
+        background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.2) 100%);
+      }
+
+      .resize-handle::before {
+        content: '⋮';
+        position: absolute;
+        bottom: 2px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255,255,255,0.4);
+        font-size: 16px;
+        letter-spacing: 2px;
+      }
     `;
 
     document.head.appendChild(style);
     document.body.appendChild(uiPanel);
     document.body.appendChild(downloadModal);
 
-    // ドラッグ機能の実装
+    // ドラッグ＆リサイズ機能の実装
     let isDragging = false;
+    let isResizing = false;
+    let dragStarted = false;
+    let justFinishedDragging = false; // ドラッグ完了直後フラグ
     let currentX;
     let currentY;
     let initialX;
     let initialY;
+    let startMouseX;
+    let startMouseY;
     let xOffset = 0;
     let yOffset = 0;
+    let panelHeight = 600; // デフォルト高さ
+    const DRAG_THRESHOLD = 5; // ドラッグと判定する移動距離（ピクセル）
 
-    const dragElement = document.getElementById('analyzer-toggle');
+    const toggleButton = document.getElementById('analyzer-toggle');
+    const resizeHandle = document.getElementById('resize-handle');
     const container = document.getElementById('theoption-analyzer-panel');
+    const dropdown = document.getElementById('analyzer-dropdown');
 
-    // 初期位置を保存された位置から復元
-    chrome.storage.local.get(['panelPosition'], (result) => {
+    // 初期位置とサイズを保存された値から復元
+    chrome.storage.local.get(['panelPosition', 'panelHeight'], (result) => {
       if (result.panelPosition) {
         // 保存された絶対位置を取得
         const savedLeft = parseInt(result.panelPosition.left);
@@ -1619,27 +1859,66 @@ setTimeout(() => {
         // translateで位置を設定
         container.style.transform = `translate(${xOffset}px, ${yOffset}px)`;
       }
+
+      // 保存された高さを復元
+      if (result.panelHeight) {
+        panelHeight = parseInt(result.panelHeight);
+        dropdown.style.height = panelHeight + 'px';
+        updateResizeHandlePosition();
+      }
     });
 
-    dragElement.addEventListener('mousedown', dragStart);
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', dragEnd);
-
-    function dragStart(e) {
-      // ドロップダウンが開いている場合はドラッグしない
-      if (document.getElementById('analyzer-dropdown').classList.contains('active')) {
-        return;
-      }
-
-      initialX = e.clientX - xOffset;
-      initialY = e.clientY - yOffset;
-
-      if (e.target === dragElement || dragElement.contains(e.target)) {
-        isDragging = true;
+    // リサイズハンドルの位置を更新する関数
+    function updateResizeHandlePosition() {
+      if (dropdown.classList.contains('active')) {
+        const dropdownTop = 45; // .analyzer-dropdownのtop値
+        const handleHeight = 12; // リサイズハンドルの高さ
+        resizeHandle.style.top = (dropdownTop + panelHeight - handleHeight) + 'px';
+        resizeHandle.style.display = 'block';
+      } else {
+        resizeHandle.style.display = 'none';
       }
     }
 
-    function drag(e) {
+    // トグルボタンのドラッグイベント
+    toggleButton.addEventListener('mousedown', toggleButtonMouseDown);
+
+    // リサイズイベント
+    resizeHandle.addEventListener('mousedown', resizeStart);
+
+    // 共通イベント
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    function toggleButtonMouseDown(e) {
+      // ドラッグ開始の準備
+      dragStarted = true;
+      isDragging = false;
+      startMouseX = e.clientX;
+      startMouseY = e.clientY;
+      initialX = e.clientX - xOffset;
+      initialY = e.clientY - yOffset;
+      e.preventDefault();
+    }
+
+    function resizeStart(e) {
+      isResizing = true;
+      initialY = e.clientY;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function handleMouseMove(e) {
+      // ドラッグ開始判定（閾値を超えたら）
+      if (dragStarted && !isDragging && !isResizing) {
+        const deltaX = Math.abs(e.clientX - startMouseX);
+        const deltaY = Math.abs(e.clientY - startMouseY);
+
+        if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
+          isDragging = true;
+        }
+      }
+
       if (isDragging) {
         e.preventDefault();
 
@@ -1650,15 +1929,29 @@ setTimeout(() => {
         yOffset = currentY;
 
         setTranslate(currentX, currentY, container);
+      } else if (isResizing) {
+        e.preventDefault();
+
+        const deltaY = e.clientY - initialY;
+        const newHeight = Math.max(400, panelHeight + deltaY); // 最小400px
+
+        dropdown.style.height = newHeight + 'px';
+
+        // リサイズ中もハンドル位置を更新
+        const dropdownTop = 45;
+        const handleHeight = 12;
+        resizeHandle.style.top = (dropdownTop + newHeight - handleHeight) + 'px';
       }
     }
 
-    function dragEnd(e) {
+    function handleMouseUp(e) {
       if (isDragging) {
         initialX = currentX;
         initialY = currentY;
 
         isDragging = false;
+        dragStarted = false;
+        justFinishedDragging = true; // ドラッグ完了フラグを設定
 
         // 位置を保存
         const rect = container.getBoundingClientRect();
@@ -1668,6 +1961,25 @@ setTimeout(() => {
             top: rect.top + 'px'
           }
         });
+      } else if (isResizing) {
+        const deltaY = e.clientY - initialY;
+        panelHeight = Math.max(400, panelHeight + deltaY);
+        initialY = e.clientY;
+
+        isResizing = false;
+
+        // リサイズハンドルの位置を更新
+        updateResizeHandlePosition();
+
+        // 高さを保存
+        chrome.storage.local.set({
+          panelHeight: panelHeight
+        });
+      } else if (dragStarted) {
+        // ドラッグではなくクリックだった
+        dragStarted = false;
+        justFinishedDragging = false; // クリックの場合はフラグをクリア
+        // クリックイベントは別のリスナーで処理されるため、ここでは何もしない
       }
     }
 
@@ -1677,12 +1989,19 @@ setTimeout(() => {
 
     // イベントリスナー
     document.getElementById('analyzer-toggle').addEventListener('click', (e) => {
-      // ドラッグ中はクリックイベントを無視
-      if (isDragging) {
+      // ドラッグ中、またはドラッグ直後はクリックイベントを無視
+      if (isDragging || dragStarted || justFinishedDragging) {
+        e.preventDefault();
         e.stopPropagation();
+        // ドラッグ完了フラグをリセット
+        if (justFinishedDragging) {
+          justFinishedDragging = false;
+        }
         return;
       }
       document.getElementById('analyzer-dropdown').classList.toggle('active');
+      // リサイズハンドルの位置を更新（開閉時）
+      updateResizeHandlePosition();
     });
 
 
@@ -1699,6 +2018,14 @@ setTimeout(() => {
       btn.addEventListener('click', () => {
         const threshold = parseInt(btn.dataset.threshold);
         changeSimilarityThreshold(threshold);
+      });
+    });
+
+    // データ件数制限ボタンのクリックイベント
+    document.querySelectorAll('.data-limit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const limit = btn.dataset.limit === 'all' ? null : parseInt(btn.dataset.limit);
+        changeDataLimit(limit);
       });
     });
 
@@ -1765,29 +2092,29 @@ setTimeout(() => {
       }
     });
 
-    // 時間枠情報を更新
-    updateTimeframeInfo();
+    // 判定時間をストレージに保存
+    chrome.storage.local.set({ currentTimeframe: newTimeframe });
 
-    // キャッシュされた分析結果があれば表示
-    const cachedResult = timeframeResults[newTimeframe];
-    if (cachedResult) {
-      console.log(`[TheOption Analyzer] 📋 ${TIMEFRAME_CONFIGS[newTimeframe].label}の前回分析結果を表示します`);
-      updateUI({
-        status: 'ACTIVE',
-        multiDim: cachedResult.multiDim,
-        ml: cachedResult.ml,
-        mlStats: cachedResult.mlStats
-      });
+    // タブ切り替え時に即座に分析実行（パフォーマンス最適化）
+    const currentPrice = getCurrentPriceFromDOM();
+    const minDataPoints = TIMEFRAME_CONFIGS[newTimeframe].minDataPoints;
+
+    if (currentPrice && priceHistory.length >= minDataPoints) {
+      console.log(`[TheOption Analyzer] 🔄 ${TIMEFRAME_CONFIGS[newTimeframe].label}に切り替え - 即座に分析実行`);
+      performAnalysis(currentPrice, { timeframe: newTimeframe, isTabSwitch: true });
+      lastAnalysisTimes[newTimeframe] = Date.now();
+      lastAnalysisTime = Date.now();
     } else {
-      console.log(`[TheOption Analyzer] ⏳ ${TIMEFRAME_CONFIGS[newTimeframe].label}の分析結果待ち...次回の更新で分析します`);
+      console.log(`[TheOption Analyzer] ⏳ ${TIMEFRAME_CONFIGS[newTimeframe].label} - データ不足（${priceHistory.length}/${minDataPoints}秒）`);
       updateUI({
         status: 'COLLECTING',
-        message: `${TIMEFRAME_CONFIGS[newTimeframe].label} - 分析待ち...`,
+        message: `データ収集中... ${priceHistory.length}/${minDataPoints}秒`,
         timeframe: newTimeframe
       });
     }
 
-    console.log(`[TheOption Analyzer] ℹ️ タブ切り替え完了。次回の定期更新で${TIMEFRAME_CONFIGS[newTimeframe].label}用の分析を実行します`);
+    // 時間枠情報を更新
+    updateTimeframeInfo();
   }
 
   function updateTimeframeInfo() {
@@ -1826,6 +2153,38 @@ setTimeout(() => {
     repredictAllTimeframes();
   }
 
+  // ========================================
+  // データ件数制限変更
+  // ========================================
+
+  function changeDataLimit(newLimit) {
+    const oldLimitText = currentDataLimit === null ? '全期間' : `${currentDataLimit}件`;
+    const newLimitText = newLimit === null ? '全期間' : `${newLimit}件`;
+    console.log(`[TheOption Analyzer] 📊 データ件数制限変更: ${oldLimitText} → ${newLimitText}`);
+
+    currentDataLimit = newLimit;
+
+    // ボタンのアクティブ状態を更新
+    document.querySelectorAll('.data-limit-btn').forEach(btn => {
+      const limit = btn.dataset.limit === 'all' ? null : parseInt(btn.dataset.limit);
+      if (limit === newLimit) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // 表示テキストを更新
+    const displayText = newLimit === null ? '全期間' : `直近${newLimit}件`;
+    document.getElementById('current-data-limit').textContent = displayText;
+
+    // データ件数制限をストレージに保存
+    chrome.storage.local.set({ dataLimit: newLimit });
+
+    // 全時間枠の予測を再計算して表示を即座に更新
+    repredictAllTimeframes();
+  }
+
   // 全時間枠の予測を再実行（閾値変更時）
   function repredictAllTimeframes() {
     if (!mlSystem) {
@@ -1833,89 +2192,87 @@ setTimeout(() => {
       return;
     }
 
-    console.log(`[TheOption Analyzer] 🔄 類似度${currentSimilarityThreshold}%で全時間枠の予測を再計算中...`);
+    console.log(`[TheOption Analyzer] 🔄 類似度${currentSimilarityThreshold}%で選択中の時間枠（${currentTimeframe}秒）の予測を再計算中...`);
     console.log('[TheOption Analyzer] 📋 timeframeResults:', timeframeResults);
 
-    // 各時間枠のキャッシュされた分析結果を使って予測を再実行
-    [15, 30, 60, 180, 300].forEach(timeframe => {
-      const cachedResult = timeframeResults[timeframe];
+    // 選択中の時間枠のみ予測を再実行（パフォーマンス最適化）
+    const timeframe = currentTimeframe;
+    const cachedResult = timeframeResults[timeframe];
 
-      console.log(`[TheOption Analyzer] 📊 ${timeframe}秒: キャッシュ確認`, {
-        hasCachedResult: !!cachedResult,
-        hasCurrentSituation: !!(cachedResult && cachedResult.currentSituation),
-        hasMl: !!(cachedResult && cachedResult.ml)
-      });
-
-      if (cachedResult && cachedResult.currentSituation) {
-        try {
-          console.log(`[TheOption Analyzer] 🎯 ${timeframe}秒: 予測を再計算中...`);
-
-          // MLシステムの状態を確認
-          console.log(`[TheOption Analyzer] 🔍 MLシステム状態:`, {
-            mlSystemExists: !!mlSystem,
-            currentAsset: currentAsset,
-            hasCurrentSituation: !!cachedResult.currentSituation,
-            閾値: currentSimilarityThreshold
-          });
-
-          // 新しい閾値で予測を再実行
-          const newPrediction = mlSystem.predictWithThreshold(
-            cachedResult.currentSituation,
-            timeframe,
-            currentSimilarityThreshold
-          );
-
-          console.log(`[TheOption Analyzer] 📈 ${timeframe}秒: 新しい予測結果`, newPrediction);
-          console.log(`[TheOption Analyzer] 🔍 ${timeframe}秒: 予測値詳細`, {
-            閾値: currentSimilarityThreshold + '%',
-            類似パターン数: newPrediction.sampleSize,
-            上昇確率: newPrediction.upRate + '%',
-            下降確率: newPrediction.downRate + '%',
-            信頼度: newPrediction.confidence + '%'
-          });
-
-          // キャッシュを更新（キーは "15s", "60s" などの文字列形式）
-          // 既存のmlデータを保持しつつ、predictionsだけ更新
-          if (!cachedResult.ml) {
-            cachedResult.ml = {
-              status: 'READY',
-              dataCount: 0,
-              dataCountWithResults: 0,
-              predictions: {}
-            };
-          }
-
-          // predictionsオブジェクトが存在しない場合は作成
-          if (!cachedResult.ml.predictions) {
-            cachedResult.ml.predictions = {};
-          }
-
-          // 予測データを更新
-          const predictionKey = `${timeframe}s`;
-          cachedResult.ml.predictions[predictionKey] = newPrediction;
-          console.log(`[TheOption Analyzer] 💾 ${timeframe}秒: キャッシュ更新完了 (key: ${predictionKey})`, cachedResult.ml.predictions[predictionKey]);
-
-          // 現在表示中の時間枠なら画面を更新
-          if (timeframe === currentTimeframe) {
-            updateUI({
-              status: 'ACTIVE',
-              multiDim: cachedResult.multiDim,
-              ml: cachedResult.ml,
-              mlStats: cachedResult.mlStats
-            });
-          }
-
-          // タブのアイコンも更新
-          updateTabIcon(timeframe, newPrediction);
-
-          console.log(`[TheOption Analyzer] ✅ ${timeframe}秒: 予測更新完了`);
-        } catch (error) {
-          console.error(`[TheOption Analyzer] ❌ ${timeframe}秒の予測再計算エラー:`, error);
-        }
-      }
+    console.log(`[TheOption Analyzer] 📊 ${timeframe}秒: キャッシュ確認`, {
+      hasCachedResult: !!cachedResult,
+      hasCurrentSituation: !!(cachedResult && cachedResult.currentSituation),
+      hasMl: !!(cachedResult && cachedResult.ml)
     });
 
-    console.log('[TheOption Analyzer] ✅ 全時間枠の予測再計算完了');
+    if (cachedResult && cachedResult.currentSituation) {
+      try {
+        console.log(`[TheOption Analyzer] 🎯 ${timeframe}秒: 予測を再計算中...`);
+
+        // MLシステムの状態を確認
+        console.log(`[TheOption Analyzer] 🔍 MLシステム状態:`, {
+          mlSystemExists: !!mlSystem,
+          currentAsset: currentAsset,
+          hasCurrentSituation: !!cachedResult.currentSituation,
+          閾値: currentSimilarityThreshold
+        });
+
+        // 新しい閾値とデータ件数制限で予測を再実行
+        const newPrediction = mlSystem.predictWithThreshold(
+          cachedResult.currentSituation,
+          timeframe,
+          currentSimilarityThreshold,
+          currentDataLimit
+        );
+
+        console.log(`[TheOption Analyzer] 📈 ${timeframe}秒: 新しい予測結果`, newPrediction);
+        console.log(`[TheOption Analyzer] 🔍 ${timeframe}秒: 予測値詳細`, {
+          閾値: currentSimilarityThreshold + '%',
+          類似パターン数: newPrediction.sampleSize,
+          上昇確率: newPrediction.upRate + '%',
+          下降確率: newPrediction.downRate + '%',
+          信頼度: newPrediction.confidence + '%'
+        });
+
+        // キャッシュを更新（キーは "15s", "60s" などの文字列形式）
+        // 既存のmlデータを保持しつつ、predictionsだけ更新
+        if (!cachedResult.ml) {
+          cachedResult.ml = {
+            status: 'READY',
+            dataCount: 0,
+            dataCountWithResults: 0,
+            predictions: {}
+          };
+        }
+
+        // predictionsオブジェクトが存在しない場合は作成
+        if (!cachedResult.ml.predictions) {
+          cachedResult.ml.predictions = {};
+        }
+
+        // 予測データを更新
+        const predictionKey = `${timeframe}s`;
+        cachedResult.ml.predictions[predictionKey] = newPrediction;
+        console.log(`[TheOption Analyzer] 💾 ${timeframe}秒: キャッシュ更新完了 (key: ${predictionKey})`, cachedResult.ml.predictions[predictionKey]);
+
+        // 画面を更新（選択中の時間枠）
+        updateUI({
+          status: 'ACTIVE',
+          multiDim: cachedResult.multiDim,
+          ml: cachedResult.ml,
+          mlStats: cachedResult.mlStats
+        });
+
+        // タブのアイコンも更新
+        updateTabIcon(timeframe, newPrediction);
+
+        console.log(`[TheOption Analyzer] ✅ ${timeframe}秒: 予測更新完了`);
+      } catch (error) {
+        console.error(`[TheOption Analyzer] ❌ ${timeframe}秒の予測再計算エラー:`, error);
+      }
+    }
+
+    console.log('[TheOption Analyzer] ✅ 選択中の時間枠の予測再計算完了');
   }
 
   // タブアイコンを更新（パフォーマンス最適化のため無効化）
@@ -2096,13 +2453,12 @@ setTimeout(() => {
               candles = [...savedData.candles];
               console.log(`[TheOption Analyzer] 📂 ${detectedAsset} のデータを復元 (${priceHistory.length}件)`);
 
-              // データ復元後、即座に全時間枠の分析を実行
-              if (priceHistory.length >= 120) {
-                console.log(`[TheOption Analyzer] ✨ 復元データで即座に分析を開始します`);
-                [15, 30, 60, 180, 300].forEach(tf => {
-                  performAnalysis(price, { timeframe: tf, isTabSwitch: false });
-                  lastAnalysisTimes[tf] = now;
-                });
+              // データ復元後、選択中の時間枠のみ分析実行（パフォーマンス最適化）
+              const minDataPoints = TIMEFRAME_CONFIGS[currentTimeframe].minDataPoints;
+              if (priceHistory.length >= minDataPoints) {
+                console.log(`[TheOption Analyzer] ✨ 復元データで${TIMEFRAME_CONFIGS[currentTimeframe].label}の分析を開始`);
+                performAnalysis(price, { timeframe: currentTimeframe, isTabSwitch: false });
+                lastAnalysisTimes[currentTimeframe] = now;
               }
             } else {
               priceHistory = [];
@@ -2136,13 +2492,12 @@ setTimeout(() => {
               candles = [...savedData.candles];
               console.log(`[TheOption Analyzer] 📂 初回起動: ${detectedAsset} のデータを復元 (${priceHistory.length}件)`);
 
-              // データ復元後、即座に全時間枠の分析を実行
-              if (priceHistory.length >= 120) {
-                console.log(`[TheOption Analyzer] ✨ 復元データで即座に分析を開始します`);
-                [15, 30, 60, 180, 300].forEach(tf => {
-                  performAnalysis(price, { timeframe: tf, isTabSwitch: false });
-                  lastAnalysisTimes[tf] = now;
-                });
+              // データ復元後、選択中の時間枠のみ分析実行（パフォーマンス最適化）
+              const minDataPoints = TIMEFRAME_CONFIGS[currentTimeframe].minDataPoints;
+              if (priceHistory.length >= minDataPoints) {
+                console.log(`[TheOption Analyzer] ✨ 復元データで${TIMEFRAME_CONFIGS[currentTimeframe].label}の分析を開始`);
+                performAnalysis(price, { timeframe: currentTimeframe, isTabSwitch: false });
+                lastAnalysisTimes[currentTimeframe] = now;
               }
             }
 
@@ -2160,8 +2515,39 @@ setTimeout(() => {
             });
           }
 
+          const previousAsset = currentAsset;
           currentAsset = detectedAsset;
           updateAssetDisplay(currentAsset, priceHistory.length);
+
+          // 通貨ペアが変更された場合、UI表示をクリア
+          if (previousAsset !== currentAsset) {
+            // AI予測根拠をクリア
+            const detailMlReason = document.getElementById('detail-ml-reason');
+            if (detailMlReason) {
+              detailMlReason.innerHTML = `
+                <div style="padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 12px; border-left: 3px solid #667eea; text-align: center; color: #a0aec0;">
+                  <div style="font-size: 13px; font-weight: bold; margin-bottom: 8px;">AI予測（機械学習）</div>
+                  <div style="font-size: 12px; opacity: 0.8;">データ収集中...</div>
+                  <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">AI分析が実行されると表示されます</div>
+                </div>
+              `;
+            }
+
+            // テクニカル分析もクリア
+            const detailAnalysis = document.getElementById('detail-analysis');
+            if (detailAnalysis) {
+              detailAnalysis.innerHTML = `
+                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; text-align: center; color: #a0aec0;">
+                  <div style="font-size: 13px; font-weight: bold; margin-bottom: 8px;">テクニカル分析</div>
+                  <div style="font-size: 12px; opacity: 0.8;">データ収集中...</div>
+                  <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">価格データが集まると表示されます</div>
+                </div>
+              `;
+            }
+
+            // 予測品質レポートも更新（パフォーマンス最適化のため無効化）
+            // updateQualityReport();
+          }
         }
 
         lastAssetCheck = now;
@@ -2225,21 +2611,16 @@ setTimeout(() => {
           lastMLDataCollectionTime = now;
         }
 
-        // 各時間枠ごとに独立して分析実行
-        [15, 30, 60, 180, 300].forEach(tf => {
-          const config = TIMEFRAME_CONFIGS[tf];
-          const timeSinceLastAnalysis = (now - lastAnalysisTimes[tf]) / 1000;
+        // 選択中の時間枠のみ分析実行（パフォーマンス最適化: CPU負荷80%削減）
+        // 他の時間枠はデータ収集のみ（タブ切り替え時に即座に分析）
+        const config = TIMEFRAME_CONFIGS[currentTimeframe];
+        const timeSinceLastAnalysis = (now - lastAnalysisTimes[currentTimeframe]) / 1000;
 
-          if (timeSinceLastAnalysis >= config.updateInterval) {
-            performAnalysis(price, { timeframe: tf });
-            lastAnalysisTimes[tf] = now;
-
-            // 後方互換のため、選択中の時間枠の場合は lastAnalysisTime も更新
-            if (tf === currentTimeframe) {
-              lastAnalysisTime = now;
-            }
-          }
-        });
+        if (timeSinceLastAnalysis >= config.updateInterval) {
+          performAnalysis(price, { timeframe: currentTimeframe });
+          lastAnalysisTimes[currentTimeframe] = now;
+          lastAnalysisTime = now;
+        }
       } else {
         // 価格が取得できない場合
         if (now - lastLogTime > 5000) {
@@ -2566,11 +2947,34 @@ setTimeout(() => {
       console.log('[TheOption Analyzer] ⏭️ タブ切り替えのため、MLデータ収集をスキップ');
     }
 
-    // AI予測
+    // 🔬 診断: 最新データのセグメント情報を確認
+    if (currentSituation.priceSegments15s) {
+      console.log('[🔬 診断] 最新データのセグメント情報:', {
+        pattern: currentSituation.priceSegments15s.pattern,
+        segments: currentSituation.priceSegments15s.segments?.map(s => s.direction),
+        volatility: currentSituation.priceSegments15s.volatility
+      });
+    } else {
+      console.warn('[🔬 診断] ⚠️ 最新データにpriceSegments15sがありません！');
+    }
+
+    // AI予測（選択中の時間枠のみ - パフォーマンス最適化: CPU負荷80%削減）
     let mlPredictions;
     try {
-      mlPredictions = mlSystem.predictAll(currentSituation);
-      console.log('[TheOption Analyzer] ML 予測完了:', mlPredictions);
+      mlPredictions = mlSystem.predictOne(currentSituation, targetTimeframe, currentSimilarityThreshold, currentDataLimit);
+      const limitText = currentDataLimit === null ? '全期間' : `直近${currentDataLimit}件`;
+      console.log(`[TheOption Analyzer] ML 予測完了（${targetTimeframe}秒, 閾値: ${currentSimilarityThreshold}%, データ: ${limitText}）:`, mlPredictions);
+
+      // データ使用状況の詳細ログ
+      if (mlPredictions.status === 'READY') {
+        console.log(`[TheOption Analyzer] 📊 データ使用状況:`, {
+          設定: limitText,
+          総データ数: mlPredictions.dataCount,
+          結果記録済み: mlPredictions.dataCountWithResults,
+          検索対象: mlPredictions.searchedDataCount,
+          使用率: `${((mlPredictions.searchedDataCount / mlPredictions.dataCountWithResults) * 100).toFixed(1)}%`
+        });
+      }
     } catch (error) {
       console.error('[TheOption Analyzer] ML 予測エラー:', error);
       mlPredictions = { status: 'ERROR', predictions: {} };
@@ -2579,15 +2983,15 @@ setTimeout(() => {
     // 3段階トレンド分析
     const hierarchicalTrend = getHierarchicalTrend(targetTimeframe);
 
-    // 履歴記録（タブ切り替え時はスキップ）
-    if (!isTabSwitch) {
-      try {
-        recordPrediction(targetTimeframe, mlPredictions, multiDimResult);
-        recordTrend(targetTimeframe, hierarchicalTrend, multiDimResult);
-      } catch (error) {
-        console.error('[TheOption Analyzer] 履歴記録エラー:', error);
-      }
-    }
+    // 履歴記録（パフォーマンス最適化のため無効化）
+    // if (!isTabSwitch) {
+    //   try {
+    //     recordPrediction(targetTimeframe, mlPredictions, multiDimResult);
+    //     recordTrend(targetTimeframe, hierarchicalTrend, multiDimResult);
+    //   } catch (error) {
+    //     console.error('[TheOption Analyzer] 履歴記録エラー:', error);
+    //   }
+    // }
 
     // 分析結果をキャッシュに保存（currentSituationも保存して閾値変更時に使用）
     timeframeResults[targetTimeframe] = {
@@ -2660,10 +3064,18 @@ setTimeout(() => {
       // updateHierarchicalTrend();
 
       // ML状況更新
+      console.log('[TheOption Analyzer] 🔄 updateMLStatus 呼び出し中...');
       updateMLStatus(data.mlStats);
+      console.log('[TheOption Analyzer] ✅ updateMLStatus 完了');
 
       // 詳細更新
+      console.log('[TheOption Analyzer] 🔄 updateDetails 呼び出し中...', {
+        hasMultiDim: !!data.multiDim,
+        hasMl: !!data.ml,
+        mlStatus: data.ml?.status
+      });
       updateDetails(data.multiDim, data.ml);
+      console.log('[TheOption Analyzer] ✅ updateDetails 完了');
     }
   }
 
@@ -3127,7 +3539,26 @@ setTimeout(() => {
       judgmentIndicator = '●';
     }
 
-    // テクニカル分析表示（シンプル版）
+    // 🆕 信頼度メトリクスを取得（新しいアナライザーの結果）
+    const reliability = multiDim.breakdown.reliability || {
+      consistency: 0,
+      alignment: 0,
+      reversals: 0,
+      reliabilityScore: 0
+    };
+
+    // 信頼度レベルの判定
+    let reliabilityLevel = '低';
+    let reliabilityColor = '#9E9E9E';
+    if (reliability.reliabilityScore >= 80) {
+      reliabilityLevel = '高';
+      reliabilityColor = '#4CAF50';
+    } else if (reliability.reliabilityScore >= 60) {
+      reliabilityLevel = '中';
+      reliabilityColor = '#FFA726';
+    }
+
+    // テクニカル分析表示（信頼度情報を追加）
     document.getElementById('detail-analysis').innerHTML = `
       <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 12px;">
         <div style="font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #a0aec0;">テクニカル分析</div>
@@ -3143,7 +3574,7 @@ setTimeout(() => {
           </div>
         </div>
 
-        <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 3px solid ${judgmentColor};">
+        <div style="padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 3px solid ${judgmentColor}; margin-bottom: 8px;">
           <div style="display: flex; align-items: center;">
             <span style="font-size: 16px; margin-right: 8px; color: ${judgmentColor};">${judgmentIndicator}</span>
             <div>
@@ -3156,6 +3587,19 @@ setTimeout(() => {
                   `慎重にエントリー`}
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 🆕 信頼度メトリクス表示 -->
+        <div style="padding: 8px; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid ${reliabilityColor}33;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 11px; color: #b0b0b0;">📊 分析信頼度</span>
+            <span style="font-size: 12px; color: ${reliabilityColor}; font-weight: bold;">${reliabilityLevel} (${Math.round(reliability.reliabilityScore)}%)</span>
+          </div>
+          <div style="font-size: 10px; color: #a0a0a0; line-height: 1.4;">
+            期間一貫性: ${Math.round(reliability.consistency)}% |
+            スケール整合性: ${Math.round(reliability.alignment)}% |
+            反転回数: ${reliability.reversals}回
           </div>
         </div>
       </div>
@@ -3258,28 +3702,6 @@ setTimeout(() => {
 
       const remaining = nextRankThreshold > 0 ? nextRankThreshold - mlDataCount : 0;
 
-      // 予測品質を計算
-      let predictionQuality = '不明';
-      let predictionQualityColor = '#9E9E9E';
-      if (pred15s.prediction !== 'INSUFFICIENT_DATA' && pred15s.sampleSize && pred15s.avgSimilarity) {
-        const sampleSize = pred15s.sampleSize || 0;
-        const avgSimilarity = pred15s.avgSimilarity || 0;
-
-        if (sampleSize >= 50 && avgSimilarity >= 85) {
-          predictionQuality = '優秀';
-          predictionQualityColor = '#E91E63';
-        } else if (sampleSize >= 30 && avgSimilarity >= 75) {
-          predictionQuality = '良好';
-          predictionQualityColor = '#4CAF50';
-        } else if (sampleSize >= 20 && avgSimilarity >= 65) {
-          predictionQuality = '標準';
-          predictionQualityColor = '#2196F3';
-        } else {
-          predictionQuality = '要注意';
-          predictionQualityColor = '#FFA726';
-        }
-      }
-
       // AI予測の方向と信頼度
       let aiDirection = '';
       let aiIndicator = '●';
@@ -3306,6 +3728,14 @@ setTimeout(() => {
         aiIndicator = '●';
         aiColor = '#9E9E9E';
       }
+
+      console.log('[TheOption Analyzer] 🎨 AI予測根拠HTML更新:', {
+        prediction: pred15s.prediction,
+        aiDirection,
+        sampleSize: pred15s.sampleSize,
+        upRate: pred15s.upRate,
+        downRate: pred15s.downRate
+      });
 
       document.getElementById('detail-ml-reason').innerHTML = `
         <div style="padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 12px; border-left: 3px solid #667eea;">
@@ -3352,16 +3782,14 @@ setTimeout(() => {
             </div>
           </div>
 
-          ${pred15s.prediction !== 'INSUFFICIENT_DATA' && pred15s.sampleSize ? `
-            <div style="padding: 8px; background: rgba(0,0,0,0.15); border-radius: 8px; margin-bottom: 8px; border: 1px solid ${predictionQualityColor}33;">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-size: 11px; color: #b0b0b0;">💎 予測品質</span>
-                <span style="font-size: 12px; color: ${predictionQualityColor}; font-weight: bold;">${predictionQuality}</span>
+          ${pred15s.prediction !== 'INSUFFICIENT_DATA' ? `
+            <div style="padding: 8px; background: rgba(255, 167, 38, 0.1); border-radius: 8px; margin-bottom: 8px; border: 1px solid rgba(255, 167, 38, 0.3);">
+              <div style="font-size: 11px; color: #ffa726;">
+                📊 使用データ: ${currentDataLimit === null ? '全期間' : '直近' + currentDataLimit.toLocaleString() + '件'}<br>
+                <span style="font-size: 10px; opacity: 0.8;">
+                  検索対象: ${ml.searchedDataCount ? ml.searchedDataCount.toLocaleString() : mlDataCount.toLocaleString()}件 / 総数: ${mlDataCount.toLocaleString()}件
+                </span>
               </div>
-              ${mlSystem && mlSystem.getCurrentSystem()?.patternMatcher?.getOptimizationStatus ?
-                `<div style="font-size: 10px; color: #b0b0b0; margin-top: 4px; opacity: 0.8;">
-                  ${mlSystem.getCurrentSystem().patternMatcher.getOptimizationStatus().enabled ? '⚡ 最適化: 有効' : '💤 最適化: 無効'}
-                </div>` : ''}
             </div>
           ` : ''}
 
@@ -3424,8 +3852,8 @@ setTimeout(() => {
       `;
     }
 
-    // 品質レポートを更新
-    updateQualityReport();
+    // 品質レポートを更新（パフォーマンス最適化のため無効化）
+    // updateQualityReport();
   }
 
   function updateAssetDisplay(assetName, dataCount) {
@@ -3922,9 +4350,6 @@ setTimeout(() => {
       // 予測品質ログを記録
       if (mlSystem) {
         const mlStats = mlSystem.getStatistics();
-        const system = mlSystem.getCurrentSystem();
-        const optimizationStatus = system?.patternMatcher?.getOptimizationStatus ?
-          system.patternMatcher.getOptimizationStatus() : null;
 
         const quality = calculatePredictionQuality(pred, mlStats);
 
@@ -3942,8 +4367,7 @@ setTimeout(() => {
           qualityScore: quality.score,
           qualityLabel: quality.label,
           predictionQuality: quality.predictionQuality,
-          // 最適化情報
-          optimizationEnabled: optimizationStatus?.enabled || false,
+          // データ情報
           indexedData: mlStats.dataCountWithResults || mlStats.dataCount || 0,
           totalData: mlStats.dataCount || 0,
           coveragePercent: quality.details.coverage,
@@ -3965,8 +4389,8 @@ setTimeout(() => {
 
         console.log(`[Quality] 品質ログ記録: ${timeframe}秒 - スコア:${quality.score} (${quality.label}) - 総件数: ${predictionQualityLog.length}`);
 
-        // 品質レポートを更新
-        updateQualityReport();
+        // 品質レポートを更新（パフォーマンス最適化のため無効化）
+        // updateQualityReport();
       }
     }
   }
@@ -4104,17 +4528,11 @@ setTimeout(() => {
       case 'trends':
         downloadTrendsAsCSV();
         break;
-      case 'prediction-quality':
-        downloadPredictionQualityAsCSV();
-        break;
       case 'json-export':
         exportDataAsJSON();
         break;
       case 'json-import':
         importDataFromJSON();
-        break;
-      case 'ml-optimize':
-        optimizeMLSystem();
         break;
       default:
         alert('不明なデータタイプです');
@@ -4561,114 +4979,14 @@ setTimeout(() => {
     showDownloadNotification('トレンド分析データ');
   }
 
-  function downloadPredictionQualityAsCSV() {
-    if (!predictionQualityLog || predictionQualityLog.length === 0) {
-      alert('予測品質ログがありません\n\n予測が実行されると自動的に記録されます。');
-      return;
-    }
-
-    console.log(`[CSV Download] 予測品質ログデータ件数: ${predictionQualityLog.length}件`);
-
-    // CSVヘッダー
-    const headers = [
-      'タイムスタンプ',
-      '日時',
-      '通貨ペア',
-      'タイムフレーム(秒)',
-      '予測結果',
-      '信頼度(%)',
-      '上昇確率(%)',
-      '下降確率(%)',
-      // パターン分析
-      '類似パターン数',
-      '平均類似度(%)',
-      'セグメントパターン',
-      // 品質スコア
-      '品質スコア',
-      '品質ラベル',
-      '予測品質',
-      // 最適化情報
-      '最適化使用',
-      'インデックス化データ数',
-      '総データ数',
-      'カバレッジ(%)',
-      'パターン種類数',
-      // 市場情報
-      '現在価格',
-      'RSI',
-      'MACD強度',
-      'ADX'
-    ];
-
-    // CSVデータ行を生成
-    const rows = predictionQualityLog.map(record => {
-      const date = new Date(record.timestamp);
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-
-      return [
-        record.timestamp,
-        dateStr,
-        record.assetName || 'UNKNOWN',
-        record.timeframe,
-        record.prediction,
-        record.confidence,
-        record.upRate,
-        record.downRate,
-        // パターン分析
-        record.sampleSize,
-        record.avgSimilarity,
-        record.segmentPattern,
-        // 品質スコア
-        record.qualityScore,
-        record.qualityLabel,
-        record.predictionQuality,
-        // 最適化情報
-        record.optimizationEnabled ? 'YES' : 'NO',
-        record.indexedData,
-        record.totalData,
-        record.coveragePercent,
-        record.patternCount,
-        // 市場情報
-        record.currentPrice.toFixed(5),
-        record.rsi.toFixed(2),
-        record.macdStrength.toFixed(4),
-        record.adxValue.toFixed(2)
-      ].join(',');
-    });
-
-    // CSV文字列を生成
-    const csvContent = [headers.join(','), ...rows].join('\n');
-
-    // BOM付きでUTF-8エンコード
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
-
-    // ダウンロード
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-
-    const assetName = currentAsset || 'unknown';
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `theoption_prediction_quality_${assetName.replace(/[\/\s]/g, '_')}_${timestamp}.csv`;
-
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
-
-    console.log(`[CSV Download] ダウンロード完了: ${filename} (${predictionQualityLog.length}件)`);
-
-    // モーダルを閉じる
-    document.getElementById('download-modal').classList.remove('active');
-
-    // 通知
-    showDownloadNotification('予測品質ログ');
-  }
+  // パフォーマンス最適化のため無効化
+  // function downloadPredictionQualityAsCSV() {
+  //   if (!predictionQualityLog || predictionQualityLog.length === 0) {
+  //     alert('予測品質ログがありません\n\n予測が実行されると自動的に記録されます。');
+  //     return;
+  //   }
+  //   ...
+  // }
 
   function showDownloadNotification(dataName) {
     // 簡易通知
@@ -4876,161 +5194,6 @@ setTimeout(() => {
     };
   }
 
-  // ========================================
-  // AI最適化機能
-  // ========================================
-
-  function optimizeMLSystem() {
-    console.log('[ML Optimize] 最適化開始...');
-
-    // MLシステムの初期化チェック
-    if (!mlSystem) {
-      alert('❌ AI学習システムが初期化されていません');
-      return;
-    }
-
-    const system = mlSystem.getCurrentSystem();
-    if (!system || !system.dataCollector) {
-      alert('❌ 学習データがありません');
-      return;
-    }
-
-    const trainingData = system.dataCollector.trainingData;
-    if (!trainingData || trainingData.length === 0) {
-      alert('❌ 最適化可能なデータがありません');
-      return;
-    }
-
-    // データ数チェック（最低100件は必要）
-    if (trainingData.length < 100) {
-      alert(`⚠️ データが少なすぎます\n\n現在: ${trainingData.length}件\n推奨: 100件以上\n\nもう少しデータを収集してから最適化してください。`);
-      return;
-    }
-
-    // ステータス更新
-    const statusDiv = document.getElementById('optimization-status');
-    const optimizeBtn = document.getElementById('optimize-ml-button');
-
-    if (statusDiv) {
-      statusDiv.innerHTML = '⏳ 最適化中... (数秒かかります)';
-      statusDiv.style.color = '#ffa500';
-    }
-
-    if (optimizeBtn) {
-      optimizeBtn.disabled = true;
-      optimizeBtn.style.opacity = '0.6';
-    }
-
-    // 非同期で最適化を実行
-    setTimeout(() => {
-      try {
-        // インデックスを構築（60秒timeframeで最適化）
-        const result = system.patternMatcher.buildOptimizedIndex(60);
-
-        if (result.success) {
-          const stats = result.stats;
-
-          console.log('[ML Optimize] ✅ 最適化完了:', stats);
-
-          // 品質スコアを計算
-          const mlStats = mlSystem.getStatistics();
-          const coverage = (stats.indexedData / stats.totalData) * 100;
-          const diversityScore = Math.min(100, (stats.segmentPatterns / 2) * 100);
-          const dataSufficiency = Math.min(100, (stats.indexedData / 50000) * 100);
-
-          const qualityScore = Math.round(
-            (coverage * 0.3) +           // カバレッジ 30%
-            (diversityScore * 0.4) +     // 多様性 40%
-            (dataSufficiency * 0.3)      // データ量 30%
-          );
-
-          let qualityLabel = '不明';
-          let qualityStars = '⭐';
-          if (qualityScore >= 85) {
-            qualityLabel = '優秀';
-            qualityStars = '⭐⭐⭐⭐⭐';
-          } else if (qualityScore >= 70) {
-            qualityLabel = '良好';
-            qualityStars = '⭐⭐⭐⭐';
-          } else if (qualityScore >= 55) {
-            qualityLabel = '標準';
-            qualityStars = '⭐⭐⭐';
-          } else if (qualityScore >= 40) {
-            qualityLabel = '要注意';
-            qualityStars = '⭐⭐';
-          } else {
-            qualityLabel = '低品質';
-            qualityStars = '⭐';
-          }
-
-          // ステータス更新
-          if (statusDiv) {
-            statusDiv.innerHTML = `
-              ✅ 最適化完了<br>
-              <span style="font-size: 11px; color: #b0b0b0;">
-              ──────────────────<br>
-              📊 予測品質:<br>
-              <span style="font-size: 13px; color: #38ef7d; font-weight: bold;">
-              ・品質スコア: ${qualityScore}/100 (${qualityLabel})<br>
-              ・信頼性: ${qualityStars}<br>
-              </span>
-              ──────────────────<br>
-              💎 品質詳細:<br>
-              ・データカバレッジ: ${coverage.toFixed(1)}%<br>
-              ・パターン多様性: ${stats.segmentPatterns}種類<br>
-              ・データ量: ${stats.indexedData}/${stats.totalData}件<br>
-              ──────────────────<br>
-              ⚙️ その他:<br>
-              ・構築時間: ${stats.buildTime}ms<br>
-              ・最終更新: ${new Date(stats.lastBuildDate).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              </span>
-            `;
-            statusDiv.style.color = '#38ef7d';
-          }
-
-          // ボタンのテキストを変更
-          if (optimizeBtn) {
-            optimizeBtn.innerHTML = '✅ 最適化済み';
-            optimizeBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-            optimizeBtn.disabled = false;
-            optimizeBtn.style.opacity = '1';
-          }
-
-          // 成功通知
-          alert(
-            `✅ AI予測を最適化しました！\n\n` +
-            `📊 統計情報:\n` +
-            `・最適化データ: ${stats.indexedData}件\n` +
-            `・セグメントパターン: ${stats.segmentPatterns}種類\n` +
-            `・構築時間: ${stats.buildTime}ms\n\n` +
-            `⚡ 効果:\n` +
-            `・予測速度: 約95%高速化\n` +
-            `・精度維持: 97%以上\n\n` +
-            `今後の予測が高速になります！`
-          );
-
-        } else {
-          throw new Error('最適化に失敗しました');
-        }
-
-      } catch (error) {
-        console.error('[ML Optimize] エラー:', error);
-
-        // エラー時のステータス更新
-        if (statusDiv) {
-          statusDiv.innerHTML = '❌ 最適化失敗';
-          statusDiv.style.color = '#ff6b6b';
-        }
-
-        if (optimizeBtn) {
-          optimizeBtn.disabled = false;
-          optimizeBtn.style.opacity = '1';
-        }
-
-        alert('❌ 最適化に失敗しました\n\n' + error.message);
-      }
-    }, 100);
-  }
 
   // ========================================
   // 起動

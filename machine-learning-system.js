@@ -536,39 +536,34 @@ class PatternMatchingSystem {
     // セグメント分析システムを初期化
     this.segmentAnalyzer = new DetailedSegmentAnalyzer();
     this.similarityCalculator = new SegmentSimilarityCalculator();
-
-    // インデックスマッチャー（最適化機能）
-    this.indexedMatcher = null;
-    this.useIndexedSearch = false;
   }
 
   // 類似パターンを検索（段階的マッチング）
-  findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50) {
-    console.log(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%, データ総数=${this.trainingData.length}`);
+  findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null) {
+    // データ件数制限の適用
+    let targetData = this.trainingData;
+    const totalDataCount = this.trainingData.length;
+    const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
 
-    // インデックス検索が有効な場合
-    if (this.useIndexedSearch && this.indexedMatcher && this.indexedMatcher.isIndexed) {
-      console.log('[ML] ⚡ インデックス検索を使用');
-      const indexed = this.indexedMatcher.findSimilarPatterns(
-        currentSituation,
-        timeframe,
-        this
-      );
-
-      // 類似度でフィルタリング
-      const filtered = indexed.filter(p => p.similarity >= minSimilarity);
-      console.log(`[ML] 🔍 インデックス検索結果: ${indexed.length}件 → 閾値${minSimilarity}%以上: ${filtered.length}件`);
-
-      return filtered;
+    if (maxDataCount !== null && maxDataCount > 0) {
+      // 最新のmaxDataCount件を使用
+      targetData = this.trainingData.slice(-maxDataCount);
+      const targetDataWithResults = targetData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
+      console.log(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
+      console.log(`[ML] 📊 データ範囲: 直近${maxDataCount}件指定 → 実際の検索対象=${targetDataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
+    } else {
+      console.log(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
+      console.log(`[ML] 📊 データ範囲: 全期間使用 → 検索対象=${dataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
     }
 
-    // 従来の全件検索
-    console.log('[ML] 🐌 従来の全件検索を使用');
+    // 全件検索（データ件数制限を適用）
+    console.log('[ML] 🔍 全件検索を使用');
     const similarPatterns = [];
+    const allSimilarities = []; // 🔬 診断用：全類似度を記録
     let totalChecked = 0;
     let passedThreshold = 0;
 
-    for (const past of this.trainingData) {
+    for (const past of targetData) {
       // 結果が記録されていないデータはスキップ
       const result = past[`result${timeframe}s`];
       if (!result) continue;
@@ -579,6 +574,7 @@ class PatternMatchingSystem {
       // 類似度を計算（timeframeを渡す）
       const similarity = this.calculateSimilarity(currentSituation, past, timeframe);
       totalChecked++;
+      allSimilarities.push(similarity); // 🔬 診断用
 
       if (similarity >= minSimilarity) {
         passedThreshold++;
@@ -591,6 +587,16 @@ class PatternMatchingSystem {
     }
 
     console.log(`[ML] 🔍 フィルタリング結果: チェック=${totalChecked}件, 閾値通過=${passedThreshold}件, minSimilarity=${minSimilarity}%`);
+
+    // 🔬 診断: 類似度の分布を確認
+    if (allSimilarities.length > 0) {
+      allSimilarities.sort((a, b) => b - a);
+      const above70 = allSimilarities.filter(s => s >= 70).length;
+      const above60 = allSimilarities.filter(s => s >= 60).length;
+      const above50 = allSimilarities.filter(s => s >= 50).length;
+      console.log(`[🔬 診断] 類似度分布: 最大=${Math.round(allSimilarities[0])}%, 70%以上=${above70}件, 60%以上=${above60}件, 50%以上=${above50}件`);
+      console.log(`[🔬 診断] 上位10件の類似度:`, allSimilarities.slice(0, 10).map(s => Math.round(s)));
+    }
 
     // 類似度でソート
     similarPatterns.sort((a, b) => b.similarity - a.similarity);
@@ -659,94 +665,14 @@ class PatternMatchingSystem {
 
   // 類似度計算（0-100点）- セグメントベースの詳細分析版
   calculateSimilarity(current, past, timeframe = 60) {
-    let score = 0;
-    let maxScore = 100;
-    let debugInfo = {
-      priceSegmentScore: 0,
-      techScore: 0,
-      details: {}
-    };
-
-    // === セグメントベースの価格パターン比較 (40点) ===
-    const currentPriceSegments = current[`priceSegments${timeframe}s`];
-    const pastPriceSegments = past[`priceSegments${timeframe}s`];
-
-    // セグメント分析が必須
-    if (!currentPriceSegments || !pastPriceSegments) {
-      console.warn('[ML] セグメント分析データが存在しないため類似度計算をスキップ');
-      return 0;
-    }
-
-    // 詳細セグメント分析を使用（時間枠を渡す）
-    const priceComparison = this.similarityCalculator.comparePriceSegments(
-      currentPriceSegments,
-      pastPriceSegments,
-      timeframe
-    );
-
-    const priceScore = priceComparison.similarity * 40; // 40点満点
-    score += priceScore;
-    debugInfo.priceSegmentScore = priceScore;
-
-    // デバッグ詳細（新システムのみ）
-    debugInfo.details.priceSegments = {
-      score: priceScore.toFixed(1),
-      max: 40,
-      enhancedScore: priceComparison.enhancedScore,
-      patternScore: priceComparison.patternScore,
-      patternType: priceComparison.patternType,
-      matches: priceComparison.matches,
-      details: priceComparison.details
-    };
-
-    // === テクニカル指標比較 (30点) ===
-    // 注: techSegmentsは将来の拡張用。現在は従来型比較のみ実装
-    const emptyTech = this.getEmptyTechTimeSeries();
-    const currentTech = current[`techTimeSeries${timeframe}s`] || emptyTech;
-    const pastTech = past[`techTimeSeries${timeframe}s`] || emptyTech;
-
-    const rsiScore = this.compareTechIndicator(currentTech.rsi, pastTech.rsi, 6);
-    const macdScore = this.compareTechIndicator(currentTech.macd, pastTech.macd, 6);
-    const rocScore = this.compareTechIndicator(currentTech.roc, pastTech.roc, 5);
-    const maCrossScore = this.compareMACross(currentTech.maCross, pastTech.maCross, 5);
-    const stochScore = this.compareTechIndicator(currentTech.stochastic, pastTech.stochastic, 4);
-    const adxScore = this.compareTechIndicator(currentTech.adx, pastTech.adx, 4);
-
-    const techScore = rsiScore + macdScore + rocScore + maCrossScore + stochScore + adxScore;
-    score += techScore;
-    debugInfo.techScore = techScore;
-
-    debugInfo.details.rsi = { score: rsiScore.toFixed(1), max: 6 };
-    debugInfo.details.macd = { score: macdScore.toFixed(1), max: 6 };
-    debugInfo.details.roc = { score: rocScore.toFixed(1), max: 5 };
-    debugInfo.details.maCross = { score: maCrossScore.toFixed(1), max: 5 };
-    debugInfo.details.stochastic = { score: stochScore.toFixed(1), max: 4 };
-    debugInfo.details.adx = { score: adxScore.toFixed(1), max: 4 };
-
-    const similarity = (score / maxScore) * 100;
-
-    // 類似度が高いパターンの詳細を記録（上位5件）
-    if (!this._detailedSamples) {
-      this._detailedSamples = [];
-    }
-
-    if (this._detailedSamples.length < 5) {
-      this._detailedSamples.push({
-        similarity: Math.round(similarity),
-        totalScore: score.toFixed(1),
-        maxScore,
-        priceSegmentScore: debugInfo.priceSegmentScore.toFixed(1),
-        techScore: debugInfo.techScore.toFixed(1),
-        breakdown: debugInfo.details
-      });
-    }
-
-    return similarity;
+    // 新しいセグメント類似度計算システムを使用
+    // SegmentSimilarityCalculatorの加重平均方式（セグメント60% + パターン評価40%）
+    return this.similarityCalculator.calculateSimilarity(current, past, timeframe);
   }
 
   // 予測を生成（改善版: より柔軟な判定）
-  predict(currentSituation, timeframe = 15, minSimilarity = 50) {
-    const similarPatterns = this.findSimilarPatterns(currentSituation, timeframe, minSimilarity);
+  predict(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null) {
+    const similarPatterns = this.findSimilarPatterns(currentSituation, timeframe, minSimilarity, maxDataCount);
 
     // 結果が記録されたデータの総数を確認
     const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`]).length;
@@ -916,56 +842,6 @@ class PatternMatchingSystem {
     };
   }
 
-  /**
-   * インデックス最適化を実行（ボタン押下時）
-   */
-  buildOptimizedIndex(timeframe = 60) {
-    console.log('[ML] 🔄 インデックス最適化開始...');
-
-    // IndexedPatternMatcherのインスタンス化
-    if (!window.IndexedPatternMatcher) {
-      console.error('[ML] ❌ IndexedPatternMatcher が読み込まれていません');
-      return {
-        success: false,
-        error: 'IndexedPatternMatcher が読み込まれていません'
-      };
-    }
-
-    if (!this.indexedMatcher) {
-      this.indexedMatcher = new window.IndexedPatternMatcher();
-    }
-
-    // インデックスを構築
-    const stats = this.indexedMatcher.buildIndexes(this.trainingData, timeframe);
-
-    // インデックス検索を有効化
-    this.useIndexedSearch = true;
-
-    console.log('[ML] ✅ インデックス最適化完了');
-    return {
-      success: true,
-      stats: stats
-    };
-  }
-
-  /**
-   * インデックス最適化を無効化
-   */
-  disableOptimizedIndex() {
-    this.useIndexedSearch = false;
-    console.log('[ML] ⚠️ インデックス検索を無効化しました');
-  }
-
-  /**
-   * 最適化状態を取得
-   */
-  getOptimizationStatus() {
-    return {
-      enabled: this.useIndexedSearch,
-      indexed: this.indexedMatcher ? this.indexedMatcher.isIndexed : false,
-      stats: this.indexedMatcher ? this.indexedMatcher.getStatistics() : null
-    };
-  }
 }
 
 // ========================================
@@ -1073,13 +949,14 @@ class MachineLearningSystem {
   }
 
   // 予測を実行
-  predictAll(currentSituation) {
+  predictAll(currentSituation, threshold = 50, maxDataCount = null) {
     const system = this.getCurrentSystem();
     if (!system) {
       return {
         status: 'NOT_READY',
         dataCount: 0,
         dataCountWithResults: 0,
+        searchedDataCount: 0,
         required: 100
       };
     }
@@ -1099,28 +976,90 @@ class MachineLearningSystem {
         status: 'NOT_READY',
         dataCount: dataCount,
         dataCountWithResults: dataCountWithResults,
+        searchedDataCount: 0,
         required: 100
       };
+    }
+
+    // 検索対象データ数を計算
+    let searchedDataCount = dataCountWithResults;
+    if (maxDataCount !== null && maxDataCount > 0) {
+      searchedDataCount = Math.min(dataCountWithResults, maxDataCount);
     }
 
     const timeframes = [15, 30, 60, 180, 300];
     const predictions = {};
 
     timeframes.forEach(tf => {
-      predictions[`${tf}s`] = system.patternMatcher.predict(currentSituation, tf);
+      predictions[`${tf}s`] = system.patternMatcher.predict(currentSituation, tf, threshold, maxDataCount);
     });
 
     return {
       status: 'READY',
       dataCount: dataCount,
       dataCountWithResults: dataCountWithResults,
+      searchedDataCount: searchedDataCount,
+      dataLimit: maxDataCount,
+      predictions
+    };
+  }
+
+  // 選択中の時間枠のみ予測（パフォーマンス最適化: CPU負荷80%削減）
+  predictOne(currentSituation, timeframe, threshold = 50, maxDataCount = null) {
+    const system = this.getCurrentSystem();
+    if (!system) {
+      return {
+        status: 'NOT_READY',
+        dataCount: 0,
+        dataCountWithResults: 0,
+        searchedDataCount: 0,
+        required: 100
+      };
+    }
+
+    const dataCount = system.dataCollector.getDataCount();
+    const dataCountWithResults = system.dataCollector.getDataCountWithResults();
+
+    // isReadyを動的に更新（結果があるデータが100件以上でREADY）
+    if (dataCountWithResults >= 100 && !system.isReady) {
+      system.isReady = true;
+      system.patternMatcher = new PatternMatchingSystem(system.dataCollector.trainingData);
+      console.log(`[ML] ${this.currentAsset} が100件到達！予測を開始します（結果あり: ${dataCountWithResults}件 / 総数: ${dataCount}件）`);
+    }
+
+    if (!system.isReady) {
+      return {
+        status: 'NOT_READY',
+        dataCount: dataCount,
+        dataCountWithResults: dataCountWithResults,
+        searchedDataCount: 0,
+        required: 100
+      };
+    }
+
+    // 検索対象データ数を計算
+    let searchedDataCount = dataCountWithResults;
+    if (maxDataCount !== null && maxDataCount > 0) {
+      searchedDataCount = Math.min(dataCountWithResults, maxDataCount);
+    }
+
+    // 選択中の時間枠のみ予測
+    const predictions = {};
+    predictions[`${timeframe}s`] = system.patternMatcher.predict(currentSituation, timeframe, threshold, maxDataCount);
+
+    return {
+      status: 'READY',
+      dataCount: dataCount,
+      dataCountWithResults: dataCountWithResults,
+      searchedDataCount: searchedDataCount,
+      dataLimit: maxDataCount,
       predictions
     };
   }
 
   // 指定された閾値で予測を実行
-  predictWithThreshold(currentSituation, timeframe, threshold) {
-    console.log(`[ML] 🔧 MachineLearningSystem.predictWithThreshold呼び出し: timeframe=${timeframe}s, threshold=${threshold}%`);
+  predictWithThreshold(currentSituation, timeframe, threshold, maxDataCount = null) {
+    console.log(`[ML] 🔧 MachineLearningSystem.predictWithThreshold呼び出し: timeframe=${timeframe}s, threshold=${threshold}%, maxDataCount=${maxDataCount}`);
     const system = this.getCurrentSystem();
     if (!system || !system.isReady) {
       console.warn(`[ML] ⚠️ システム未初期化: system=${!!system}, isReady=${system?.isReady}`);
@@ -1132,8 +1071,8 @@ class MachineLearningSystem {
       };
     }
 
-    console.log(`[ML] ✅ PatternMatcher.predictWithThreshold を呼び出します`);
-    const result = system.patternMatcher.predictWithThreshold(currentSituation, timeframe, threshold);
+    console.log(`[ML] ✅ PatternMatcher.predict を呼び出します`);
+    const result = system.patternMatcher.predict(currentSituation, timeframe, threshold, maxDataCount);
     console.log(`[ML] ✅ MachineLearningSystem.predictWithThreshold結果:`, result);
     return result;
   }
@@ -1185,47 +1124,6 @@ class MachineLearningSystem {
     };
   }
 
-  /**
-   * インデックス最適化を実行（ボタン押下時）
-   */
-  buildOptimizedIndex(timeframe = 60) {
-    const system = this.getCurrentSystem();
-    if (!system || !system.patternMatcher) {
-      console.error('[ML] ❌ パターンマッチャーが初期化されていません');
-      return {
-        success: false,
-        error: 'パターンマッチャーが初期化されていません'
-      };
-    }
-
-    return system.patternMatcher.buildOptimizedIndex(timeframe);
-  }
-
-  /**
-   * インデックス最適化を無効化
-   */
-  disableOptimizedIndex() {
-    const system = this.getCurrentSystem();
-    if (system && system.patternMatcher) {
-      system.patternMatcher.disableOptimizedIndex();
-    }
-  }
-
-  /**
-   * 最適化状態を取得
-   */
-  getOptimizationStatus() {
-    const system = this.getCurrentSystem();
-    if (!system || !system.patternMatcher) {
-      return {
-        enabled: false,
-        indexed: false,
-        stats: null
-      };
-    }
-
-    return system.patternMatcher.getOptimizationStatus();
-  }
 }
 
 // グローバルスコープに公開

@@ -27,7 +27,6 @@
         "technical-timeseries-analyzer.js",
         "detailed-segment-analyzer.js",
         "segment-similarity-calculator.js",
-        "indexed-pattern-matcher.js",
         "machine-learning-system.js",
         "theoption-analyzer.js"
       ],
