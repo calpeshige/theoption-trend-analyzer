@@ -4275,8 +4275,11 @@ setTimeout(() => {
         const text = el.textContent.trim();
         const number = parseFloat(text.replace(/[^0-9.]/g, ''));
 
-        // ペイアウト率は通常80-100%なので、100以上の値のみを価格として認識
-        if (!isNaN(number) && number >= 100 && number < 100000000) {
+        // ペイアウト率（80-100の整数値）を除外しつつ、全ての正当な価格を許可
+        // EUR/USD (1.15), AUD/USD (0.65), NZD/JPY (87.09)などの100未満の価格も取得可能
+        const isLikelyPayoutRate = (number >= 80 && number <= 100 && Math.floor(number) === number);
+
+        if (!isNaN(number) && number > 0 && !isLikelyPayoutRate && number < 100000000) {
           // 詳細ログ: どの要素から価格を取得しているか特定
           console.log(`[TheOption Analyzer] 💹 価格検出: ${number}`);
           console.log(`[TheOption Analyzer] 🔍 セレクタ: ${selector}`);
