@@ -583,6 +583,8 @@ class MultiDimensionalAnalyzer {
   analyze(data) {
     const { prices, candles, ticks } = data;
 
+    console.log(`[Multi-Indicator] 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
+
     // 各指標を計算
     const macdResult = this.macd.calculate(prices);
     const adxResult = this.adx.calculate(candles);
@@ -599,7 +601,8 @@ class MultiDimensionalAnalyzer {
     totalScore += macdResult.strength * 2;
     maxScore += 20;
 
-    // ADX（重み: 15%）- トレンドの強さを信頼度に反映
+    // ADX（重み: 15%）- トレンドの強さをスコアと信頼度に反映
+    totalScore += adxResult.strength * 1.5;
     const trendConfidence = adxResult.strength * 1.5;
     maxScore += 15;
 
@@ -607,7 +610,8 @@ class MultiDimensionalAnalyzer {
     totalScore += stochasticResult.strength * 1.5;
     maxScore += 15;
 
-    // ATR（重み: 10%）- ボラティリティを信頼度に反映
+    // ATR（重み: 10%）- ボラティリティをスコアと信頼度に反映
+    totalScore += atrResult.strength;
     const volatilityBonus = atrResult.strength;
     maxScore += 10;
 
@@ -629,33 +633,62 @@ class MultiDimensionalAnalyzer {
       sentiment: sentimentResult.strength.toFixed(2)
     });
 
+    // デバッグ: 各指標のスコア貢献度を確認
+    console.log(`[Multi-Indicator] 📊 各指標のスコア貢献度:`, {
+      'MACD貢献': (macdResult.strength * 2).toFixed(2) + '点',
+      'ADX貢献': (adxResult.strength * 1.5).toFixed(2) + '点 ✨',
+      'Stochastic貢献': (stochasticResult.strength * 1.5).toFixed(2) + '点',
+      'ATR貢献': (atrResult.strength).toFixed(2) + '点 ✨',
+      'ROC貢献': (rocResult.strength * 2).toFixed(2) + '点',
+      'Sentiment貢献': (sentimentResult.strength * 2).toFixed(2) + '点'
+    });
+
     // 正規化（-100 to +100）
     const normalizedScore = (totalScore / maxScore) * 100;
 
     // デバッグ: スコアを確認
-    console.log(`[Multi-Indicator] totalScore=${totalScore.toFixed(2)}, maxScore=${maxScore}, normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
+    console.log(`[Multi-Indicator] ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
 
-    // シグナル判定（判定基準を緩和して感度向上）
+    // 🆕 ATRに基づく動的しきい値調整
+    // ボラティリティが低い通貨ペア(USD/JPY等)では低いしきい値、高い通貨ペア(仮想通貨等)では高いしきい値を使用
+    // ATR strength: 0-10の範囲、絶対値が大きいほどボラティリティが高い
+    const atrAbsolute = Math.abs(atrResult.strength);
+    // volatilityFactor: 0.5～1.5の範囲で調整
+    // ATR=0→0.5倍(しきい値: 7.5/25), ATR=2→0.7倍(10.5/35), ATR=5→1.0倍(15/50), ATR=10→1.5倍(22.5/75)
+    const volatilityFactor = Math.max(0.5, Math.min(1.5, 0.5 + (atrAbsolute / 10) * 1.0));
+
+    const highThreshold = 15 * volatilityFactor;
+    const strongThreshold = 50 * volatilityFactor;
+
+    console.log(`[Multi-Indicator] 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+
+    // シグナル判定（動的しきい値を使用）
     let signal, confidence;
 
-    if (normalizedScore > 50 && trendConfidence > 7) {
+    if (normalizedScore > strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
-    } else if (normalizedScore > 15) {  // 30 → 15 に緩和
+      console.log(`[Multi-Indicator] 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+    } else if (normalizedScore > highThreshold) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-    } else if (normalizedScore < -50 && trendConfidence > 7) {
+      console.log(`[Multi-Indicator] 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)})`);
+    } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
-    } else if (normalizedScore < -15) {  // -30 → -15 に緩和
+      console.log(`[Multi-Indicator] 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+    } else if (normalizedScore < -highThreshold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
+      console.log(`[Multi-Indicator] 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)})`);
     } else {
       signal = 'NEUTRAL';
-      confidence = 50 + Math.abs(normalizedScore) * 1.5;  // 信頼度向上: 30-45% → 50-72%
+      confidence = 50 + Math.abs(normalizedScore) * 1.5;
+      console.log(`[Multi-Indicator] 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内)`);
     }
 
-    console.log(`[Multi-Indicator] 判定結果: signal=${signal}, confidence=${Math.round(confidence)}%`);
+    console.log(`[Multi-Indicator] ✅ 最終結果: signal=${signal}, confidence=${Math.round(confidence)}%`);
+    console.log(`[Multi-Indicator] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
     return {
       signal,
@@ -675,6 +708,8 @@ class MultiDimensionalAnalyzer {
   // 時間枠別分析（15秒、30秒、60秒、3分、5分）
   analyzeTimeframe(data, timeframeSeconds) {
     const { prices, candles, ticks } = data;
+
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
 
     // 時間枠に応じた係数を取得
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
@@ -758,12 +793,14 @@ class MultiDimensionalAnalyzer {
     totalScore += macdResult.strength * macdWeight;
     maxScore += 10 * macdWeight;
 
+    totalScore += adxResult.strength * 1.5;
     const trendConfidence = adxResult.strength * 1.5;
     maxScore += 15;
 
     totalScore += stochasticResult.strength * 1.5;
     maxScore += 15;
 
+    totalScore += atrResult.strength;
     const volatilityBonus = atrResult.strength;
     maxScore += 10;
 
@@ -809,30 +846,67 @@ class MultiDimensionalAnalyzer {
       sentiment: sentimentResult.strength.toFixed(2)
     });
 
+    // デバッグ: 各指標のスコア貢献度を確認
+    const macdContribution = macdResult.strength * macdWeight;
+    const adxContribution = adxResult.strength * 1.5;
+    const stochasticContribution = stochasticResult.strength * 1.5;
+    const atrContribution = atrResult.strength;
+    const rocContribution = rocResult.strength * rocWeight;
+    const sentimentContribution = sentimentResult.strength * sentimentWeight;
+    const balancedMACDContribution = balancedMACD.strength * 2.0;
+
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 📊 各指標のスコア貢献度:`, {
+      'MACD貢献': macdContribution.toFixed(2) + '点',
+      'ADX貢献': adxContribution.toFixed(2) + '点 ✨',
+      'Stochastic貢献': stochasticContribution.toFixed(2) + '点',
+      'ATR貢献': atrContribution.toFixed(2) + '点 ✨',
+      'ROC貢献': rocContribution.toFixed(2) + '点',
+      'Sentiment貢献': sentimentContribution.toFixed(2) + '点',
+      'バランスMACD貢献': balancedMACDContribution.toFixed(2) + '点',
+      '一貫性ボーナス': (segmentedTrend.dominantDirection === 'UP' ? '+' : segmentedTrend.dominantDirection === 'DOWN' ? '-' : '') + consistencyBonus.toFixed(2) + '点',
+      '整合性ボーナス': (multiScale.shortTerm.direction === 'UP' ? '+' : multiScale.shortTerm.direction === 'DOWN' ? '-' : '') + alignmentBonus.toFixed(2) + '点',
+      '反転ペナルティ': '-' + reversalPenalty.toFixed(2) + '点'
+    });
+
     // 正規化
     const normalizedScore = (totalScore / maxScore) * 100;
 
     // デバッグ: スコアを確認
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 totalScore=${totalScore.toFixed(2)}, maxScore=${maxScore}, normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
 
-    // シグナル判定（判定基準を緩和して感度向上）
+    // 🆕 ATRに基づく動的しきい値調整
+    // ボラティリティが低い通貨ペア(USD/JPY等)では低いしきい値、高い通貨ペア(仮想通貨等)では高いしきい値を使用
+    const atrAbsolute = Math.abs(atrResult.strength);
+    const volatilityFactor = Math.max(0.5, Math.min(1.5, 0.5 + (atrAbsolute / 10) * 1.0));
+
+    const highThreshold = 15 * volatilityFactor;
+    const strongThreshold = 50 * volatilityFactor;
+
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+
+    // シグナル判定（動的しきい値を使用）
     let signal, confidence;
 
-    if (normalizedScore > 50 && trendConfidence > 7) {
+    if (normalizedScore > strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
-    } else if (normalizedScore > 15) {  // 30 → 15 に緩和
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+    } else if (normalizedScore > highThreshold) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-    } else if (normalizedScore < -50 && trendConfidence > 7) {
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)})`);
+    } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
-    } else if (normalizedScore < -15) {  // -30 → -15 に緩和
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+    } else if (normalizedScore < -highThreshold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)})`);
     } else {
       signal = 'NEUTRAL';
       confidence = null;  // 見送りの場合はパーセンテージなし
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内)`);
     }
 
     // 🆕 信頼度を一貫性・整合性で調整
@@ -850,7 +924,8 @@ class MultiDimensionalAnalyzer {
     }
 
     const confidenceDisplay = adjustedConfidence !== null ? `${Math.round(adjustedConfidence)}%` : '--';
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 判定結果: signal=${signal}, confidence=${confidenceDisplay} (調整前: ${confidence !== null ? Math.round(confidence) : '--'})`);
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ✅ 最終結果: signal=${signal}, confidence=${confidenceDisplay} (調整前: ${confidence !== null ? Math.round(confidence) : '--'})`);
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
     return {
       signal,
