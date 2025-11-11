@@ -325,7 +325,6 @@ setTimeout(() => {
   let alertSoundEnabled = false;  // デフォルトOFF
 
   // 表示設定
-  let currentTheme = 'dark';  // デフォルト: ダークモード
   let compactMode = false;    // デフォルト: 通常表示
   let fontSize = 'medium';    // デフォルト: 中サイズ
 
@@ -357,40 +356,6 @@ setTimeout(() => {
     } catch (error) {
       console.error('[TheOption Analyzer] アラート音の再生に失敗:', error);
     }
-  }
-
-  /**
-   * テーマを適用
-   */
-  function applyTheme(theme) {
-    const panel = document.getElementById('theoption-analyzer-panel');
-    if (!panel) return;
-
-    currentTheme = theme;
-
-    if (theme === 'light') {
-      panel.classList.add('light-theme');
-      panel.classList.remove('dark-theme');
-    } else {
-      panel.classList.add('dark-theme');
-      panel.classList.remove('light-theme');
-    }
-
-    // ボタンの状態更新
-    const darkBtn = document.getElementById('theme-dark-btn');
-    const lightBtn = document.getElementById('theme-light-btn');
-
-    if (darkBtn && lightBtn) {
-      if (theme === 'dark') {
-        darkBtn.classList.add('active');
-        lightBtn.classList.remove('active');
-      } else {
-        lightBtn.classList.add('active');
-        darkBtn.classList.remove('active');
-      }
-    }
-
-    console.log(`[TheOption Analyzer] 🌓 テーマを変更: ${theme}`);
   }
 
   /**
@@ -774,17 +739,7 @@ setTimeout(() => {
     });
 
     // 保存された表示設定を復元
-    chrome.storage.local.get(['displayTheme', 'compactMode', 'fontSize'], (result) => {
-      // テーマ設定を復元
-      if (result.displayTheme !== undefined) {
-        currentTheme = result.displayTheme;
-        console.log(`[TheOption Analyzer] テーマ設定を復元: ${currentTheme}`);
-      } else {
-        chrome.storage.local.set({ displayTheme: currentTheme });
-        console.log(`[TheOption Analyzer] テーマ設定をデフォルト値に設定: ${currentTheme}`);
-      }
-      applyTheme(currentTheme);
-
+    chrome.storage.local.get(['compactMode', 'fontSize'], (result) => {
       // コンパクトモード設定を復元
       if (result.compactMode !== undefined) {
         compactMode = result.compactMode;
@@ -857,13 +812,6 @@ setTimeout(() => {
 
         <!-- 表示設定 -->
         <div class="display-settings-section">
-          <div class="setting-row">
-            <span class="setting-label">🌓 テーマ</span>
-            <div class="theme-toggle-buttons">
-              <button class="theme-btn active" data-theme="dark" id="theme-dark-btn">Dark</button>
-              <button class="theme-btn" data-theme="light" id="theme-light-btn">Light</button>
-            </div>
-          </div>
           <div class="setting-row">
             <span class="setting-label">📐 コンパクト</span>
             <div class="compact-mode-toggle" id="compact-mode-toggle"></div>
@@ -1309,35 +1257,6 @@ setTimeout(() => {
         font-weight: 600;
       }
 
-      .theme-toggle-buttons {
-        display: flex;
-        gap: 6px;
-      }
-
-      .theme-btn {
-        padding: 4px 12px;
-        border: 1px solid rgba(255,255,255,0.3);
-        background: rgba(255,255,255,0.1);
-        color: rgba(255,255,255,0.7);
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-      }
-
-      .theme-btn:hover {
-        background: rgba(255,255,255,0.2);
-        color: white;
-      }
-
-      .theme-btn.active {
-        background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
-        border-color: #4fc3f7;
-        color: white;
-        box-shadow: 0 0 10px rgba(79, 195, 247, 0.4);
-      }
-
       .compact-mode-toggle {
         position: relative;
         width: 50px;
@@ -1395,76 +1314,6 @@ setTimeout(() => {
         color: white;
       }
 
-      /* ライトテーマ */
-      #theoption-analyzer-panel.light-theme .analyzer-dropdown {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        color: #2c3e50;
-      }
-
-      #theoption-analyzer-panel.light-theme .asset-display {
-        background: rgba(255,255,255,0.8);
-        border-color: rgba(0,0,0,0.1);
-      }
-
-      #theoption-analyzer-panel.light-theme .asset-label {
-        color: #f39c12;
-      }
-
-      #theoption-analyzer-panel.light-theme .asset-name {
-        color: #f39c12;
-      }
-
-      #theoption-analyzer-panel.light-theme .asset-data-count {
-        color: #34495e;
-      }
-
-      #theoption-analyzer-panel.light-theme .alert-sound-section,
-      #theoption-analyzer-panel.light-theme .display-settings-section {
-        background: rgba(255,255,255,0.6);
-        border-bottom: 1px solid rgba(0,0,0,0.1);
-      }
-
-      #theoption-analyzer-panel.light-theme .alert-sound-label,
-      #theoption-analyzer-panel.light-theme .setting-label {
-        color: #2980b9;
-      }
-
-      #theoption-analyzer-panel.light-theme .timeframe-analysis-tab {
-        background: rgba(255,255,255,0.5);
-        border-color: rgba(0,0,0,0.1);
-        color: #34495e;
-      }
-
-      #theoption-analyzer-panel.light-theme .timeframe-analysis-tab.active {
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-        color: white;
-      }
-
-      #theoption-analyzer-panel.light-theme .timeframe-content {
-        background: rgba(255,255,255,0.7);
-        border-color: rgba(0,0,0,0.1);
-      }
-
-      #theoption-analyzer-panel.light-theme .signal-strong-high {
-        background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
-      }
-
-      #theoption-analyzer-panel.light-theme .signal-high {
-        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
-      }
-
-      #theoption-analyzer-panel.light-theme .signal-neutral {
-        background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-      }
-
-      #theoption-analyzer-panel.light-theme .signal-low {
-        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-      }
-
-      #theoption-analyzer-panel.light-theme .signal-strong-low {
-        background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
-      }
-
       /* コンパクトモード */
       #theoption-analyzer-panel.compact-mode .analyzer-dropdown {
         padding: 8px;
@@ -1503,33 +1352,82 @@ setTimeout(() => {
         padding: 6px;
       }
 
-      /* フォントサイズ */
-      #theoption-analyzer-panel.font-small {
-        font-size: 11px;
+      /* フォントサイズ - 小 */
+      #theoption-analyzer-panel.font-small * {
+        font-size: 10px !important;
       }
 
       #theoption-analyzer-panel.font-small .asset-name {
-        font-size: 14px;
+        font-size: 14px !important;
       }
 
       #theoption-analyzer-panel.font-small .signal-label {
-        font-size: 11px;
+        font-size: 11px !important;
       }
 
-      #theoption-analyzer-panel.font-medium {
-        font-size: 12px;
+      #theoption-analyzer-panel.font-small .signal-value {
+        font-size: 11px !important;
       }
 
-      #theoption-analyzer-panel.font-large {
-        font-size: 14px;
+      #theoption-analyzer-panel.font-small .tab-time {
+        font-size: 10px !important;
+      }
+
+      #theoption-analyzer-panel.font-small .alert-sound-label,
+      #theoption-analyzer-panel.font-small .setting-label {
+        font-size: 10px !important;
+      }
+
+      /* フォントサイズ - 中（デフォルト） */
+      #theoption-analyzer-panel.font-medium * {
+        font-size: 12px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .asset-name {
+        font-size: 18px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .signal-label {
+        font-size: 13px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .signal-value {
+        font-size: 13px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .tab-time {
+        font-size: 12px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .alert-sound-label,
+      #theoption-analyzer-panel.font-medium .setting-label {
+        font-size: 12px !important;
+      }
+
+      /* フォントサイズ - 大 */
+      #theoption-analyzer-panel.font-large * {
+        font-size: 14px !important;
       }
 
       #theoption-analyzer-panel.font-large .asset-name {
-        font-size: 22px;
+        font-size: 22px !important;
       }
 
       #theoption-analyzer-panel.font-large .signal-label {
-        font-size: 15px;
+        font-size: 16px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .signal-value {
+        font-size: 16px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .tab-time {
+        font-size: 14px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .alert-sound-label,
+      #theoption-analyzer-panel.font-large .setting-label {
+        font-size: 14px !important;
       }
 
       .asset-drag-handle {
@@ -2549,15 +2447,6 @@ setTimeout(() => {
     // アラート音トグルのクリックイベント
     document.getElementById('alert-sound-toggle').addEventListener('click', () => {
       toggleAlertSound();
-    });
-
-    // テーマ切替ボタンのクリックイベント
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        chrome.storage.local.set({ displayTheme: theme });
-      });
     });
 
     // コンパクトモードトグルのクリックイベント
