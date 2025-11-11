@@ -804,7 +804,7 @@ setTimeout(() => {
         <!-- アラート音設定 -->
         <div class="alert-sound-section">
           <div class="alert-sound-label">
-            🔊 アラート音
+            アラート音
             <span class="alert-sound-status" id="alert-sound-status">OFF</span>
           </div>
           <div class="alert-sound-toggle" id="alert-sound-toggle"></div>
@@ -813,11 +813,11 @@ setTimeout(() => {
         <!-- 表示設定 -->
         <div class="display-settings-section">
           <div class="setting-row">
-            <span class="setting-label">📐 コンパクト</span>
+            <span class="setting-label">コンパクト</span>
             <div class="compact-mode-toggle" id="compact-mode-toggle"></div>
           </div>
           <div class="setting-row">
-            <span class="setting-label">🔤 フォント</span>
+            <span class="setting-label">フォント</span>
             <select class="font-size-select" id="font-size-select">
               <option value="small">小</option>
               <option value="medium" selected>中</option>
