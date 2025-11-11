@@ -321,6 +321,39 @@ setTimeout(() => {
   let contextInvalidated = false;
   let contextCheckInterval = null;
 
+  // アラート音の設定
+  let alertSoundEnabled = false;  // デフォルトOFF
+
+  /**
+   * アラート音を鳴らす（高いビープ音）
+   */
+  function playAlertSound() {
+    if (!alertSoundEnabled) return;
+
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // 高い音（880Hz）
+      oscillator.frequency.value = 880;
+      oscillator.type = 'sine';
+
+      // 音量設定
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+      // 再生
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.error('[TheOption Analyzer] アラート音の再生に失敗:', error);
+    }
+  }
+
   function checkExtensionContext() {
     if (!chrome.runtime?.id && !contextInvalidated) {
       contextInvalidated = true;
@@ -607,6 +640,30 @@ setTimeout(() => {
       document.getElementById('current-data-limit').textContent = displayText;
     });
 
+    // 保存されたアラート音設定を復元（保存がなければデフォルトOFF）
+    chrome.storage.local.get(['alertSoundEnabled'], (result) => {
+      if (result.alertSoundEnabled !== undefined) {
+        alertSoundEnabled = result.alertSoundEnabled;
+        console.log(`[TheOption Analyzer] アラート音設定を復元: ${alertSoundEnabled ? 'ON' : 'OFF'}`);
+      } else {
+        // 初回起動時はデフォルトOFFをストレージに保存
+        chrome.storage.local.set({ alertSoundEnabled: alertSoundEnabled });
+        console.log(`[TheOption Analyzer] アラート音設定をデフォルト値に設定: OFF`);
+      }
+
+      // UIの状態を更新
+      const toggleBtn = document.getElementById('alert-sound-toggle');
+      const statusText = document.getElementById('alert-sound-status');
+
+      if (alertSoundEnabled) {
+        toggleBtn.classList.add('active');
+        statusText.textContent = 'ON';
+      } else {
+        toggleBtn.classList.remove('active');
+        statusText.textContent = 'OFF';
+      }
+    });
+
     // 保存された判定時間を復元（保存がなければデフォルト60秒）
     chrome.storage.local.get(['currentTimeframe'], (result) => {
       if (result.currentTimeframe !== undefined) {
@@ -663,6 +720,15 @@ setTimeout(() => {
           <button class="download-csv-button" id="download-csv-button" title="AI学習データをCSV形式でダウンロード">
             学習データをダウンロード
           </button>
+        </div>
+
+        <!-- アラート音設定 -->
+        <div class="alert-sound-section">
+          <div class="alert-sound-label">
+            🔊 アラート音
+            <span class="alert-sound-status" id="alert-sound-status">OFF</span>
+          </div>
+          <div class="alert-sound-toggle" id="alert-sound-toggle"></div>
         </div>
 
         <!-- 取引時間枠 分析一覧 -->
@@ -1013,6 +1079,65 @@ setTimeout(() => {
         background: rgba(255, 215, 0, 0.1);
         border-bottom: 2px solid rgba(255, 215, 0, 0.3);
         text-align: center;
+      }
+
+      /* アラート音設定 */
+      .alert-sound-section {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.15);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .alert-sound-label {
+        font-size: 12px;
+        color: #ffa726;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .alert-sound-toggle {
+        position: relative;
+        width: 50px;
+        height: 26px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 13px;
+        cursor: pointer;
+        transition: all 0.3s;
+        border: 1px solid rgba(255,255,255,0.3);
+      }
+
+      .alert-sound-toggle.active {
+        background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+        border-color: #4fc3f7;
+        box-shadow: 0 0 10px rgba(79, 195, 247, 0.4);
+      }
+
+      .alert-sound-toggle::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        background: white;
+        border-radius: 50%;
+        transition: all 0.3s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      }
+
+      .alert-sound-toggle.active::after {
+        left: 26px;
+      }
+
+      .alert-sound-status {
+        font-size: 10px;
+        color: rgba(255,255,255,0.6);
+        margin-left: 8px;
       }
 
       .asset-drag-handle {
@@ -2029,6 +2154,11 @@ setTimeout(() => {
       });
     });
 
+    // アラート音トグルのクリックイベント
+    document.getElementById('alert-sound-toggle').addEventListener('click', () => {
+      toggleAlertSound();
+    });
+
     // CSVダウンロードボタンのクリックイベント（モーダルを開く）
     document.getElementById('download-csv-button').addEventListener('click', () => {
       document.getElementById('download-modal').classList.add('active');
@@ -2160,6 +2290,36 @@ setTimeout(() => {
 
     // 全時間枠の予測を再計算して表示を即座に更新
     repredictAllTimeframes();
+  }
+
+  // ========================================
+  // アラート音のON/OFF切り替え
+  // ========================================
+
+  function toggleAlertSound() {
+    alertSoundEnabled = !alertSoundEnabled;
+
+    console.log(`[TheOption Analyzer] 🔊 アラート音: ${alertSoundEnabled ? 'ON' : 'OFF'}`);
+
+    // トグルボタンの見た目を更新
+    const toggleBtn = document.getElementById('alert-sound-toggle');
+    const statusText = document.getElementById('alert-sound-status');
+
+    if (alertSoundEnabled) {
+      toggleBtn.classList.add('active');
+      statusText.textContent = 'ON';
+    } else {
+      toggleBtn.classList.remove('active');
+      statusText.textContent = 'OFF';
+    }
+
+    // 設定をストレージに保存
+    chrome.storage.local.set({ alertSoundEnabled: alertSoundEnabled });
+
+    // テスト音を鳴らす（ONにした時のみ）
+    if (alertSoundEnabled) {
+      playAlertSound();
+    }
   }
 
   // ========================================
@@ -3136,6 +3296,8 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           techConfidenceEl.textContent = techSignal.confidence !== null ? `${techSignal.confidence}%` : '--';
+          // アラート音を鳴らす
+          playAlertSound();
         } else if (techSignal.signal === 'LOW' || techSignal.signal === 'STRONG_LOW') {
           // 70%以上で🔴、それ以下は⚪
           if (techSignal.confidence !== null && techSignal.confidence >= 70) {
@@ -3149,6 +3311,8 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           techConfidenceEl.textContent = techSignal.confidence !== null ? `${techSignal.confidence}%` : '--';
+          // アラート音を鳴らす
+          playAlertSound();
         } else if (techSignal.signal === 'WAIT') {
           // 待機中
           techLightEl.textContent = '⏳';
@@ -3185,6 +3349,8 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           aiConfidenceEl.textContent = aiSignal.confidence !== null ? `${aiSignal.confidence}%` : '--';
+          // アラート音を鳴らす
+          playAlertSound();
         } else if (aiSignal.signal === 'LOW') {
           // 70%以上で🔴、それ以下は⚪
           if (aiSignal.confidence !== null && aiSignal.confidence >= 70) {
@@ -3198,6 +3364,8 @@ setTimeout(() => {
           }
           // HIGH/LOWの場合は必ずパーセンテージ表示
           aiConfidenceEl.textContent = aiSignal.confidence !== null ? `${aiSignal.confidence}%` : '--';
+          // アラート音を鳴らす
+          playAlertSound();
         } else if (aiSignal.signal === 'WAIT') {
           // 待機中
           aiLightEl.textContent = '⏳';
