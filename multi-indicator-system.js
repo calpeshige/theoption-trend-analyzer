@@ -705,8 +705,16 @@ class MultiDimensionalAnalyzer {
     };
   }
 
+  // 🆕 仮想通貨ペア判定
+  isCryptocurrencyPair(asset) {
+    if (!asset) return false;
+    // BTC, ETH で始まる通貨ペアを仮想通貨として判定
+    const cryptoPrefixes = ['BTC', 'ETH', 'LTC', 'XRP', 'BCH', 'ADA', 'DOT', 'DOGE'];
+    return cryptoPrefixes.some(prefix => asset.startsWith(prefix));
+  }
+
   // 時間枠別分析（15秒、30秒、60秒、3分、5分）
-  analyzeTimeframe(data, timeframeSeconds) {
+  analyzeTimeframe(data, timeframeSeconds, asset = null) {
     const { prices, candles, ticks } = data;
 
     console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
@@ -879,10 +887,16 @@ class MultiDimensionalAnalyzer {
     const atrAbsolute = Math.abs(atrResult.strength);
     const volatilityFactor = Math.max(0.5, Math.min(1.5, 0.5 + (atrAbsolute / 10) * 1.0));
 
-    const highThreshold = 15 * volatilityFactor;
-    const strongThreshold = 50 * volatilityFactor;
+    // 🆕 仮想通貨ペアの場合、閾値を高く設定（シグナル乱発を防止）
+    // 仮想通貨は価格の絶対値が大きいため、ATRが相対的に小さく計算されてしまう
+    // そのため、通貨ペア名で判定して閾値を2.5倍に引き上げる
+    const isCrypto = this.isCryptocurrencyPair(asset);
+    const cryptoMultiplier = isCrypto ? 2.5 : 1.0;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+    let highThreshold = 15 * volatilityFactor * cryptoMultiplier;
+    let strongThreshold = 50 * volatilityFactor * cryptoMultiplier;
+
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×2.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
 
     // シグナル判定（動的しきい値を使用）
     let signal, confidence;

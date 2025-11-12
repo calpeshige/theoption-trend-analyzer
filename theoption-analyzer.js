@@ -3139,7 +3139,7 @@ setTimeout(() => {
         prices: relevantPrices,
         candles: candles,
         ticks: relevantTicks
-      }, 60);
+      }, 60, currentAsset);
     } catch (error) {
       console.error('[TheOption Analyzer] 多次元分析エラー:', error);
       return;
@@ -3276,7 +3276,7 @@ setTimeout(() => {
         prices: relevantPrices,
         candles: candles,
         ticks: relevantTicks
-      }, targetTimeframe);
+      }, targetTimeframe, currentAsset);
       console.log(`[TheOption Analyzer] ${config.label} 多次元分析完了:`, multiDimResult);
     } catch (error) {
       console.error(`[TheOption Analyzer] ${config.label} 多次元分析エラー:`, error);
