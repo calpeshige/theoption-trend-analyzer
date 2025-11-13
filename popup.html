@@ -3,50 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TheOption分析</title>
+  <title>TheOption Trend Analyzer</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>📊 TheOption分析</h1>
-      <p class="subtitle">API調査モード v1.0.0</p>
+      <h1>📊 TheOption Trend Analyzer</h1>
+      <p class="version">v4.2.0</p>
+      <p class="subtitle">高精度テクニカル分析 + AI予測</p>
+      <p class="description">超短期取引専用分析ツール</p>
     </header>
 
-    <main class="panel-control">
-      <div class="status">
-        <span class="status-text">拡張機能の状態</span>
-        <div class="status-indicator">
-          <span class="status-dot" id="statusDot"></span>
-          <span id="statusText">読み込み中...</span>
+    <main class="menu-panel">
+      <button class="menu-button" id="settingsBtn">
+        <span class="menu-icon">⚙️</span>
+        <div class="menu-content">
+          <div class="menu-title">設定</div>
+          <div class="menu-desc">表示設定やフォントサイズの調整</div>
         </div>
-      </div>
+      </button>
 
-      <div class="info-box">
-        <h3>🚧 開発中</h3>
-        <p>現在、TheOptionのAPI仕様を調査中です。</p>
-        <p class="mt-2">トレーディング画面でコンソールを開くと、API呼び出しが記録されます。</p>
-      </div>
+      <button class="menu-button" id="licenseBtn">
+        <span class="menu-icon">🔑</span>
+        <div class="menu-content">
+          <div class="menu-title">ライセンス管理</div>
+          <div class="menu-desc">ライセンスキーの登録・確認</div>
+        </div>
+      </button>
 
-      <div class="instructions">
-        <h3>📋 調査手順</h3>
-        <ol>
-          <li>TheOptionのトレーディング画面を開く</li>
-          <li>F12でデベロッパーツールを開く</li>
-          <li>Consoleタブを選択</li>
-          <li>チャートを操作（通貨ペア変更等）</li>
-          <li>記録されたAPIコールを確認</li>
-        </ol>
-      </div>
+      <button class="menu-button" id="guideBtn">
+        <span class="menu-icon">📖</span>
+        <div class="menu-content">
+          <div class="menu-title">使い方ガイド</div>
+          <div class="menu-desc">機能説明と使用方法</div>
+        </div>
+      </button>
 
-      <div class="info">
-        <strong>⚠️ 注意:</strong> APIエンドポイントを特定したら、実装を進めます。
-      </div>
+      <button class="menu-button" id="versionBtn">
+        <span class="menu-icon">ℹ️</span>
+        <div class="menu-content">
+          <div class="menu-title">バージョン情報</div>
+          <div class="menu-desc">更新履歴と機能一覧</div>
+        </div>
+      </button>
     </main>
 
-    <footer>
-      <p>TheOption Trend Analyzer v1.0.0</p>
-    </footer>
+    <div class="usage-info">
+      <h3>💡 使用方法</h3>
+      <p>TheOptionのトレーディング画面を開くと自動的に分析が開始されます</p>
+    </div>
   </div>
 
   <script src="popup.js"></script>
