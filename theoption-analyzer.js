@@ -1379,7 +1379,7 @@ setTimeout(() => {
       }
 
       #theoption-analyzer-panel.font-small .signal-light-large {
-        font-size: 45px !important;
+        font-size: 40px !important;
       }
 
       /* フォントサイズ - 中（デフォルト） */
@@ -1409,7 +1409,7 @@ setTimeout(() => {
       }
 
       #theoption-analyzer-panel.font-medium .signal-light-large {
-        font-size: 55px !important;
+        font-size: 50px !important;
       }
 
       /* フォントサイズ - 大 */
@@ -1439,7 +1439,7 @@ setTimeout(() => {
       }
 
       #theoption-analyzer-panel.font-large .signal-light-large {
-        font-size: 65px !important;
+        font-size: 60px !important;
       }
 
       .asset-drag-handle {
@@ -1849,7 +1849,7 @@ setTimeout(() => {
       }
 
       .signal-direction {
-        font-size: 14px;
+        font-size: 18px;
         color: #fff;
         font-weight: 700;
         margin-bottom: 4px;
@@ -1857,7 +1857,7 @@ setTimeout(() => {
       }
 
       .signal-confidence-large {
-        font-size: 24px;
+        font-size: 32px;
         color: #FFD700;
         font-weight: 700;
         text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
