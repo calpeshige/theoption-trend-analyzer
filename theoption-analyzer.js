@@ -1382,6 +1382,14 @@ setTimeout(() => {
         font-size: 40px !important;
       }
 
+      #theoption-analyzer-panel.font-small .signal-direction {
+        font-size: 16px !important;
+      }
+
+      #theoption-analyzer-panel.font-small .signal-confidence-large {
+        font-size: 28px !important;
+      }
+
       /* フォントサイズ - 中（デフォルト） */
       #theoption-analyzer-panel.font-medium * {
         font-size: 12px !important;
@@ -1412,6 +1420,14 @@ setTimeout(() => {
         font-size: 50px !important;
       }
 
+      #theoption-analyzer-panel.font-medium .signal-direction {
+        font-size: 18px !important;
+      }
+
+      #theoption-analyzer-panel.font-medium .signal-confidence-large {
+        font-size: 32px !important;
+      }
+
       /* フォントサイズ - 大 */
       #theoption-analyzer-panel.font-large * {
         font-size: 14px !important;
@@ -1440,6 +1456,14 @@ setTimeout(() => {
 
       #theoption-analyzer-panel.font-large .signal-light-large {
         font-size: 60px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .signal-direction {
+        font-size: 20px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .signal-confidence-large {
+        font-size: 36px !important;
       }
 
       .asset-drag-handle {
@@ -1826,7 +1850,7 @@ setTimeout(() => {
       }
 
       .signal-light-large {
-        font-size: 60px;
+        font-size: 50px;
         filter: drop-shadow(0 0 15px currentColor);
         transition: all 0.3s;
         flex-shrink: 0;
