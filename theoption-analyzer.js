@@ -2766,11 +2766,11 @@ setTimeout(() => {
     return;
   }
 
-  function updateCountdown(elapsed, interval) {
+  function updateCountdown(remainingSeconds) {
     const countdownEl = document.getElementById('next-analysis-countdown');
     if (!countdownEl) return;
 
-    const remaining = Math.max(0, Math.ceil(interval - elapsed));
+    const remaining = Math.max(0, remainingSeconds);
 
     if (remaining === 0) {
       countdownEl.textContent = '🔄 分析中...';
@@ -3168,7 +3168,7 @@ setTimeout(() => {
 
         // カウントダウンが変わった時だけUI更新（パフォーマンス最適化）
         if (lastDisplayedCountdown !== secondsUntilNext) {
-          updateCountdown(secondsUntilNext, currentConfig.updateInterval);
+          updateCountdown(secondsUntilNext);
           lastDisplayedCountdown = secondsUntilNext;
         }
 
