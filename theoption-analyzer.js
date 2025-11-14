@@ -2874,6 +2874,88 @@ setTimeout(() => {
   }
 
   // ========================================
+  // TheOption取引時間同期判定
+  // ========================================
+
+  /**
+   * 現在時刻が指定された判定時間の区切りタイミングかどうかを判定
+   * @param {number} timeframe - 判定時間（秒）
+   * @returns {boolean} - 区切りタイミングの場合true
+   */
+  function isTradeTimingBoundary(timeframe) {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    const minutes = now.getMinutes();
+
+    switch (timeframe) {
+      case 15:
+        // 15秒: 0, 15, 30, 45秒
+        return seconds % 15 === 0;
+
+      case 30:
+        // 30秒: 0, 30秒
+        return seconds % 30 === 0;
+
+      case 60:
+        // 60秒: 毎分0秒
+        return seconds === 0;
+
+      case 180:
+        // 180秒(3分): 0秒かつ分が3で割り切れる (0, 3, 6, 9...)
+        return seconds === 0 && minutes % 3 === 0;
+
+      case 300:
+        // 300秒(5分): 0秒かつ分が5で割り切れる (0, 5, 10, 15...)
+        return seconds === 0 && minutes % 5 === 0;
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * 次回の取引タイミングまでの秒数を計算
+   * @param {number} timeframe - 判定時間（秒）
+   * @returns {number} - 次回タイミングまでの秒数
+   */
+  function getSecondsUntilNextTiming(timeframe) {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    const minutes = now.getMinutes();
+
+    switch (timeframe) {
+      case 15:
+        // 次の15秒区切りまで
+        const next15 = Math.ceil((seconds + 1) / 15) * 15;
+        return next15 - seconds;
+
+      case 30:
+        // 次の30秒区切りまで
+        const next30 = Math.ceil((seconds + 1) / 30) * 30;
+        return next30 - seconds;
+
+      case 60:
+        // 次の分まで
+        return 60 - seconds;
+
+      case 180:
+        // 次の3分区切りまで
+        const currentTotalSeconds = minutes * 60 + seconds;
+        const next180 = Math.ceil((currentTotalSeconds + 1) / 180) * 180;
+        return next180 - currentTotalSeconds;
+
+      case 300:
+        // 次の5分区切りまで
+        const currentTotalSeconds300 = minutes * 60 + seconds;
+        const next300 = Math.ceil((currentTotalSeconds300 + 1) / 300) * 300;
+        return next300 - currentTotalSeconds300;
+
+      default:
+        return 0;
+    }
+  }
+
+  // ========================================
   // 価格データ監視
   // ========================================
 
@@ -3080,13 +3162,14 @@ setTimeout(() => {
 
         // 全時間枠の並行分析
         const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
-        const currentTimeSinceLastAnalysis = (now - lastAnalysisTimes[currentTimeframe]) / 1000;
+
+        // TheOption取引時間同期: 次回タイミングまでの秒数を計算
+        const secondsUntilNext = getSecondsUntilNextTiming(currentTimeframe);
 
         // カウントダウンが変わった時だけUI更新（パフォーマンス最適化）
-        const countdownSeconds = Math.floor(currentTimeSinceLastAnalysis);
-        if (lastDisplayedCountdown !== countdownSeconds) {
-          updateCountdown(currentTimeSinceLastAnalysis, currentConfig.updateInterval);
-          lastDisplayedCountdown = countdownSeconds;
+        if (lastDisplayedCountdown !== secondsUntilNext) {
+          updateCountdown(secondsUntilNext, currentConfig.updateInterval);
+          lastDisplayedCountdown = secondsUntilNext;
         }
 
         // パフォーマンス最適化: 15秒ごとにMLデータ収集（全判定時間のデータを1回だけ計算）
@@ -3096,12 +3179,18 @@ setTimeout(() => {
           lastMLDataCollectionTime = now;
         }
 
+        // TheOption取引時間同期: 区切りタイミングで分析実行
         // 選択中の時間枠のみ分析実行（パフォーマンス最適化: CPU負荷80%削減）
-        // 他の時間枠はデータ収集のみ（タブ切り替え時に即座に分析）
         const config = TIMEFRAME_CONFIGS[currentTimeframe];
         const timeSinceLastAnalysis = (now - lastAnalysisTimes[currentTimeframe]) / 1000;
 
-        if (timeSinceLastAnalysis >= config.updateInterval) {
+        // 取引時間の区切りタイミングかつ、前回分析から最低2秒経過している場合に実行
+        // （重複実行防止のため2秒間隔チェック）
+        if (isTradeTimingBoundary(currentTimeframe) && timeSinceLastAnalysis >= 2) {
+          const dateTime = new Date();
+          const timeStr = `${dateTime.getHours()}:${String(dateTime.getMinutes()).padStart(2, '0')}:${String(dateTime.getSeconds()).padStart(2, '0')}`;
+          console.log(`[TheOption Analyzer] ⏰ 取引タイミング同期: ${timeStr} (${TIMEFRAME_CONFIGS[currentTimeframe].label})`);
+
           performAnalysis(price, { timeframe: currentTimeframe });
           lastAnalysisTimes[currentTimeframe] = now;
           lastAnalysisTime = now;
@@ -3113,7 +3202,7 @@ setTimeout(() => {
           lastLogTime = now;
         }
       }
-    }, 2000); // パフォーマンス最適化: 2秒ごとに変更
+    }, 1000); // TheOption取引時間同期のため1秒ごとに監視
   }
 
   // ========================================
