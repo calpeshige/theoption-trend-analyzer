@@ -1814,7 +1814,7 @@ setTimeout(() => {
       }
 
       .signal-light-large {
-        font-size: 48px;
+        font-size: 60px;
         filter: drop-shadow(0 0 15px currentColor);
         transition: all 0.3s;
         flex-shrink: 0;
