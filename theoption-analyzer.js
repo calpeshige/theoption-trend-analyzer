@@ -1378,6 +1378,10 @@ setTimeout(() => {
         font-size: 10px !important;
       }
 
+      #theoption-analyzer-panel.font-small .signal-light-large {
+        font-size: 50px !important;
+      }
+
       /* フォントサイズ - 中（デフォルト） */
       #theoption-analyzer-panel.font-medium * {
         font-size: 12px !important;
@@ -1404,6 +1408,10 @@ setTimeout(() => {
         font-size: 12px !important;
       }
 
+      #theoption-analyzer-panel.font-medium .signal-light-large {
+        font-size: 60px !important;
+      }
+
       /* フォントサイズ - 大 */
       #theoption-analyzer-panel.font-large * {
         font-size: 14px !important;
@@ -1428,6 +1436,10 @@ setTimeout(() => {
       #theoption-analyzer-panel.font-large .alert-sound-label,
       #theoption-analyzer-panel.font-large .setting-label {
         font-size: 14px !important;
+      }
+
+      #theoption-analyzer-panel.font-large .signal-light-large {
+        font-size: 70px !important;
       }
 
       .asset-drag-handle {
