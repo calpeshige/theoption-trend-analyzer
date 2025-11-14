@@ -325,7 +325,6 @@ setTimeout(() => {
   let alertSoundEnabled = false;  // デフォルトOFF
 
   // 表示設定
-  let compactMode = false;    // デフォルト: 通常表示
   let fontSize = 'medium';    // デフォルト: 中サイズ
 
   /**
@@ -356,34 +355,6 @@ setTimeout(() => {
     } catch (error) {
       console.error('[TheOption Analyzer] アラート音の再生に失敗:', error);
     }
-  }
-
-  /**
-   * コンパクトモードを適用
-   */
-  function applyCompactMode(enabled) {
-    const panel = document.getElementById('theoption-analyzer-panel');
-    if (!panel) return;
-
-    compactMode = enabled;
-
-    if (enabled) {
-      panel.classList.add('compact-mode');
-    } else {
-      panel.classList.remove('compact-mode');
-    }
-
-    // トグルボタンの状態更新
-    const toggleBtn = document.getElementById('compact-mode-toggle');
-    if (toggleBtn) {
-      if (enabled) {
-        toggleBtn.classList.add('active');
-      } else {
-        toggleBtn.classList.remove('active');
-      }
-    }
-
-    console.log(`[TheOption Analyzer] 📐 コンパクトモード: ${enabled ? 'ON' : 'OFF'}`);
   }
 
   /**
@@ -739,17 +710,7 @@ setTimeout(() => {
     });
 
     // 保存された表示設定を復元
-    chrome.storage.local.get(['compactMode', 'fontSize'], (result) => {
-      // コンパクトモード設定を復元
-      if (result.compactMode !== undefined) {
-        compactMode = result.compactMode;
-        console.log(`[TheOption Analyzer] コンパクトモード設定を復元: ${compactMode ? 'ON' : 'OFF'}`);
-      } else {
-        chrome.storage.local.set({ compactMode: compactMode });
-        console.log(`[TheOption Analyzer] コンパクトモード設定をデフォルト値に設定: OFF`);
-      }
-      applyCompactMode(compactMode);
-
+    chrome.storage.local.get(['fontSize'], (result) => {
       // フォントサイズ設定を復元
       if (result.fontSize !== undefined) {
         fontSize = result.fontSize;
@@ -812,10 +773,6 @@ setTimeout(() => {
 
         <!-- 表示設定 -->
         <div class="display-settings-section">
-          <div class="setting-row">
-            <span class="setting-label">コンパクト</span>
-            <div class="compact-mode-toggle" id="compact-mode-toggle"></div>
-          </div>
           <div class="setting-row">
             <span class="setting-label">フォント</span>
             <select class="font-size-select" id="font-size-select">
@@ -1257,40 +1214,6 @@ setTimeout(() => {
         font-weight: 600;
       }
 
-      .compact-mode-toggle {
-        position: relative;
-        width: 50px;
-        height: 26px;
-        background: rgba(255,255,255,0.2);
-        border-radius: 13px;
-        cursor: pointer;
-        transition: all 0.3s;
-        border: 1px solid rgba(255,255,255,0.3);
-      }
-
-      .compact-mode-toggle.active {
-        background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
-        border-color: #4fc3f7;
-        box-shadow: 0 0 10px rgba(79, 195, 247, 0.4);
-      }
-
-      .compact-mode-toggle::after {
-        content: '';
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 20px;
-        height: 20px;
-        background: white;
-        border-radius: 50%;
-        transition: all 0.3s;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      }
-
-      .compact-mode-toggle.active::after {
-        left: 26px;
-      }
-
       .font-size-select {
         padding: 4px 8px;
         border: 1px solid rgba(255,255,255,0.3);
@@ -1312,44 +1235,6 @@ setTimeout(() => {
       .font-size-select option {
         background: #1a1f2e;
         color: white;
-      }
-
-      /* コンパクトモード */
-      #theoption-analyzer-panel.compact-mode .analyzer-dropdown {
-        padding: 8px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .asset-display {
-        padding: 8px 12px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .asset-name {
-        font-size: 14px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .alert-sound-section,
-      #theoption-analyzer-panel.compact-mode .display-settings-section {
-        padding: 8px 12px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .timeframe-analysis-tab {
-        padding: 6px 10px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .tab-time {
-        font-size: 11px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .timeframe-content {
-        padding: 8px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .signal-display {
-        padding: 6px 10px;
-      }
-
-      #theoption-analyzer-panel.compact-mode .detail-section {
-        padding: 6px;
       }
 
       /* フォントサイズ - 小 */
@@ -2483,13 +2368,6 @@ setTimeout(() => {
     // アラート音トグルのクリックイベント
     document.getElementById('alert-sound-toggle').addEventListener('click', () => {
       toggleAlertSound();
-    });
-
-    // コンパクトモードトグルのクリックイベント
-    document.getElementById('compact-mode-toggle').addEventListener('click', () => {
-      const newMode = !compactMode;
-      applyCompactMode(newMode);
-      chrome.storage.local.set({ compactMode: newMode });
     });
 
     // フォントサイズ選択のイベント
