@@ -1080,6 +1080,7 @@ setTimeout(() => {
         left: 50%;
         transform: translateX(-50%);
         width: 400px;
+        height: 600px;
         max-height: 90vh;
         min-height: 400px;
         background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
