@@ -1023,9 +1023,8 @@ setTimeout(() => {
     style.textContent = `
       #theoption-analyzer-panel {
         position: fixed;
-        top: 50%;
+        top: 100px;
         left: 20px;
-        transform: translateY(-50%);
         z-index: 999999;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       }
@@ -2188,7 +2187,7 @@ setTimeout(() => {
 
         // デフォルト位置からのオフセットを計算
         const defaultLeft = 20; // CSSのデフォルト left: 20px
-        const defaultTop = window.innerHeight * 0.5; // CSSのデフォルト top: 50%
+        const defaultTop = 100; // CSSのデフォルト top: 100px
 
         xOffset = savedLeft - defaultLeft;
         yOffset = savedTop - defaultTop;
