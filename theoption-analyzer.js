@@ -1076,9 +1076,10 @@ setTimeout(() => {
       }
 
       .analyzer-dropdown {
-        position: fixed;
-        top: 0;
-        left: 0;
+        position: absolute;
+        top: 45px;
+        left: 50%;
+        transform: translateX(-50%);
         width: 400px;
         max-height: 90vh;
         min-height: 400px;
@@ -1088,7 +1089,7 @@ setTimeout(() => {
         display: none;
         overflow-y: auto;
         overflow-x: hidden;
-        z-index: 9999999;
+        z-index: 100;
       }
 
       /* スクロールバーのスタイル */
@@ -2125,13 +2126,13 @@ setTimeout(() => {
 
       /* リサイズハンドル */
       .resize-handle {
-        position: fixed;
-        top: 0;
-        left: 0;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
         width: 400px;
         height: 12px;
         cursor: ns-resize;
-        z-index: 9999999;
+        z-index: 10;
         background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%);
         border-radius: 0 0 12px 12px;
         display: none;
@@ -2207,13 +2208,9 @@ setTimeout(() => {
     // リサイズハンドルの位置を更新する関数
     function updateResizeHandlePosition() {
       if (dropdown.classList.contains('active')) {
-        // ドロップダウンの現在の位置と高さを取得
-        const dropdownRect = dropdown.getBoundingClientRect();
+        const dropdownTop = 45; // .analyzer-dropdownのtop値
         const handleHeight = 12; // リサイズハンドルの高さ
-
-        // ドロップダウンの下端に配置
-        resizeHandle.style.top = (dropdownRect.bottom - handleHeight) + 'px';
-        resizeHandle.style.left = dropdownRect.left + 'px';
+        resizeHandle.style.top = (dropdownTop + panelHeight - handleHeight) + 'px';
         resizeHandle.style.display = 'block';
       } else {
         resizeHandle.style.display = 'none';
@@ -2229,16 +2226,6 @@ setTimeout(() => {
     // 共通イベント
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-
-    // ウィンドウリサイズ・スクロール時にドロップダウン位置を更新
-    window.addEventListener('resize', () => {
-      updateDropdownPosition();
-      updateResizeHandlePosition();
-    });
-    window.addEventListener('scroll', () => {
-      updateDropdownPosition();
-      updateResizeHandlePosition();
-    });
 
     function toggleButtonMouseDown(e) {
       // ドラッグ開始の準備
@@ -2256,34 +2243,6 @@ setTimeout(() => {
       initialY = e.clientY;
       e.preventDefault();
       e.stopPropagation();
-    }
-
-    // ドロップダウンの位置を更新する関数
-    function updateDropdownPosition() {
-      const dropdown = document.getElementById('analyzer-dropdown');
-      if (!dropdown.classList.contains('active')) return;
-
-      const toggleButton = document.getElementById('analyzer-toggle');
-      const rect = toggleButton.getBoundingClientRect();
-
-      // トグルボタンの下に配置
-      let top = rect.bottom + 5; // 5pxの余白
-      let left = rect.left + (rect.width / 2) - 200; // 中央揃え（ドロップダウン幅400pxの半分）
-
-      // 画面外に出ないように調整
-      const maxTop = window.innerHeight - 400; // min-height: 400px
-      if (top > maxTop) {
-        top = maxTop;
-      }
-
-      if (left < 10) {
-        left = 10;
-      } else if (left + 400 > window.innerWidth - 10) {
-        left = window.innerWidth - 410;
-      }
-
-      dropdown.style.top = `${top}px`;
-      dropdown.style.left = `${left}px`;
     }
 
     function handleMouseMove(e) {
@@ -2307,9 +2266,6 @@ setTimeout(() => {
         yOffset = currentY;
 
         setTranslate(currentX, currentY, container);
-
-        // ドロップダウンの位置も更新
-        updateDropdownPosition();
       } else if (isResizing) {
         e.preventDefault();
 
@@ -2319,7 +2275,9 @@ setTimeout(() => {
         dropdown.style.height = newHeight + 'px';
 
         // リサイズ中もハンドル位置を更新
-        updateResizeHandlePosition();
+        const dropdownTop = 45;
+        const handleHeight = 12;
+        resizeHandle.style.top = (dropdownTop + newHeight - handleHeight) + 'px';
       }
     }
 
@@ -2381,11 +2339,6 @@ setTimeout(() => {
 
       const dropdown = document.getElementById('analyzer-dropdown');
       dropdown.classList.toggle('active');
-
-      // ドロップダウンが開かれた場合、位置を更新
-      if (dropdown.classList.contains('active')) {
-        updateDropdownPosition();
-      }
 
       // リサイズハンドルの位置を更新（開閉時）
       updateResizeHandlePosition();
