@@ -2130,27 +2130,43 @@ setTimeout(() => {
         left: 50%;
         transform: translateX(-50%);
         width: 400px;
-        height: 12px;
+        height: 20px;
         cursor: ns-resize;
-        z-index: 10;
-        background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.1) 100%);
+        z-index: 150;
+        background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.25) 100%);
         border-radius: 0 0 12px 12px;
         display: none;
+        border-top: 2px solid rgba(255,255,255,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       }
 
       .resize-handle:hover {
-        background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.2) 100%);
+        background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.35) 100%);
+        border-top-color: rgba(255,255,255,0.5);
       }
 
       .resize-handle::before {
-        content: '⋮';
+        content: '═';
         position: absolute;
-        bottom: 2px;
+        top: 50%;
         left: 50%;
-        transform: translateX(-50%);
-        color: rgba(255,255,255,0.4);
-        font-size: 16px;
-        letter-spacing: 2px;
+        transform: translate(-50%, -50%);
+        color: rgba(255,255,255,0.7);
+        font-size: 18px;
+        font-weight: bold;
+        letter-spacing: 4px;
+      }
+
+      .resize-handle::after {
+        content: 'サイズ調整';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: rgba(255,255,255,0.6);
+        font-size: 10px;
+        font-weight: 500;
+        margin-left: 60px;
       }
     `;
 
@@ -2209,7 +2225,7 @@ setTimeout(() => {
     function updateResizeHandlePosition() {
       if (dropdown.classList.contains('active')) {
         const dropdownTop = 45; // .analyzer-dropdownのtop値
-        const handleHeight = 12; // リサイズハンドルの高さ
+        const handleHeight = 20; // リサイズハンドルの高さ
         // 実際のドロップダウンの高さを取得
         const actualHeight = dropdown.offsetHeight;
         resizeHandle.style.top = (dropdownTop + actualHeight - handleHeight) + 'px';
@@ -2218,6 +2234,11 @@ setTimeout(() => {
         resizeHandle.style.display = 'none';
       }
     }
+
+    // ドロップダウンのスクロール時にもリサイズハンドルの位置を更新
+    dropdown.addEventListener('scroll', () => {
+      updateResizeHandlePosition();
+    });
 
     // トグルボタンのドラッグイベント
     toggleButton.addEventListener('mousedown', toggleButtonMouseDown);
@@ -2278,7 +2299,7 @@ setTimeout(() => {
 
         // リサイズ中もハンドル位置を更新
         const dropdownTop = 45;
-        const handleHeight = 12;
+        const handleHeight = 20;
         resizeHandle.style.top = (dropdownTop + newHeight - handleHeight) + 'px';
       }
     }
