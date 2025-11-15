@@ -2210,7 +2210,9 @@ setTimeout(() => {
       if (dropdown.classList.contains('active')) {
         const dropdownTop = 45; // .analyzer-dropdownのtop値
         const handleHeight = 12; // リサイズハンドルの高さ
-        resizeHandle.style.top = (dropdownTop + panelHeight - handleHeight) + 'px';
+        // 実際のドロップダウンの高さを取得
+        const actualHeight = dropdown.offsetHeight;
+        resizeHandle.style.top = (dropdownTop + actualHeight - handleHeight) + 'px';
         resizeHandle.style.display = 'block';
       } else {
         resizeHandle.style.display = 'none';
