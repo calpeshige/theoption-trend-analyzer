@@ -979,7 +979,6 @@ setTimeout(() => {
 
           <div class="download-tabs">
             <button class="download-tab active" data-tab="ml-data">AI学習データ</button>
-            <button class="download-tab" data-tab="price-history">価格履歴</button>
             <button class="download-tab" data-tab="predictions">予測パターン</button>
             <button class="download-tab" data-tab="trends">トレンド分析</button>
             <button class="download-tab" data-tab="data-management">データ管理</button>
@@ -996,18 +995,6 @@ setTimeout(() => {
                 <li>全35列のデータ</li>
               </ul>
               <button class="download-execute-btn" data-type="ml-data">ダウンロード</button>
-            </div>
-
-            <!-- 価格履歴 -->
-            <div class="download-panel" id="panel-price-history">
-              <h4>価格履歴データ</h4>
-              <p>1秒ごとの価格変動データ（直近10分間）</p>
-              <ul>
-                <li>タイムスタンプ、価格</li>
-                <li>前回からの変化、変化率</li>
-                <li>最大600行のデータ</li>
-              </ul>
-              <button class="download-execute-btn" data-type="price-history">ダウンロード</button>
             </div>
 
             <!-- 予測パターン -->
@@ -5214,9 +5201,6 @@ setTimeout(() => {
       case 'ml-data':
         downloadMLDataAsCSV();
         break;
-      case 'price-history':
-        downloadPriceHistoryAsCSV();
-        break;
       case 'predictions':
         downloadPredictionsAsCSV();
         break;
@@ -5435,79 +5419,6 @@ setTimeout(() => {
 
     // 通知
     showDownloadNotification('AI学習データ');
-  }
-
-  function downloadPriceHistoryAsCSV() {
-    if (!priceHistory || priceHistory.length === 0) {
-      alert('価格履歴データがありません');
-      return;
-    }
-
-    console.log(`[CSV Download] 価格履歴データ件数: ${priceHistory.length}件`);
-
-    // CSVヘッダー
-    const headers = [
-      'タイムスタンプ',
-      '日時',
-      '価格',
-      '変化',
-      '変化率(%)'
-    ];
-
-    // CSVデータ行を生成
-    const rows = priceHistory.map((item, index) => {
-      const date = new Date(item.timestamp);
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-
-      let change = 0;
-      let changePercent = 0;
-
-      if (index > 0) {
-        change = item.price - priceHistory[index - 1].price;
-        changePercent = (change / priceHistory[index - 1].price) * 100;
-      }
-
-      return [
-        item.timestamp,
-        dateStr,
-        item.price.toFixed(5),
-        change.toFixed(5),
-        changePercent.toFixed(4)
-      ].join(',');
-    });
-
-    // CSV文字列を生成
-    const csvContent = [headers.join(','), ...rows].join('\n');
-
-    // BOM付きでUTF-8エンコード
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
-
-    // ダウンロード
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-
-    const assetName = currentAsset || 'unknown';
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `theoption_price_history_${assetName.replace(/[\/\s]/g, '_')}_${timestamp}.csv`;
-
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
-
-    console.log(`[CSV Download] ダウンロード完了: ${filename} (${priceHistory.length}件)`);
-
-    // モーダルを閉じる
-    document.getElementById('download-modal').classList.remove('active');
-
-    // 通知
-    showDownloadNotification('価格履歴データ');
   }
 
   function downloadPredictionsAsCSV() {
