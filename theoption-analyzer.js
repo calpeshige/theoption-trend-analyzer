@@ -336,14 +336,14 @@ setTimeout(() => {
   let fontSize = 'medium';    // デフォルト: 中サイズ
 
   // トレンド強度フィルター設定
-  let trendStrengthFilter = 'medium';  // デフォルト: 普通 (>5)
+  let trendStrengthFilter = 'medium';  // デフォルト: 普通 (>4)
 
   // トレンド強度の閾値マッピング
   const trendStrengthThresholds = {
     weak: 3,       // 弱い: trendConfidence > 3
-    medium: 5,     // 普通: trendConfidence > 5
-    strong: 7,     // 強い: trendConfidence > 7
-    strongest: 9   // 最強: trendConfidence > 9
+    medium: 4,     // 普通: trendConfidence > 4
+    strong: 5,     // 強い: trendConfidence > 5
+    strongest: 7   // 最強: trendConfidence > 7
   };
 
   /**
