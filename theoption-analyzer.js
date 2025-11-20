@@ -329,7 +329,7 @@ setTimeout(() => {
   const volumeLevels = {
     low: 0.15,      // 小
     medium: 0.3,    // 中
-    high: 0.5       // 大
+    high: 0.7       // 大
   };
 
   // 表示設定
