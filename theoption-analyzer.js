@@ -335,6 +335,17 @@ setTimeout(() => {
   // 表示設定
   let fontSize = 'medium';    // デフォルト: 中サイズ
 
+  // トレンド強度フィルター設定
+  let trendStrengthFilter = 'medium';  // デフォルト: 普通 (>5)
+
+  // トレンド強度の閾値マッピング
+  const trendStrengthThresholds = {
+    weak: 3,       // 弱い: trendConfidence > 3
+    medium: 5,     // 普通: trendConfidence > 5
+    strong: 7,     // 強い: trendConfidence > 7
+    strongest: 9   // 最強: trendConfidence > 9
+  };
+
   /**
    * アラート音を鳴らす（高いビープ音）
    */
@@ -733,6 +744,23 @@ setTimeout(() => {
       }
     });
 
+    // 保存されたトレンド強度フィルター設定を復元
+    chrome.storage.local.get(['trendStrengthFilter'], (result) => {
+      if (result.trendStrengthFilter !== undefined) {
+        trendStrengthFilter = result.trendStrengthFilter;
+        console.log(`[TheOption Analyzer] トレンド強度フィルター設定を復元: ${trendStrengthFilter} (閾値: ${trendStrengthThresholds[trendStrengthFilter]})`);
+      } else {
+        chrome.storage.local.set({ trendStrengthFilter: trendStrengthFilter });
+        console.log(`[TheOption Analyzer] トレンド強度フィルター設定をデフォルト値に設定: ${trendStrengthFilter}`);
+      }
+
+      // トレンド強度セレクトの値を更新
+      const trendStrengthSelect = document.getElementById('trend-strength-select');
+      if (trendStrengthSelect) {
+        trendStrengthSelect.value = trendStrengthFilter;
+      }
+    });
+
     // 価格データ取得開始
     startPriceMonitoring();
 
@@ -798,6 +826,20 @@ setTimeout(() => {
               <option value="large">大</option>
             </select>
           </div>
+        </div>
+
+        <!-- トレンド強度フィルター設定 -->
+        <div class="trend-strength-section">
+          <div class="setting-row">
+            <span class="setting-label">トレンド強度</span>
+            <select class="trend-strength-select" id="trend-strength-select">
+              <option value="weak">弱い (>3)</option>
+              <option value="medium" selected>普通 (>5)</option>
+              <option value="strong">強い (>7)</option>
+              <option value="strongest">最強 (>9)</option>
+            </select>
+          </div>
+          <div class="setting-hint">※シグナルの最低トレンド強度</div>
         </div>
 
         <!-- 取引時間枠 分析一覧 -->
@@ -1282,6 +1324,46 @@ setTimeout(() => {
       .font-size-select option {
         background: #1a1f2e;
         color: white;
+      }
+
+      /* トレンド強度設定 */
+      .trend-strength-section {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.15);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .trend-strength-select {
+        padding: 4px 8px;
+        border: 1px solid rgba(255,255,255,0.3);
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        outline: none;
+        transition: all 0.3s;
+      }
+
+      .trend-strength-select:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.5);
+      }
+
+      .trend-strength-select option {
+        background: #1a1f2e;
+        color: white;
+      }
+
+      .setting-hint {
+        font-size: 10px;
+        color: rgba(255,255,255,0.5);
+        font-style: italic;
+        margin-top: 4px;
       }
 
       /* フォントサイズ - 小 */
@@ -2463,6 +2545,21 @@ setTimeout(() => {
       chrome.storage.local.set({ fontSize: size });
     });
 
+    // トレンド強度選択のイベント
+    document.getElementById('trend-strength-select').addEventListener('change', (e) => {
+      const strength = e.target.value;
+      trendStrengthFilter = strength;
+      chrome.storage.local.set({ trendStrengthFilter: strength });
+      const threshold = trendStrengthThresholds[strength];
+      console.log(`[TheOption Analyzer] 🎯 トレンド強度フィルター設定を変更: ${strength} (閾値: ${threshold})`);
+
+      // 設定変更後、現在の分析を再実行
+      if (latestData.prices.length > 0) {
+        console.log('[TheOption Analyzer] トレンド強度設定変更により分析を再実行...');
+        performAnalysis(latestData.prices, latestData.candles, latestData.ticks, latestData.asset);
+      }
+    });
+
     // CSVダウンロードボタンのクリックイベント（モーダルを開く）
     document.getElementById('download-csv-button').addEventListener('click', () => {
       document.getElementById('download-modal').classList.add('active');
@@ -3224,11 +3321,12 @@ setTimeout(() => {
     // 多次元分析（代表として60秒を使用）
     let multiDimResult;
     try {
+      const threshold = trendStrengthThresholds[trendStrengthFilter];
       multiDimResult = multiDimAnalyzer.analyzeTimeframe({
         prices: relevantPrices,
         candles: candles,
         ticks: relevantTicks
-      }, 60, currentAsset);
+      }, 60, currentAsset, threshold);
     } catch (error) {
       console.error('[TheOption Analyzer] 多次元分析エラー:', error);
       return;
@@ -3361,11 +3459,12 @@ setTimeout(() => {
     // 多次元分析（時間枠別の重み付けを使用）
     let multiDimResult;
     try {
+      const threshold = trendStrengthThresholds[trendStrengthFilter];
       multiDimResult = multiDimAnalyzer.analyzeTimeframe({
         prices: relevantPrices,
         candles: candles,
         ticks: relevantTicks
-      }, targetTimeframe, currentAsset);
+      }, targetTimeframe, currentAsset, threshold);
       console.log(`[TheOption Analyzer] ${config.label} 多次元分析完了:`, multiDimResult);
     } catch (error) {
       console.error(`[TheOption Analyzer] ${config.label} 多次元分析エラー:`, error);

@@ -725,10 +725,10 @@ class MultiDimensionalAnalyzer {
   }
 
   // 時間枠別分析（15秒、30秒、60秒、3分、5分）
-  analyzeTimeframe(data, timeframeSeconds, asset = null) {
+  analyzeTimeframe(data, timeframeSeconds, asset = null, trendStrengthThreshold = 5) {
     const { prices, candles, ticks } = data;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件, トレンド強度閾値: ${trendStrengthThreshold})`);
 
     // 時間枠に応じた係数を取得
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
@@ -921,22 +921,22 @@ class MultiDimensionalAnalyzer {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
       console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
-    } else if (normalizedScore > highThreshold) {
+    } else if (normalizedScore > highThreshold && trendConfidence > trendStrengthThreshold) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)})`);
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
     } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
       console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
-    } else if (normalizedScore < -highThreshold) {
+    } else if (normalizedScore < -highThreshold && trendConfidence > trendStrengthThreshold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)})`);
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
     } else {
       signal = 'NEUTRAL';
       confidence = null;  // 見送りの場合はパーセンテージなし
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内)`);
+      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内、または trendConfidence=${trendConfidence.toFixed(2)} <= ${trendStrengthThreshold})`);
     }
 
     // 🆕 信頼度を一貫性・整合性で調整
