@@ -572,26 +572,6 @@ setTimeout(() => {
       // コンテンツスクリプトのwindowに公開
       window.mlSystem = mlSystem;
 
-      // ページコンテキストに初期化状態を注入（コンソールアクセス用）
-      console.log('[TheOption Analyzer] 🔧 ページコンテキストへスクリプト注入開始');
-      try {
-        const script = document.createElement('script');
-        script.textContent = `
-          (function() {
-            window.mlSystemInitialized = true;
-            window.checkMLSystemStatus = function() {
-              return window.mlSystemInitialized ? "初期化済み" : "未初期化";
-            };
-            console.log('[TheOption Analyzer] 💡 MLシステム状態確認: コンソールで checkMLSystemStatus() を実行');
-          })();
-        `;
-        (document.head || document.documentElement).appendChild(script);
-        script.remove();
-        console.log('[TheOption Analyzer] ✅ ページコンテキストへスクリプト注入成功');
-      } catch (e) {
-        console.error('[TheOption Analyzer] ❌ スクリプト注入失敗:', e);
-      }
-
       // 初期化は通貨ペア検出後に実行
       console.log('[TheOption Analyzer] ✅ 機械学習システム準備完了（通貨ペア検出待ち）');
     } else {
