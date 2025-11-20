@@ -833,10 +833,10 @@ setTimeout(() => {
           <div class="setting-row">
             <span class="setting-label">トレンド強度</span>
             <select class="trend-strength-select" id="trend-strength-select">
-              <option value="weak">弱い (>3)</option>
-              <option value="medium" selected>普通 (>5)</option>
-              <option value="strong">強い (>7)</option>
-              <option value="strongest">最強 (>9)</option>
+              <option value="weak">弱い</option>
+              <option value="medium" selected>普通</option>
+              <option value="strong">強い</option>
+              <option value="strongest">最強</option>
             </select>
           </div>
           <div class="setting-hint">※シグナルの最低トレンド強度</div>
