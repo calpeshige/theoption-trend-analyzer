@@ -882,21 +882,23 @@ class MultiDimensionalAnalyzer {
     // デバッグ: スコアを確認
     console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
 
-    // 🆕 ATRに基づく動的しきい値調整
+    // 🆕 ATRパーセント値に基づく動的しきい値調整（全通貨ペア対応）
     // ボラティリティが低い通貨ペア(USD/JPY等)では低いしきい値、高い通貨ペア(仮想通貨等)では高いしきい値を使用
-    const atrAbsolute = Math.abs(atrResult.strength);
-    const volatilityFactor = Math.max(0.5, Math.min(1.5, 0.5 + (atrAbsolute / 10) * 1.0));
+    const atrPercent = atrResult.atrPercent || 0.5;  // 実際のATRパーセント値を使用（フォールバック0.5%）
 
-    // 🆕 仮想通貨ペアの場合、閾値を高く設定（シグナル乱発を防止）
-    // 仮想通貨は価格の絶対値が大きいため、ATRが相対的に小さく計算されてしまう
-    // そのため、通貨ペア名で判定して閾値を2.5倍に引き上げる
+    // ボラティリティファクター：ATRパーセント値を基準に連続的に調整
+    // USD/JPY (0.3%) → 0.3, EUR/USD (0.5%) → 0.5, EUR/JPY (0.8%) → 0.8, GBP/JPY (1.2%) → 1.2, BTC/JPY (6%) → 2.0
+    const volatilityFactor = Math.max(0.3, Math.min(2.0, atrPercent / 1.0));
+
+    // 🆕 仮想通貨ペアの場合、さらに閾値を調整（シグナル頻度の最適化）
+    // 仮想通貨は高ボラティリティのため、追加で閾値を引き上げる
     const isCrypto = this.isCryptocurrencyPair(asset);
-    const cryptoMultiplier = isCrypto ? 2.5 : 1.0;
+    const cryptoMultiplier = isCrypto ? 1.5 : 1.0;
 
     let highThreshold = 15 * volatilityFactor * cryptoMultiplier;
     let strongThreshold = 50 * volatilityFactor * cryptoMultiplier;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×2.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrPercent.toFixed(2)}% → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×1.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
 
     // シグナル判定（動的しきい値を使用）
     let signal, confidence;
