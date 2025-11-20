@@ -51,23 +51,34 @@ class MACDIndicator {
 // ========================================
 
 class ADXIndicator {
-  calculate(candles) {
-    if (candles.length < 14) {
+  calculate(candles, timeframeSeconds = 15) {
+    // タイムフレームに応じた観測期間を計算（判定時間の2倍）
+    // 全タイムフレームで一貫して30期間のADX計算を行う
+    const observationSeconds = timeframeSeconds * 2;
+    const period = 30; // 固定で30期間を使用
+
+    // 必要なキャンドル数を計算
+    const requiredCandles = period;
+
+    if (candles.length < requiredCandles) {
       return { adx: 0, plusDI: 0, minusDI: 0, strength: 0 };
     }
 
+    // 直近の必要な期間分のキャンドルを取得
+    const recentCandles = candles.slice(-requiredCandles);
+
     let plusDM = 0, minusDM = 0, tr = 0;
 
-    for (let i = 1; i < candles.length; i++) {
-      const highDiff = candles[i].high - candles[i-1].high;
-      const lowDiff = candles[i-1].low - candles[i].low;
+    for (let i = 1; i < recentCandles.length; i++) {
+      const highDiff = recentCandles[i].high - recentCandles[i-1].high;
+      const lowDiff = recentCandles[i-1].low - recentCandles[i].low;
 
       plusDM += highDiff > 0 && highDiff > lowDiff ? highDiff : 0;
       minusDM += lowDiff > 0 && lowDiff > highDiff ? lowDiff : 0;
 
-      const high = candles[i].high;
-      const low = candles[i].low;
-      const prevClose = candles[i-1].close;
+      const high = recentCandles[i].high;
+      const low = recentCandles[i].low;
+      const prevClose = recentCandles[i-1].close;
 
       tr += Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
     }
@@ -79,7 +90,7 @@ class ADXIndicator {
     // 強度スコア（0-10）
     const strength = Math.min(10, adx / 5);
 
-    return { adx, plusDI, minusDI, strength };
+    return { adx, plusDI, minusDI, strength, observationSeconds, period };
   }
 }
 
@@ -745,7 +756,7 @@ class MultiDimensionalAnalyzer {
 
     // 各指標を計算（感度係数と期間係数を渡す）
     const macdResult = this.macd.calculate(relevantPrices, scaleFactor, periodScaleFactor);
-    const adxResult = this.adx.calculate(relevantCandles);
+    const adxResult = this.adx.calculate(relevantCandles, timeframeSeconds);
     const stochasticResult = this.stochastic.calculate(relevantCandles, 14, periodScaleFactor);
     const atrResult = this.atr.calculate(relevantCandles, 14, scaleFactor);
     const rocResult = this.roc.calculate(relevantPrices, 10, scaleFactor, periodScaleFactor);
@@ -804,6 +815,9 @@ class MultiDimensionalAnalyzer {
     totalScore += adxResult.strength * 1.5;
     const trendConfidence = adxResult.strength * 1.5;
     maxScore += 15;
+
+    // ADX観測期間の情報をログ出力
+    console.log(`[Multi-Indicator-ADX] ${timeframeSeconds}秒判定 → ADX観測期間: ${adxResult.observationSeconds || timeframeSeconds * 2}秒 (${adxResult.period || 30}期間), トレンド強度: ${adxResult.strength.toFixed(1)}, trendConfidence: ${trendConfidence.toFixed(1)}`);
 
     totalScore += stochasticResult.strength * 1.5;
     maxScore += 15;
