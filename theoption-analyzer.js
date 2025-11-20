@@ -323,6 +323,14 @@ setTimeout(() => {
 
   // アラート音の設定
   let alertSoundEnabled = false;  // デフォルトOFF
+  let alertVolume = 'medium';     // デフォルト: 中
+
+  // 音量レベルのマッピング
+  const volumeLevels = {
+    low: 0.15,      // 小
+    medium: 0.3,    // 中
+    high: 0.5       // 大
+  };
 
   // 表示設定
   let fontSize = 'medium';    // デフォルト: 中サイズ
@@ -345,8 +353,9 @@ setTimeout(() => {
       oscillator.frequency.value = 880;
       oscillator.type = 'sine';
 
-      // 音量設定
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      // 音量設定（選択された音量レベルを適用）
+      const volume = volumeLevels[alertVolume] || volumeLevels.medium;
+      gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
 
       // 再生
@@ -662,7 +671,7 @@ setTimeout(() => {
     });
 
     // 保存されたアラート音設定を復元（保存がなければデフォルトOFF）
-    chrome.storage.local.get(['alertSoundEnabled'], (result) => {
+    chrome.storage.local.get(['alertSoundEnabled', 'alertVolume'], (result) => {
       if (result.alertSoundEnabled !== undefined) {
         alertSoundEnabled = result.alertSoundEnabled;
         console.log(`[TheOption Analyzer] アラート音設定を復元: ${alertSoundEnabled ? 'ON' : 'OFF'}`);
@@ -672,9 +681,20 @@ setTimeout(() => {
         console.log(`[TheOption Analyzer] アラート音設定をデフォルト値に設定: OFF`);
       }
 
+      // 音量設定を復元
+      if (result.alertVolume !== undefined) {
+        alertVolume = result.alertVolume;
+        console.log(`[TheOption Analyzer] 音量設定を復元: ${alertVolume}`);
+      } else {
+        // 初回起動時はデフォルト値をストレージに保存
+        chrome.storage.local.set({ alertVolume: alertVolume });
+        console.log(`[TheOption Analyzer] 音量設定をデフォルト値に設定: ${alertVolume}`);
+      }
+
       // UIの状態を更新
       const toggleBtn = document.getElementById('alert-sound-toggle');
       const statusText = document.getElementById('alert-sound-status');
+      const volumeSelect = document.getElementById('volume-select');
 
       if (alertSoundEnabled) {
         toggleBtn.classList.add('active');
@@ -682,6 +702,11 @@ setTimeout(() => {
       } else {
         toggleBtn.classList.remove('active');
         statusText.textContent = 'OFF';
+      }
+
+      // 音量セレクトの値を設定
+      if (volumeSelect) {
+        volumeSelect.value = alertVolume;
       }
     });
 
@@ -769,6 +794,18 @@ setTimeout(() => {
             <span class="alert-sound-status" id="alert-sound-status">OFF</span>
           </div>
           <div class="alert-sound-toggle" id="alert-sound-toggle"></div>
+        </div>
+
+        <!-- 音量設定 -->
+        <div class="volume-setting-section">
+          <div class="setting-row">
+            <span class="setting-label">音量</span>
+            <select class="volume-select" id="volume-select">
+              <option value="low">小</option>
+              <option value="medium" selected>中</option>
+              <option value="high">大</option>
+            </select>
+          </div>
         </div>
 
         <!-- 表示設定 -->
@@ -1191,6 +1228,35 @@ setTimeout(() => {
         font-size: 10px;
         color: rgba(255,255,255,0.6);
         margin-left: 8px;
+      }
+
+      /* 音量設定 */
+      .volume-setting-section {
+        padding: 12px 20px;
+        background: rgba(0,0,0,0.15);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .volume-select {
+        padding: 6px 10px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 4px;
+        color: white;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.3s;
+        min-width: 80px;
+      }
+
+      .volume-select:hover {
+        background: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.3);
+      }
+
+      .volume-select option {
+        background: #1e3a5f;
+        color: white;
       }
 
       /* 表示設定 */
@@ -2395,6 +2461,19 @@ setTimeout(() => {
     // アラート音トグルのクリックイベント
     document.getElementById('alert-sound-toggle').addEventListener('click', () => {
       toggleAlertSound();
+    });
+
+    // 音量選択のイベント
+    document.getElementById('volume-select').addEventListener('change', (e) => {
+      const volume = e.target.value;
+      alertVolume = volume;
+      chrome.storage.local.set({ alertVolume: volume });
+      console.log(`[TheOption Analyzer] 🔊 音量設定を変更: ${volume}`);
+
+      // テスト音を鳴らす
+      if (alertSoundEnabled) {
+        playAlertSound();
+      }
     });
 
     // フォントサイズ選択のイベント
