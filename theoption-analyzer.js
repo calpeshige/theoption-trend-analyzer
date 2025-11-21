@@ -787,59 +787,72 @@ setTimeout(() => {
       <div class="analyzer-dropdown" id="analyzer-dropdown">
         <!-- 通貨ペア表示 -->
         <div class="asset-display" id="asset-display">
-          <div class="asset-label">分析対象</div>
-          <div class="asset-name" id="asset-name-display">検出中...</div>
-          <div class="asset-data-count" id="asset-data-count">データ: 0件</div>
-          <button class="download-csv-button" id="download-csv-button" title="AI学習データをCSV形式でダウンロード">
-            学習データをダウンロード
+          <div class="asset-info-wrapper">
+            <div class="asset-label">分析対象</div>
+            <div class="asset-name" id="asset-name-display">検出中...</div>
+            <div class="asset-data-count" id="asset-data-count">データ: 0件</div>
+            <button class="download-csv-button" id="download-csv-button" title="AI学習データをCSV形式でダウンロード">
+              学習データをダウンロード
+            </button>
+          </div>
+          <button class="settings-gear-button" id="settings-gear-button" title="設定">
+            ⚙️
           </button>
         </div>
 
-        <!-- アラート音設定 -->
-        <div class="alert-sound-section">
-          <div class="alert-sound-label">
-            アラート音
-            <span class="alert-sound-status" id="alert-sound-status">OFF</span>
+        <!-- 設定パネル（デフォルトで非表示） -->
+        <div class="settings-panel" id="settings-panel">
+          <div class="settings-panel-header">
+            <h3>設定</h3>
+            <button class="settings-close-button" id="settings-close-button">✕</button>
           </div>
-          <div class="alert-sound-toggle" id="alert-sound-toggle"></div>
-        </div>
 
-        <!-- 音量設定 -->
-        <div class="volume-setting-section">
-          <div class="setting-row">
-            <span class="setting-label">音量</span>
-            <select class="volume-select" id="volume-select">
-              <option value="low">小</option>
-              <option value="medium" selected>中</option>
-              <option value="high">大</option>
-            </select>
+          <!-- アラート音設定 -->
+          <div class="alert-sound-section">
+            <div class="alert-sound-label">
+              アラート音
+              <span class="alert-sound-status" id="alert-sound-status">OFF</span>
+            </div>
+            <div class="alert-sound-toggle" id="alert-sound-toggle"></div>
           </div>
-        </div>
 
-        <!-- 表示設定 -->
-        <div class="display-settings-section">
-          <div class="setting-row">
-            <span class="setting-label">フォント</span>
-            <select class="font-size-select" id="font-size-select">
-              <option value="small">小</option>
-              <option value="medium" selected>中</option>
-              <option value="large">大</option>
-            </select>
+          <!-- 音量設定 -->
+          <div class="volume-setting-section">
+            <div class="setting-row">
+              <span class="setting-label">音量</span>
+              <select class="volume-select" id="volume-select">
+                <option value="low">小</option>
+                <option value="medium" selected>中</option>
+                <option value="high">大</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <!-- トレンド強度フィルター設定 -->
-        <div class="trend-strength-section">
-          <div class="setting-row">
-            <span class="setting-label">トレンド強度</span>
-            <select class="trend-strength-select" id="trend-strength-select">
-              <option value="weak">弱い</option>
-              <option value="medium" selected>普通</option>
-              <option value="strong">強い</option>
-              <option value="strongest">最強</option>
-            </select>
+          <!-- 表示設定 -->
+          <div class="display-settings-section">
+            <div class="setting-row">
+              <span class="setting-label">フォント</span>
+              <select class="font-size-select" id="font-size-select">
+                <option value="small">小</option>
+                <option value="medium" selected>中</option>
+                <option value="large">大</option>
+              </select>
+            </div>
           </div>
-          <div class="setting-hint">※シグナルの最低トレンド強度</div>
+
+          <!-- トレンド強度フィルター設定 -->
+          <div class="trend-strength-section">
+            <div class="setting-row">
+              <span class="setting-label">トレンド強度</span>
+              <select class="trend-strength-select" id="trend-strength-select">
+                <option value="weak">弱い</option>
+                <option value="medium" selected>普通</option>
+                <option value="strong">強い</option>
+                <option value="strongest">最強</option>
+              </select>
+            </div>
+            <div class="setting-hint">※シグナルの最低トレンド強度</div>
+          </div>
         </div>
 
         <!-- 取引時間枠 分析一覧 -->
@@ -1177,7 +1190,89 @@ setTimeout(() => {
         padding: 16px 20px;
         background: rgba(255, 215, 0, 0.1);
         border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .asset-info-wrapper {
+        flex: 1;
         text-align: center;
+      }
+
+      .settings-gear-button {
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 8px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+        flex-shrink: 0;
+      }
+
+      .settings-gear-button:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.5);
+        transform: rotate(90deg);
+      }
+
+      .settings-gear-button:active {
+        transform: rotate(90deg) scale(0.95);
+      }
+
+      /* 設定パネル */
+      .settings-panel {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .settings-panel.active {
+        max-height: 500px;
+      }
+
+      .settings-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: rgba(255,255,255,0.05);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .settings-panel-header h3 {
+        margin: 0;
+        font-size: 14px;
+        color: #4fc3f7;
+        font-weight: 600;
+      }
+
+      .settings-close-button {
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 4px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .settings-close-button:hover {
+        background: rgba(255,0,0,0.3);
+        border-color: rgba(255,0,0,0.5);
       }
 
       /* アラート音設定 */
@@ -2505,6 +2600,17 @@ setTimeout(() => {
         const limit = btn.dataset.limit === 'all' ? null : parseInt(btn.dataset.limit);
         changeDataLimit(limit);
       });
+    });
+
+    // 設定歯車ボタンのクリックイベント
+    document.getElementById('settings-gear-button').addEventListener('click', () => {
+      const settingsPanel = document.getElementById('settings-panel');
+      settingsPanel.classList.toggle('active');
+    });
+
+    // 設定パネル閉じるボタンのクリックイベント
+    document.getElementById('settings-close-button').addEventListener('click', () => {
+      document.getElementById('settings-panel').classList.remove('active');
     });
 
     // アラート音トグルのクリックイベント
