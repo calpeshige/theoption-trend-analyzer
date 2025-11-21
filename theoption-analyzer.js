@@ -1190,35 +1190,33 @@ setTimeout(() => {
         padding: 16px 20px;
         background: rgba(255, 215, 0, 0.1);
         border-bottom: 2px solid rgba(255, 215, 0, 0.3);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
+        text-align: center;
+        position: relative;
       }
 
       .asset-info-wrapper {
-        flex: 1;
-        text-align: center;
+        /* 中央寄せを維持 */
       }
 
       .settings-gear-button {
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.3);
-        border-radius: 8px;
-        width: 40px;
-        height: 40px;
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: transparent;
+        border: none;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 20px;
         cursor: pointer;
         transition: all 0.3s;
-        flex-shrink: 0;
+        opacity: 0.6;
       }
 
       .settings-gear-button:hover {
-        background: rgba(255,255,255,0.2);
-        border-color: rgba(255,255,255,0.5);
+        opacity: 1;
         transform: rotate(90deg);
       }
 
