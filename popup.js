@@ -32,7 +32,7 @@ TheOptionのトレーディング画面で、
   // 使い方ガイドボタン
   document.getElementById('guideBtn').addEventListener('click', function() {
     const guideText = `
-【TheOption Trend Analyzer 使い方ガイド】
+【Theoption Trading System 使い方ガイド】
 
 ■ 基本的な使い方
 1. TheOptionのトレーディング画面を開く
@@ -65,7 +65,7 @@ TheOptionのトレーディング画面で、
   // バージョン情報ボタン
   document.getElementById('versionBtn').addEventListener('click', function() {
     const versionInfo = `
-【TheOption Trend Analyzer】
+【Theoption Trading System】
 バージョン: 4.2.0
 
 ■ 主な機能

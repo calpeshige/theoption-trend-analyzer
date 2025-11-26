@@ -308,7 +308,7 @@
             font-size: 24px;
             font-weight: 600;
             color: #667eea;
-          ">TheOption Trend Analyzer</h2>
+          ">Theoption Trading System</h2>
 
           <p style="
             margin: 0 0 24px 0;
