@@ -1077,6 +1077,15 @@ class MachineLearningSystem {
     return result;
   }
 
+  // データ件数を取得
+  getDataCount() {
+    const system = this.getCurrentSystem();
+    if (!system) {
+      return 0;
+    }
+    return system.dataCollector.getDataCount();
+  }
+
   // 統計情報を取得
   getStatistics() {
     const system = this.getCurrentSystem();

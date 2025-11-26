@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheOption Trend Analyzer</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- トップバー -->
+    <header class="top-bar">
+      <!-- 接続ステータスインジケーター（通貨ペアの上） -->
+      <div class="connection-indicator" id="connection-indicator">
+        <span class="indicator-dot" id="status-indicator"></span>
+        <span class="indicator-text" id="status-text">接続中...</span>
+        <span class="indicator-separator">|</span>
+        <span class="indicator-data-count" id="asset-data-count">0件</span>
+      </div>
+      <div class="top-bar-content">
+        <div class="asset-info">
+          <span class="asset-name" id="asset-name-display">検出中...</span>
+        </div>
+        <!-- カウントダウン（円形プログレスリング） -->
+        <div class="header-countdown phase-analyzing" id="header-countdown">
+          <div class="countdown-ring-container">
+            <svg class="countdown-ring" viewBox="0 0 60 60">
+              <circle class="countdown-ring-bg" cx="30" cy="30" r="26" />
+              <circle class="countdown-ring-progress" id="countdown-progress" cx="30" cy="30" r="26" />
+            </svg>
+            <div class="countdown-inner">
+              <span class="countdown-number" id="next-analysis">--</span>
+            </div>
+          </div>
+          <span class="countdown-label">分析中</span>
+        </div>
+        <div class="top-bar-actions">
+          <button class="icon-button" id="download-button" title="データをダウンロード">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L11 14.17V2h2z"/>
+            </svg>
+          </button>
+          <button class="icon-button" id="settings-button" title="設定">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+      <!-- 時間枠セレクター -->
+      <nav class="timeframe-nav">
+        <div class="timeframe-chips">
+          <button class="timeframe-chip" data-timeframe="15">15秒</button>
+          <button class="timeframe-chip" data-timeframe="30">30秒</button>
+          <button class="timeframe-chip active" data-timeframe="60">60秒</button>
+          <button class="timeframe-chip" data-timeframe="180">3分</button>
+          <button class="timeframe-chip" data-timeframe="300">5分</button>
+        </div>
+      </nav>
+
+      <!-- メインシグナルカード - テクニカルとAI両方表示 -->
+      <section class="dual-signal-section">
+        <!-- テクニカル分析シグナル -->
+        <div class="signal-card" id="tech-signal-card">
+          <div class="signal-card-header">テクニカル分析</div>
+          <div class="signal-card-icon" id="tech-signal-icon" data-signal="wait">
+            <span class="signal-dot">●</span>
+          </div>
+          <div class="signal-card-label" id="tech-signal-label">データ収集中</div>
+          <div class="signal-card-confidence" id="tech-signal-confidence">--</div>
+        </div>
+
+        <!-- AI予測シグナル -->
+        <div class="signal-card" id="ai-signal-card">
+          <div class="signal-card-header">AI予測</div>
+          <div class="signal-card-icon" id="ai-signal-icon" data-signal="wait">
+            <span class="signal-dot">●</span>
+          </div>
+          <div class="signal-card-label" id="ai-signal-label">準備中</div>
+          <div class="signal-card-confidence" id="ai-signal-confidence">--</div>
+        </div>
+      </section>
+
+      <!-- 分析詳細セクション -->
+      <section class="analysis-section">
+        <!-- テクニカル分析詳細カード -->
+        <article class="analysis-card" id="tech-card">
+          <button class="card-header" id="tech-header">
+            <div class="card-header-left">
+              <span class="card-title">テクニカル分析詳細</span>
+            </div>
+            <span class="card-expand-icon">▼</span>
+          </button>
+          <div class="card-content" id="tech-content">
+            <div class="detail-box" id="tech-detail">
+              <p class="detail-text">分析データを待機中...</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- AI予測詳細カード -->
+        <article class="analysis-card" id="ai-card">
+          <button class="card-header" id="ai-header">
+            <div class="card-header-left">
+              <span class="card-title">AI予測詳細</span>
+            </div>
+            <span class="card-expand-icon">▼</span>
+          </button>
+          <div class="card-content" id="ai-content">
+            <!-- 上昇/下降確率バー -->
+            <div class="probability-bar-container" id="probability-container">
+              <div class="probability-labels">
+                <span class="prob-up" id="prob-up">上昇 --%</span>
+                <span class="prob-down" id="prob-down">下降 --%</span>
+              </div>
+              <div class="probability-bar">
+                <div class="prob-bar-up" id="prob-bar-up"></div>
+                <div class="prob-bar-down" id="prob-bar-down"></div>
+              </div>
+            </div>
+            <div class="detail-box" id="ai-detail">
+              <p class="detail-text">学習データ収集中...</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- AI学習状況カード -->
+        <article class="analysis-card" id="ml-card">
+          <button class="card-header" id="ml-header">
+            <div class="card-header-left">
+              <span class="card-title">AI学習状況</span>
+            </div>
+            <div class="card-header-right">
+              <span class="card-count" id="ml-count-badge">0件</span>
+            </div>
+            <span class="card-expand-icon">▼</span>
+          </button>
+          <div class="card-content" id="ml-content">
+            <div class="ml-stats">
+              <div class="ml-stat-item">
+                <span class="ml-stat-label">収集データ</span>
+                <span class="ml-stat-value" id="ml-data-count">0</span>
+                <span class="ml-stat-unit">/ 50,000件</span>
+              </div>
+              <div class="ml-stat-item">
+                <span class="ml-stat-label">学習レベル</span>
+                <span class="ml-stat-value" id="ml-learning-level">-</span>
+                <span class="ml-stat-unit">%</span>
+              </div>
+            </div>
+            <div class="ml-progress-container">
+              <div class="ml-progress-bar" id="ml-progress-bar"></div>
+            </div>
+            <div class="ml-progress-labels">
+              <span>0</span>
+              <span>50K</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- クイック設定セクション -->
+      <section class="quick-settings">
+        <div class="setting-group">
+          <span class="setting-group-label">類似度閾値</span>
+          <div class="chip-group" id="threshold-chips">
+            <button class="setting-chip" data-threshold="50">50%</button>
+            <button class="setting-chip active" data-threshold="70">70%</button>
+            <button class="setting-chip" data-threshold="80">80%</button>
+            <button class="setting-chip" data-threshold="90">90%</button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <span class="setting-group-label">データ範囲</span>
+          <div class="chip-group" id="data-limit-chips">
+            <button class="setting-chip" data-limit="500">500</button>
+            <button class="setting-chip" data-limit="1000">1K</button>
+            <button class="setting-chip" data-limit="2000">2K</button>
+            <button class="setting-chip active" data-limit="all">全期間</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 設定ボトムシート -->
+    <div class="bottom-sheet-overlay" id="settings-overlay"></div>
+    <aside class="bottom-sheet" id="settings-sheet">
+      <div class="bottom-sheet-handle"></div>
+      <div class="bottom-sheet-header">
+        <h2 class="bottom-sheet-title">設定</h2>
+        <button class="icon-button" id="close-settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="bottom-sheet-content">
+        <!-- アラート音設定 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">アラート音</span>
+            <span class="setting-item-description">シグナル発生時に通知音を再生</span>
+          </div>
+          <button class="toggle-switch" id="alert-sound-toggle">
+            <span class="toggle-thumb"></span>
+          </button>
+        </div>
+        <!-- 音量設定 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">音量</span>
+          </div>
+          <select class="select-input" id="volume-select">
+            <option value="low">小</option>
+            <option value="medium" selected>中</option>
+            <option value="high">大</option>
+          </select>
+        </div>
+        <!-- アラート音選択 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">アラート音の種類</span>
+          </div>
+          <div class="sound-select-group">
+            <select class="select-input" id="alert-sound-select">
+              <option value="01">サウンド 1</option>
+              <option value="02">サウンド 2</option>
+              <option value="03">サウンド 3</option>
+              <option value="04">サウンド 4</option>
+              <option value="05">サウンド 5</option>
+              <option value="06">サウンド 6</option>
+              <option value="07">サウンド 7</option>
+              <option value="08">サウンド 8</option>
+              <option value="09">サウンド 9</option>
+              <option value="10">サウンド 10</option>
+            </select>
+            <button class="test-sound-button" id="test-sound-button" title="試聴">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <!-- フォントサイズ設定 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">フォントサイズ</span>
+          </div>
+          <select class="select-input" id="font-size-select">
+            <option value="small">小</option>
+            <option value="medium" selected>中</option>
+            <option value="large">大</option>
+          </select>
+        </div>
+        <!-- トレンド強度フィルター -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">トレンド強度フィルター</span>
+            <span class="setting-item-description">シグナルの最低トレンド強度</span>
+          </div>
+          <select class="select-input" id="trend-strength-select">
+            <option value="weak">弱い</option>
+            <option value="medium" selected>普通</option>
+            <option value="strong">強い</option>
+            <option value="strongest">最強</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -16,6 +16,7 @@
 
   const LICENSE_COLLECTION = 'licenses';  // Firestoreコレクション名
   const RECHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24時間ごとに再検証
+  const DEVICE_ID_KEY = 'deviceId';  // デバイスID保存キー
 
   // グローバル変数
   window.licenseManager = {
@@ -38,9 +39,114 @@
   }
 
   // ========================================
+  // デバイスID管理
+  // ========================================
+
+  // ユニークなデバイスIDを生成
+  function generateDeviceId() {
+    // ランダムな文字列を生成
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const randomPart = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+
+    // タイムスタンプを追加
+    const timestamp = Date.now().toString(36);
+
+    return `DEV-${randomPart.substring(0, 8)}-${timestamp}`;
+  }
+
+  // デバイスIDを取得（なければ生成して保存）
+  async function getOrCreateDeviceId() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([DEVICE_ID_KEY], (result) => {
+        if (result[DEVICE_ID_KEY]) {
+          console.log('[License] 既存のデバイスID:', result[DEVICE_ID_KEY]);
+          resolve(result[DEVICE_ID_KEY]);
+        } else {
+          const newDeviceId = generateDeviceId();
+          console.log('[License] 新規デバイスID生成:', newDeviceId);
+          chrome.storage.local.set({ [DEVICE_ID_KEY]: newDeviceId }, () => {
+            resolve(newDeviceId);
+          });
+        }
+      });
+    });
+  }
+
+  // ========================================
+  // デバイス登録・検証
+  // ========================================
+
+  // Firestoreにデバイスを登録
+  async function registerDevice(licenseKey, deviceId, currentDevices) {
+    try {
+      // 新しいデバイスリストを作成
+      const updatedDevices = [...currentDevices, deviceId];
+
+      // Firestore REST API でドキュメントを更新
+      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?updateMask.fieldPaths=devices&key=${FIREBASE_CONFIG.apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fields: {
+            devices: {
+              arrayValue: {
+                values: updatedDevices.map(d => ({ stringValue: d }))
+              }
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      console.log('[License] ✓ デバイス登録成功:', deviceId);
+      return { success: true };
+
+    } catch (error) {
+      console.error('[License] デバイス登録エラー:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // デバイスの検証と登録
+  async function validateAndRegisterDevice(licenseKey, maxDevices, currentDevices, deviceId) {
+    // 現在のデバイスが既に登録済みかチェック
+    if (currentDevices.includes(deviceId)) {
+      console.log('[License] ✓ このデバイスは登録済みです');
+      return { valid: true, isNewDevice: false };
+    }
+
+    // 登録済みデバイス数をチェック
+    if (currentDevices.length >= maxDevices) {
+      console.log(`[License] ✗ デバイス上限到達 (${currentDevices.length}/${maxDevices})`);
+      return {
+        valid: false,
+        reason: `このライセンスは既に${maxDevices}台のデバイスで使用中です。\n別のデバイスで使用する場合は管理者にお問い合わせください。`
+      };
+    }
+
+    // 新しいデバイスを登録
+    console.log(`[License] 新しいデバイスを登録中... (${currentDevices.length + 1}/${maxDevices})`);
+    const registerResult = await registerDevice(licenseKey, deviceId, currentDevices);
+
+    if (registerResult.success) {
+      return { valid: true, isNewDevice: true };
+    } else {
+      return { valid: false, reason: 'デバイスの登録に失敗しました。再度お試しください。' };
+    }
+  }
+
+  // ========================================
   // ライセンスキー検証
   // ========================================
-  async function validateLicenseKey(licenseKey) {
+  async function validateLicenseKey(licenseKey, skipDeviceCheck = false) {
     try {
       // Firestore REST APIでライセンスキーを検証
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?key=${FIREBASE_CONFIG.apiKey}`;
@@ -69,8 +175,12 @@
       // ライセンス情報を取得
       const isActive = data.fields.active?.booleanValue ?? false;
       const expiryDate = data.fields.expiryDate?.timestampValue;
-      const maxDevices = data.fields.maxDevices?.integerValue ?? 1;
+      const maxDevices = parseInt(data.fields.maxDevices?.integerValue ?? '1', 10);
       const userName = data.fields.userName?.stringValue ?? '不明';
+
+      // 登録済みデバイスを取得（配列がない場合は空配列）
+      const devicesArray = data.fields.devices?.arrayValue?.values || [];
+      const currentDevices = devicesArray.map(v => v.stringValue);
 
       // アクティブ状態をチェック
       if (!isActive) {
@@ -85,6 +195,21 @@
         }
       }
 
+      // デバイス検証（skipDeviceCheckがfalseの場合のみ）
+      if (!skipDeviceCheck) {
+        const deviceId = await getOrCreateDeviceId();
+        const deviceResult = await validateAndRegisterDevice(licenseKey, maxDevices, currentDevices, deviceId);
+
+        if (!deviceResult.valid) {
+          return { valid: false, reason: deviceResult.reason };
+        }
+
+        // 新規デバイス登録の場合はログ出力
+        if (deviceResult.isNewDevice) {
+          console.log('[License] ✓ 新しいデバイスとして登録されました');
+        }
+      }
+
       // 検証成功
       return {
         valid: true,
@@ -93,7 +218,8 @@
           userName: userName,
           maxDevices: maxDevices,
           expiryDate: expiryDate,
-          isActive: isActive
+          isActive: isActive,
+          registeredDevices: currentDevices.length
         }
       };
 
@@ -345,16 +471,32 @@
     const timeSinceLastCheck = now - saved.lastCheckTime;
 
     if (timeSinceLastCheck < RECHECK_INTERVAL) {
-      // 最近検証済み
+      // 最近検証済み - でもデバイス登録は確認する
       const hoursUntilRecheck = Math.floor((RECHECK_INTERVAL - timeSinceLastCheck) / 1000 / 60 / 60);
       console.log(`[License] ✓ ライセンス有効（次回検証まで ${hoursUntilRecheck}時間）`);
-      window.licenseManager.isLicenseValid = true;
 
-      // ライセンス情報を復元
-      chrome.storage.local.get(['licenseInfo'], (result) => {
-        window.licenseManager.licenseInfo = result.licenseInfo || null;
-        notifyLicenseReady(); // 初期化完了を通知
+      // デバイスIDを取得して、未登録の場合のみ完全な検証を行う
+      const deviceId = await getOrCreateDeviceId();
+      const licenseInfo = await new Promise(resolve => {
+        chrome.storage.local.get(['licenseInfo'], result => resolve(result.licenseInfo));
       });
+
+      // デバイス登録状況を確認するため、一度Firestoreをチェック
+      console.log('[License] デバイス登録状況を確認中...');
+      const result = await validateLicenseKey(saved.licenseKey, false);  // デバイスチェックを含む
+
+      if (result.valid) {
+        window.licenseManager.isLicenseValid = true;
+        window.licenseManager.licenseInfo = result.licenseInfo;
+        await saveLicenseKey(saved.licenseKey, result.licenseInfo);
+        notifyLicenseReady();
+      } else {
+        // デバイス上限などで失敗
+        console.error('[License] ✗ デバイス検証失敗:', result.reason);
+        window.licenseManager.isLicenseValid = false;
+        notifyLicenseReady();
+        alert(`ライセンスエラー\n\n${result.reason}`);
+      }
       return;
     }
 
