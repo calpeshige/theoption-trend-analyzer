@@ -123,8 +123,17 @@ function setupEventListeners() {
   document.getElementById('close-settings').addEventListener('click', closeSettings);
   document.getElementById('settings-overlay').addEventListener('click', closeSettings);
 
-  // ダウンロードボタン
-  document.getElementById('download-button').addEventListener('click', requestCSVDownload);
+  // ダウンロードボトムシート
+  document.getElementById('download-button').addEventListener('click', openDownload);
+  document.getElementById('close-download').addEventListener('click', closeDownload);
+  document.getElementById('download-overlay').addEventListener('click', closeDownload);
+
+  // ダウンロードメニュー項目
+  document.getElementById('download-ml-data').addEventListener('click', () => requestDownload('ML_DATA'));
+  document.getElementById('download-predictions').addEventListener('click', () => requestDownload('PREDICTIONS'));
+  document.getElementById('download-trends').addEventListener('click', () => requestDownload('TRENDS'));
+  document.getElementById('export-json').addEventListener('click', () => requestDownload('EXPORT_JSON'));
+  document.getElementById('import-json').addEventListener('click', () => requestDownload('IMPORT_JSON'));
 
   // アラート音トグル
   document.getElementById('alert-sound-toggle').addEventListener('click', (e) => {
@@ -207,6 +216,24 @@ function openSettings() {
 function closeSettings() {
   document.getElementById('settings-overlay').classList.remove('active');
   document.getElementById('settings-sheet').classList.remove('active');
+}
+
+// ダウンロードメニュー
+function openDownload() {
+  document.getElementById('download-overlay').classList.add('active');
+  document.getElementById('download-sheet').classList.add('active');
+}
+
+function closeDownload() {
+  document.getElementById('download-overlay').classList.remove('active');
+  document.getElementById('download-sheet').classList.remove('active');
+}
+
+// ダウンロードリクエスト
+function requestDownload(type) {
+  console.log('[SidePanel] ダウンロードリクエスト:', type);
+  chrome.runtime.sendMessage({ type: 'REQUEST_DOWNLOAD', downloadType: type });
+  closeDownload();
 }
 
 // カード展開/折りたたみ
@@ -470,11 +497,6 @@ function requestAnalysisData() {
       updateStatus('connected', 'データ受信中');
     }
   });
-}
-
-// CSVダウンロード要求
-function requestCSVDownload() {
-  chrome.runtime.sendMessage({ type: 'REQUEST_CSV_DOWNLOAD' });
 }
 
 // メイン表示更新

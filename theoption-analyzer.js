@@ -1112,8 +1112,29 @@ setTimeout(() => {
         }
       }
 
-      // OPEN_CSV_DOWNLOAD_MODALは削除済み（オーバーレイ廃止）
-      // CSVダウンロードはサイドパネルから直接呼び出し
+      // ダウンロード実行
+      if (message.type === 'EXECUTE_DOWNLOAD') {
+        console.log('[TheOption Analyzer] ダウンロード実行:', message.downloadType);
+        switch (message.downloadType) {
+          case 'ML_DATA':
+            downloadMLDataAsCSV();
+            break;
+          case 'PREDICTIONS':
+            downloadPredictionsAsCSV();
+            break;
+          case 'TRENDS':
+            downloadTrendsAsCSV();
+            break;
+          case 'EXPORT_JSON':
+            exportDataAsJSON();
+            break;
+          case 'IMPORT_JSON':
+            importDataFromJSON();
+            break;
+          default:
+            console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
+        }
+      }
 
       return true; // 非同期レスポンス
     });

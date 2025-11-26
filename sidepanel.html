@@ -189,6 +189,83 @@
       </section>
     </main>
 
+    <!-- ダウンロードボトムシート -->
+    <div class="bottom-sheet-overlay" id="download-overlay"></div>
+    <aside class="bottom-sheet" id="download-sheet">
+      <div class="bottom-sheet-handle"></div>
+      <div class="bottom-sheet-header">
+        <h2 class="bottom-sheet-title">データダウンロード</h2>
+        <button class="icon-button" id="close-download">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="bottom-sheet-content">
+        <div class="download-section">
+          <h3 class="download-section-title">CSVダウンロード</h3>
+          <button class="download-item" id="download-ml-data">
+            <div class="download-item-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+              </svg>
+            </div>
+            <div class="download-item-content">
+              <span class="download-item-label">AI学習データ</span>
+              <span class="download-item-description">機械学習用のトレーニングデータ</span>
+            </div>
+          </button>
+          <button class="download-item" id="download-predictions">
+            <div class="download-item-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+              </svg>
+            </div>
+            <div class="download-item-content">
+              <span class="download-item-label">予測履歴</span>
+              <span class="download-item-description">AI予測の履歴データ</span>
+            </div>
+          </button>
+          <button class="download-item" id="download-trends">
+            <div class="download-item-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+              </svg>
+            </div>
+            <div class="download-item-content">
+              <span class="download-item-label">トレンド分析</span>
+              <span class="download-item-description">トレンド分析の履歴データ</span>
+            </div>
+          </button>
+        </div>
+        <div class="download-section">
+          <h3 class="download-section-title">バックアップ</h3>
+          <button class="download-item" id="export-json">
+            <div class="download-item-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/>
+              </svg>
+            </div>
+            <div class="download-item-content">
+              <span class="download-item-label">JSONエクスポート</span>
+              <span class="download-item-description">全データの完全バックアップ</span>
+            </div>
+          </button>
+          <button class="download-item" id="import-json">
+            <div class="download-item-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
+              </svg>
+            </div>
+            <div class="download-item-content">
+              <span class="download-item-label">JSONインポート</span>
+              <span class="download-item-description">バックアップデータを復元</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </aside>
+
     <!-- 設定ボトムシート -->
     <div class="bottom-sheet-overlay" id="settings-overlay"></div>
     <aside class="bottom-sheet" id="settings-sheet">

@@ -104,11 +104,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
 
-  // CSVダウンロード要求をコンテンツスクリプトに転送
-  if (message.type === 'REQUEST_CSV_DOWNLOAD') {
+  // ダウンロード要求をコンテンツスクリプトに転送
+  if (message.type === 'REQUEST_DOWNLOAD') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'OPEN_CSV_DOWNLOAD_MODAL' }).catch(() => {});
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'EXECUTE_DOWNLOAD',
+          downloadType: message.downloadType
+        }).catch(() => {});
       }
     });
   }
