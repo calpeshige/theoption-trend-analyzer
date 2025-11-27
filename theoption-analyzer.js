@@ -1147,10 +1147,15 @@ setTimeout(() => {
     // 多次元分析システム初期化（V2アーキテクチャを優先使用）
     if (typeof MultiDimensionalAnalyzerV2 !== 'undefined') {
       multiDimAnalyzer = new MultiDimensionalAnalyzerV2();
-      console.log('[TheOption Analyzer] ✅ 多次元分析システムV2初期化完了（新アーキテクチャ）');
+      console.log('[TheOption Analyzer] ════════════════════════════════════════');
+      console.log('[TheOption Analyzer] ✅ V2アーキテクチャ初期化完了');
+      console.log('[TheOption Analyzer]    - PhaseDetector: TREND/RANGE検出');
+      console.log('[TheOption Analyzer]    - ResistanceFilter: 抵抗帯フィルター');
+      console.log('[TheOption Analyzer]    - TIMEFRAME_CONFIGS: 時間枠別設定');
+      console.log('[TheOption Analyzer] ════════════════════════════════════════');
     } else if (typeof MultiDimensionalAnalyzer !== 'undefined') {
       multiDimAnalyzer = new MultiDimensionalAnalyzer();
-      console.log('[TheOption Analyzer] ✅ 多次元分析システム初期化完了（レガシー）');
+      console.log('[TheOption Analyzer] ⚠️ V2が見つかりません - レガシーモードで動作');
     } else {
       console.error('[TheOption Analyzer] ❌ MultiDimensionalAnalyzerが見つかりません');
       return;

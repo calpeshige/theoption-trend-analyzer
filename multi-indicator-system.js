@@ -1385,21 +1385,27 @@ class MultiDimensionalAnalyzerV2 {
   analyzeV2(data, timeframeSeconds, asset = null) {
     const { prices, candles, ticks } = data;
 
-    console.log(`[Analyzer-V2] ${timeframeSeconds}秒 🔍 新アーキテクチャ分析開始`);
-    console.log(`[Analyzer-V2] データ: prices=${prices.length}, candles=${candles.length}, ticks=${ticks.length}`);
+    console.log(`\n[V2] ════════════════════════════════════════════════════════`);
+    console.log(`[V2] 🔍 V2アーキテクチャ分析開始 - ${timeframeSeconds}秒`);
+    console.log(`[V2] 📊 データ量: prices=${prices.length}, candles=${candles.length}, ticks=${ticks.length}`);
 
     // 1. 通貨タイプ判定
     const isCrypto = this.isCryptocurrencyPair(asset);
-    console.log(`[Analyzer-V2] 通貨タイプ: ${isCrypto ? '🪙 仮想通貨' : '💴 法定通貨'} (${asset || 'unknown'})`);
+    console.log(`[V2] 💱 通貨: ${asset || 'unknown'} (${isCrypto ? '仮想通貨' : '法定通貨'})`);
 
     // 2. 時間枠設定を取得
     const config = TIMEFRAME_CONFIGS[timeframeSeconds] || TIMEFRAME_CONFIGS[60];
-    console.log(`[Analyzer-V2] 時間枠設定: ${config.name}`);
+    console.log(`[V2] ⏱️ 設定: ${config.name}`);
 
     // 3. Phase検出（TREND/RANGE）
     const phaseResult = this.phaseDetector.detectPhase(candles, prices, timeframeSeconds);
-    console.log(`[Analyzer-V2] Phase検出: ${phaseResult.phase} (信頼度: ${phaseResult.confidence}%, 方向: ${phaseResult.trendDirection})`);
-    console.log(`[Analyzer-V2] BB拡張率: ${phaseResult.details.bbExpansionRate}, ADX: ${phaseResult.details.adx}`);
+    console.log(`[V2] ────────────────────────────────────────────────────────`);
+    console.log(`[V2] 📈 Phase検出結果:`);
+    console.log(`[V2]   Phase: ${phaseResult.phase} (信頼度: ${phaseResult.confidence}%)`);
+    console.log(`[V2]   トレンド方向: ${phaseResult.trendDirection}`);
+    console.log(`[V2]   BB拡張率: ${phaseResult.details.bbExpansionRate} (>1.2でTREND)`);
+    console.log(`[V2]   ADX: ${phaseResult.details.adx} (>20でトレンド強い)`);
+    console.log(`[V2]   %B: ${phaseResult.details.percentB} (0-1, 0.5が中央)`);
 
     // 4. 各指標を計算
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
@@ -1415,6 +1421,18 @@ class MultiDimensionalAnalyzerV2 {
     let sentimentResult = { sentiment: 'NEUTRAL', strength: 0 };
     if (timeframeSeconds >= 180) {
       sentimentResult = this.sentiment.analyze(ticks, scaleFactor, periodScaleFactor);
+    }
+
+    // 各指標のログ出力
+    console.log(`[V2] ────────────────────────────────────────────────────────`);
+    console.log(`[V2] 📊 各指標の計算結果:`);
+    console.log(`[V2]   MACD: signal=${macdResult.signal}, strength=${macdResult.strength.toFixed(2)}`);
+    console.log(`[V2]   ADX: adx=${adxResult.adx.toFixed(1)}, +DI=${adxResult.plusDI.toFixed(1)}, -DI=${adxResult.minusDI.toFixed(1)}`);
+    console.log(`[V2]   Stochastic: signal=${stochasticResult.signal}, K=${stochasticResult.k.toFixed(1)}, D=${stochasticResult.d.toFixed(1)}`);
+    console.log(`[V2]   ATR: strength=${atrResult.strength.toFixed(2)}, atr%=${atrResult.atrPercent.toFixed(4)}`);
+    console.log(`[V2]   ROC: signal=${rocResult.signal}, roc=${rocResult.roc.toFixed(4)}`);
+    if (timeframeSeconds >= 180) {
+      console.log(`[V2]   Sentiment: ${sentimentResult.sentiment}, strength=${sentimentResult.strength.toFixed(2)}`);
     }
 
     // 5. Phase別ロジックでスコア計算
@@ -1476,7 +1494,11 @@ class MultiDimensionalAnalyzerV2 {
     // 正規化
     const normalizedScore = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
 
-    console.log(`[Analyzer-V2] スコア計算: totalScore=${totalScore.toFixed(2)}, maxScore=${maxScore.toFixed(2)}, normalized=${normalizedScore.toFixed(2)}`);
+    console.log(`[V2] ────────────────────────────────────────────────────────`);
+    console.log(`[V2] 🧮 スコア計算:`);
+    console.log(`[V2]   Raw Score: ${totalScore.toFixed(2)} / Max: ${maxScore.toFixed(2)}`);
+    console.log(`[V2]   Normalized: ${normalizedScore.toFixed(2)}%`);
+    console.log(`[V2]   Phase乗数: ${phaseConfig.scoreMultiplier}x`);
 
     // 6. 閾値設定（仮想通貨の場合は調整）
     let thresholds = { ...config.thresholds };
@@ -1508,12 +1530,15 @@ class MultiDimensionalAnalyzerV2 {
 
     // 信頼度の下限チェック
     if (confidence !== null && confidence < thresholds.minConfidence) {
-      console.log(`[Analyzer-V2] 信頼度 ${Math.round(confidence)}% < 閾値 ${thresholds.minConfidence}% → NEUTRAL`);
+      console.log(`[V2]   ⚠️ 信頼度不足: ${Math.round(confidence)}% < ${thresholds.minConfidence}% → NEUTRAL`);
       signal = 'NEUTRAL';
       confidence = null;
     }
 
-    console.log(`[Analyzer-V2] シグナル判定: ${signal} (confidence: ${confidence !== null ? Math.round(confidence) + '%' : '--'})`);
+    console.log(`[V2] ────────────────────────────────────────────────────────`);
+    console.log(`[V2] 🎯 シグナル判定:`);
+    console.log(`[V2]   閾値: HIGH>${thresholds.highScore}, STRONG>${thresholds.strongScore}`);
+    console.log(`[V2]   判定: ${signal} (${confidence !== null ? Math.round(confidence) + '%' : '--'})`);
 
     // 8. 抵抗帯フィルター
     let finalSignal = signal;
@@ -1522,16 +1547,26 @@ class MultiDimensionalAnalyzerV2 {
 
     if (config.resistanceFilterEnabled && signal !== 'NEUTRAL') {
       const resistanceCheck = this.resistanceFilter.checkResistance(prices, candles, signal, timeframeSeconds);
+      console.log(`[V2] 🛡️ 抵抗帯フィルター: ${config.resistanceFilterEnabled ? '有効' : '無効'}`);
       if (resistanceCheck.blocked) {
-        console.log(`[Analyzer-V2] ⚠️ 抵抗帯フィルター発動: ${resistanceCheck.reason}`);
+        console.log(`[V2]   ⛔ ブロック: ${resistanceCheck.reason}`);
+        if (resistanceCheck.details) {
+          console.log(`[V2]   詳細: 現在価格=${resistanceCheck.details.currentPrice?.toFixed(5)}`);
+        }
         finalSignal = 'NEUTRAL';
         finalConfidence = null;
         resistanceBlocked = true;
+      } else {
+        console.log(`[V2]   ✅ 通過（抵抗帯なし）`);
       }
+    } else if (!config.resistanceFilterEnabled) {
+      console.log(`[V2] 🛡️ 抵抗帯フィルター: 無効（この時間枠では使用しない）`);
     }
 
-    console.log(`[Analyzer-V2] ✅ 最終結果: ${finalSignal} (${finalConfidence !== null ? Math.round(finalConfidence) + '%' : '--'})`);
-    console.log(`[Analyzer-V2] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`[V2] ════════════════════════════════════════════════════════`);
+    console.log(`[V2] ✅ 最終結果: ${finalSignal} ${finalConfidence !== null ? `(${Math.round(finalConfidence)}%)` : ''}`);
+    console.log(`[V2]    Phase: ${phaseResult.phase} | 方向: ${phaseResult.trendDirection} | スコア: ${normalizedScore.toFixed(1)}`);
+    console.log(`[V2] ════════════════════════════════════════════════════════\n`);
 
     return {
       signal: finalSignal,
