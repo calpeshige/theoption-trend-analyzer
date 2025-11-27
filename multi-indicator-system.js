@@ -988,6 +988,575 @@ class MultiDimensionalAnalyzer {
   }
 }
 
+// ========================================
+// 11. Phase Detector (TREND/RANGE環境認識)
+// ========================================
+
+class PhaseDetector {
+  /**
+   * ボリンジャーバンド拡張率とADXを組み合わせて
+   * 現在の市場がTREND相場かRANGE相場かを判定
+   */
+  detectPhase(candles, prices, timeframeSeconds) {
+    if (candles.length < 20 || prices.length < 20) {
+      return { phase: 'UNKNOWN', confidence: 0, details: {} };
+    }
+
+    // ボリンジャーバンド計算
+    const bbResult = this.calculateBollingerBands(prices, 20);
+
+    // BB拡張率（現在の幅 / 20期間平均幅）
+    const bbExpansionRate = bbResult.currentWidth / bbResult.avgWidth;
+
+    // 価格のBB内での位置（%B）
+    const percentB = (prices[prices.length - 1] - bbResult.lower) / (bbResult.upper - bbResult.lower);
+
+    // ADX計算（短期用に最適化）
+    const adxIndicator = new ADXIndicator();
+    const adxResult = adxIndicator.calculate(candles, timeframeSeconds);
+
+    // 時間枠に応じた閾値調整
+    let trendThreshold, rangeThreshold;
+    if (timeframeSeconds <= 30) {
+      // 超短期: BB拡張率を主に使用（ADXは参考程度）
+      trendThreshold = { bbExpansion: 1.2, adx: 15 };
+      rangeThreshold = { bbExpansion: 0.8, adx: 20 };
+    } else if (timeframeSeconds <= 60) {
+      // 短期: BB拡張率とADXを併用
+      trendThreshold = { bbExpansion: 1.3, adx: 20 };
+      rangeThreshold = { bbExpansion: 0.9, adx: 25 };
+    } else {
+      // 長期: ADXを主に使用
+      trendThreshold = { bbExpansion: 1.4, adx: 25 };
+      rangeThreshold = { bbExpansion: 1.0, adx: 20 };
+    }
+
+    // Phase判定
+    let phase, confidence;
+
+    if (timeframeSeconds <= 30) {
+      // 超短期はBB拡張率を重視
+      if (bbExpansionRate > trendThreshold.bbExpansion) {
+        phase = 'TREND';
+        confidence = Math.min(100, 60 + (bbExpansionRate - 1) * 40);
+      } else if (bbExpansionRate < rangeThreshold.bbExpansion) {
+        phase = 'RANGE';
+        confidence = Math.min(100, 60 + (1 - bbExpansionRate) * 40);
+      } else {
+        phase = 'TRANSITION';
+        confidence = 50;
+      }
+    } else {
+      // 長期はADXも考慮
+      const isTrendByBB = bbExpansionRate > trendThreshold.bbExpansion;
+      const isTrendByADX = adxResult.adx > trendThreshold.adx;
+      const isRangeByBB = bbExpansionRate < rangeThreshold.bbExpansion;
+      const isRangeByADX = adxResult.adx < rangeThreshold.adx;
+
+      if (isTrendByBB && isTrendByADX) {
+        phase = 'TREND';
+        confidence = Math.min(100, 70 + adxResult.adx / 2);
+      } else if (isRangeByBB && isRangeByADX) {
+        phase = 'RANGE';
+        confidence = Math.min(100, 70 + (rangeThreshold.adx - adxResult.adx));
+      } else if (isTrendByBB || isTrendByADX) {
+        phase = 'TREND';
+        confidence = 55;
+      } else {
+        phase = 'RANGE';
+        confidence = 55;
+      }
+    }
+
+    // トレンド方向の判定
+    let trendDirection = 'NEUTRAL';
+    if (phase === 'TREND') {
+      if (adxResult.plusDI > adxResult.minusDI && prices[prices.length - 1] > bbResult.middle) {
+        trendDirection = 'UP';
+      } else if (adxResult.minusDI > adxResult.plusDI && prices[prices.length - 1] < bbResult.middle) {
+        trendDirection = 'DOWN';
+      }
+    }
+
+    return {
+      phase,
+      confidence: Math.round(confidence),
+      trendDirection,
+      details: {
+        bbExpansionRate: Math.round(bbExpansionRate * 100) / 100,
+        percentB: Math.round(percentB * 100) / 100,
+        adx: Math.round(adxResult.adx * 10) / 10,
+        plusDI: Math.round(adxResult.plusDI * 10) / 10,
+        minusDI: Math.round(adxResult.minusDI * 10) / 10,
+        bbUpper: bbResult.upper,
+        bbMiddle: bbResult.middle,
+        bbLower: bbResult.lower
+      }
+    };
+  }
+
+  calculateBollingerBands(prices, period = 20, stdDevMultiplier = 2) {
+    if (prices.length < period) {
+      return { upper: 0, middle: 0, lower: 0, currentWidth: 0, avgWidth: 0 };
+    }
+
+    const recentPrices = prices.slice(-period);
+
+    // 中央線（SMA）
+    const middle = recentPrices.reduce((sum, p) => sum + p, 0) / period;
+
+    // 標準偏差
+    const squaredDiffs = recentPrices.map(p => Math.pow(p - middle, 2));
+    const variance = squaredDiffs.reduce((sum, d) => sum + d, 0) / period;
+    const stdDev = Math.sqrt(variance);
+
+    // 上下バンド
+    const upper = middle + stdDevMultiplier * stdDev;
+    const lower = middle - stdDevMultiplier * stdDev;
+    const currentWidth = upper - lower;
+
+    // 平均バンド幅（過去のバンド幅との比較用）
+    let avgWidth = currentWidth;
+    if (prices.length >= period * 2) {
+      const widths = [];
+      for (let i = period; i <= prices.length; i++) {
+        const slice = prices.slice(i - period, i);
+        const m = slice.reduce((s, p) => s + p, 0) / period;
+        const sd = Math.sqrt(slice.map(p => Math.pow(p - m, 2)).reduce((s, d) => s + d, 0) / period);
+        widths.push(sd * 2 * stdDevMultiplier);
+      }
+      avgWidth = widths.reduce((s, w) => s + w, 0) / widths.length;
+    }
+
+    return { upper, middle, lower, currentWidth, avgWidth };
+  }
+}
+
+// ========================================
+// 12. Resistance Filter (抵抗帯フィルター)
+// ========================================
+
+class ResistanceFilter {
+  /**
+   * 直近の高値/安値付近でのエントリーをフィルタリング
+   * 天井・底での逆張りリスクを回避
+   */
+  checkResistance(prices, candles, signal, timeframeSeconds) {
+    if (prices.length < 20 || candles.length < 20) {
+      return { blocked: false, reason: null };
+    }
+
+    const currentPrice = prices[prices.length - 1];
+
+    // 直近N期間の高値・安値を取得
+    const lookbackPeriod = Math.min(50, candles.length);
+    const recentCandles = candles.slice(-lookbackPeriod);
+
+    const highestHigh = Math.max(...recentCandles.map(c => c.high));
+    const lowestLow = Math.min(...recentCandles.map(c => c.low));
+    const priceRange = highestHigh - lowestLow;
+
+    // 抵抗帯の閾値（価格レンジの5%以内を抵抗帯とみなす）
+    const resistanceThreshold = priceRange * 0.05;
+
+    // 現在価格が高値/安値付近かチェック
+    const nearHighest = currentPrice >= (highestHigh - resistanceThreshold);
+    const nearLowest = currentPrice <= (lowestLow + resistanceThreshold);
+
+    // HIGHシグナルで天井付近 → ブロック
+    if ((signal === 'HIGH' || signal === 'STRONG_HIGH') && nearHighest) {
+      return {
+        blocked: true,
+        reason: 'NEAR_RESISTANCE',
+        details: {
+          currentPrice,
+          highestHigh,
+          distance: highestHigh - currentPrice,
+          threshold: resistanceThreshold
+        }
+      };
+    }
+
+    // LOWシグナルで底付近 → ブロック
+    if ((signal === 'LOW' || signal === 'STRONG_LOW') && nearLowest) {
+      return {
+        blocked: true,
+        reason: 'NEAR_SUPPORT',
+        details: {
+          currentPrice,
+          lowestLow,
+          distance: currentPrice - lowestLow,
+          threshold: resistanceThreshold
+        }
+      };
+    }
+
+    return { blocked: false, reason: null };
+  }
+}
+
+// ========================================
+// 13. Timeframe Config (時間枠別設定)
+// ========================================
+
+const TIMEFRAME_CONFIGS = {
+  15: {
+    name: '15秒',
+    // 指標の重み設定
+    weights: {
+      macd: 1.0,        // MACDは参考程度
+      adx: 0.5,         // ADXは15秒では信頼性低
+      stochastic: 1.5,  // ストキャスティクスは有効
+      atr: 1.0,
+      roc: 2.5,         // ROCを重視（短期の勢い）
+      sentiment: 0,     // センチメントは無効
+      bb: 2.0           // BB拡張率を重視
+    },
+    // シグナル閾値
+    thresholds: {
+      highScore: 20,      // HIGHシグナルの閾値
+      strongScore: 40,    // STRONG_HIGHの閾値
+      minConfidence: 55   // 最小信頼度
+    },
+    // Phase別の追加設定
+    phaseConfig: {
+      TREND: { scoreMultiplier: 1.2, confidenceBonus: 5 },
+      RANGE: { scoreMultiplier: 0.8, confidenceBonus: -5 }
+    },
+    // BB拡張率の閾値
+    bbExpansionThreshold: 1.2,
+    // 抵抗帯フィルター有効
+    resistanceFilterEnabled: true
+  },
+  30: {
+    name: '30秒',
+    weights: {
+      macd: 1.2,
+      adx: 0.8,
+      stochastic: 1.5,
+      atr: 1.0,
+      roc: 2.0,
+      sentiment: 0,     // センチメントは無効
+      bb: 1.8
+    },
+    thresholds: {
+      highScore: 18,
+      strongScore: 38,
+      minConfidence: 55
+    },
+    phaseConfig: {
+      TREND: { scoreMultiplier: 1.2, confidenceBonus: 5 },
+      RANGE: { scoreMultiplier: 0.85, confidenceBonus: -3 }
+    },
+    bbExpansionThreshold: 1.25,
+    resistanceFilterEnabled: true
+  },
+  60: {
+    name: '60秒',
+    weights: {
+      macd: 1.5,
+      adx: 1.2,
+      stochastic: 1.3,
+      atr: 1.0,
+      roc: 1.8,
+      sentiment: 0,     // センチメントは無効
+      bb: 1.5
+    },
+    thresholds: {
+      highScore: 15,
+      strongScore: 35,
+      minConfidence: 58
+    },
+    phaseConfig: {
+      TREND: { scoreMultiplier: 1.15, confidenceBonus: 5 },
+      RANGE: { scoreMultiplier: 0.9, confidenceBonus: 0 }
+    },
+    bbExpansionThreshold: 1.3,
+    resistanceFilterEnabled: true
+  },
+  180: {
+    name: '3分',
+    weights: {
+      macd: 2.0,
+      adx: 1.5,
+      stochastic: 1.2,
+      atr: 1.0,
+      roc: 1.5,
+      sentiment: 1.5,   // センチメント有効（長期）
+      bb: 1.2
+    },
+    thresholds: {
+      highScore: 12,
+      strongScore: 30,
+      minConfidence: 60
+    },
+    phaseConfig: {
+      TREND: { scoreMultiplier: 1.1, confidenceBonus: 8 },
+      RANGE: { scoreMultiplier: 0.95, confidenceBonus: 0 }
+    },
+    bbExpansionThreshold: 1.35,
+    resistanceFilterEnabled: true
+  },
+  300: {
+    name: '5分',
+    weights: {
+      macd: 2.0,
+      adx: 1.8,
+      stochastic: 1.0,
+      atr: 1.0,
+      roc: 1.2,
+      sentiment: 2.0,   // センチメント有効（長期）
+      bb: 1.0
+    },
+    thresholds: {
+      highScore: 10,
+      strongScore: 28,
+      minConfidence: 62
+    },
+    phaseConfig: {
+      TREND: { scoreMultiplier: 1.1, confidenceBonus: 10 },
+      RANGE: { scoreMultiplier: 1.0, confidenceBonus: 0 }
+    },
+    bbExpansionThreshold: 1.4,
+    resistanceFilterEnabled: true
+  }
+};
+
+// 仮想通貨用の追加調整
+const CRYPTO_ADJUSTMENTS = {
+  // 閾値を1.5倍に
+  thresholdMultiplier: 1.5,
+  // 信頼度の下限を上げる
+  minConfidenceBonus: 5,
+  // BB拡張率の閾値を緩和
+  bbExpansionMultiplier: 1.2
+};
+
+// ========================================
+// 14. Enhanced Multi-Dimensional Analyzer V2
+// ========================================
+
+class MultiDimensionalAnalyzerV2 {
+  constructor() {
+    this.macd = new MACDIndicator();
+    this.adx = new ADXIndicator();
+    this.stochastic = new StochasticIndicator();
+    this.atr = new ATRIndicator();
+    this.roc = new ROCIndicator();
+    this.sentiment = new MarketSentimentAnalyzer();
+    this.phaseDetector = new PhaseDetector();
+    this.resistanceFilter = new ResistanceFilter();
+
+    // 既存のアナライザー
+    this.timeframeTrendAnalyzer = new TimeframeTrendAnalyzer();
+    this.enhancedIndicatorCalculator = new EnhancedIndicatorCalculator();
+    this.multiScaleTrendAnalyzer = new MultiScaleTrendAnalyzer();
+  }
+
+  // 仮想通貨ペア判定
+  isCryptocurrencyPair(asset) {
+    if (!asset) return false;
+    const cryptoPrefixes = ['BTC', 'ETH', 'LTC', 'XRP', 'BCH', 'ADA', 'DOT', 'DOGE'];
+    return cryptoPrefixes.some(prefix => asset.startsWith(prefix));
+  }
+
+  // 時間枠に応じた感度調整係数
+  getScaleFactor(timeframeSeconds) {
+    if (timeframeSeconds <= 15) return 100;
+    if (timeframeSeconds <= 30) return 50;
+    if (timeframeSeconds <= 60) return 20;
+    if (timeframeSeconds <= 180) return 5;
+    return 1;
+  }
+
+  // 時間枠に応じた期間スケーリング係数
+  getPeriodScaleFactor(timeframeSeconds) {
+    if (timeframeSeconds <= 15) return 0.25;
+    if (timeframeSeconds <= 30) return 0.5;
+    if (timeframeSeconds <= 60) return 1.0;
+    if (timeframeSeconds <= 180) return 3.0;
+    return 5.0;
+  }
+
+  /**
+   * 新アーキテクチャによる分析
+   * 通貨タイプ → 時間枠設定 → Phase検出 → TREND/RANGEロジック → 抵抗帯フィルター → シグナル出力
+   */
+  analyzeV2(data, timeframeSeconds, asset = null) {
+    const { prices, candles, ticks } = data;
+
+    console.log(`[Analyzer-V2] ${timeframeSeconds}秒 🔍 新アーキテクチャ分析開始`);
+    console.log(`[Analyzer-V2] データ: prices=${prices.length}, candles=${candles.length}, ticks=${ticks.length}`);
+
+    // 1. 通貨タイプ判定
+    const isCrypto = this.isCryptocurrencyPair(asset);
+    console.log(`[Analyzer-V2] 通貨タイプ: ${isCrypto ? '🪙 仮想通貨' : '💴 法定通貨'} (${asset || 'unknown'})`);
+
+    // 2. 時間枠設定を取得
+    const config = TIMEFRAME_CONFIGS[timeframeSeconds] || TIMEFRAME_CONFIGS[60];
+    console.log(`[Analyzer-V2] 時間枠設定: ${config.name}`);
+
+    // 3. Phase検出（TREND/RANGE）
+    const phaseResult = this.phaseDetector.detectPhase(candles, prices, timeframeSeconds);
+    console.log(`[Analyzer-V2] Phase検出: ${phaseResult.phase} (信頼度: ${phaseResult.confidence}%, 方向: ${phaseResult.trendDirection})`);
+    console.log(`[Analyzer-V2] BB拡張率: ${phaseResult.details.bbExpansionRate}, ADX: ${phaseResult.details.adx}`);
+
+    // 4. 各指標を計算
+    const scaleFactor = this.getScaleFactor(timeframeSeconds);
+    const periodScaleFactor = this.getPeriodScaleFactor(timeframeSeconds);
+
+    const macdResult = this.macd.calculate(prices, scaleFactor, periodScaleFactor);
+    const adxResult = this.adx.calculate(candles, timeframeSeconds);
+    const stochasticResult = this.stochastic.calculate(candles, 14, periodScaleFactor);
+    const atrResult = this.atr.calculate(candles, 14, scaleFactor);
+    const rocResult = this.roc.calculate(prices, 10, scaleFactor, periodScaleFactor);
+
+    // センチメントは長期（180秒以上）のみ
+    let sentimentResult = { sentiment: 'NEUTRAL', strength: 0 };
+    if (timeframeSeconds >= 180) {
+      sentimentResult = this.sentiment.analyze(ticks, scaleFactor, periodScaleFactor);
+    }
+
+    // 5. Phase別ロジックでスコア計算
+    const weights = config.weights;
+    let totalScore = 0;
+    let maxScore = 0;
+
+    // MACD
+    totalScore += macdResult.strength * weights.macd;
+    maxScore += 10 * weights.macd;
+
+    // ADX（Phaseに応じて重み調整）
+    let adxWeight = weights.adx;
+    if (phaseResult.phase === 'TREND') {
+      adxWeight *= 1.5; // トレンド相場ではADXを重視
+    } else if (phaseResult.phase === 'RANGE') {
+      adxWeight *= 0.5; // レンジ相場ではADXを軽視
+    }
+    totalScore += adxResult.strength * adxWeight;
+    maxScore += 10 * adxWeight;
+
+    // Stochastic（レンジ相場で重視）
+    let stochWeight = weights.stochastic;
+    if (phaseResult.phase === 'RANGE') {
+      stochWeight *= 1.5;
+    }
+    totalScore += stochasticResult.strength * stochWeight;
+    maxScore += 10 * stochWeight;
+
+    // ATR
+    totalScore += atrResult.strength * weights.atr;
+    maxScore += 10 * weights.atr;
+
+    // ROC
+    totalScore += rocResult.strength * weights.roc;
+    maxScore += 10 * weights.roc;
+
+    // Sentiment（長期のみ）
+    if (timeframeSeconds >= 180) {
+      totalScore += sentimentResult.strength * weights.sentiment;
+      maxScore += 10 * weights.sentiment;
+    }
+
+    // BB拡張率ボーナス（トレンド相場で方向が一致する場合）
+    if (phaseResult.phase === 'TREND' && weights.bb > 0) {
+      const bbBonus = (phaseResult.details.bbExpansionRate - 1) * 10 * weights.bb;
+      if (phaseResult.trendDirection === 'UP') {
+        totalScore += bbBonus;
+      } else if (phaseResult.trendDirection === 'DOWN') {
+        totalScore -= bbBonus;
+      }
+      maxScore += 10 * weights.bb;
+    }
+
+    // Phase別スコア調整
+    const phaseConfig = config.phaseConfig[phaseResult.phase] || { scoreMultiplier: 1, confidenceBonus: 0 };
+    totalScore *= phaseConfig.scoreMultiplier;
+
+    // 正規化
+    const normalizedScore = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
+
+    console.log(`[Analyzer-V2] スコア計算: totalScore=${totalScore.toFixed(2)}, maxScore=${maxScore.toFixed(2)}, normalized=${normalizedScore.toFixed(2)}`);
+
+    // 6. 閾値設定（仮想通貨の場合は調整）
+    let thresholds = { ...config.thresholds };
+    if (isCrypto) {
+      thresholds.highScore *= CRYPTO_ADJUSTMENTS.thresholdMultiplier;
+      thresholds.strongScore *= CRYPTO_ADJUSTMENTS.thresholdMultiplier;
+      thresholds.minConfidence += CRYPTO_ADJUSTMENTS.minConfidenceBonus;
+    }
+
+    // 7. シグナル判定
+    let signal, confidence;
+
+    if (normalizedScore > thresholds.strongScore) {
+      signal = 'STRONG_HIGH';
+      confidence = Math.min(95, 70 + normalizedScore / 3 + phaseConfig.confidenceBonus);
+    } else if (normalizedScore > thresholds.highScore) {
+      signal = 'HIGH';
+      confidence = Math.min(85, 60 + normalizedScore / 4 + phaseConfig.confidenceBonus);
+    } else if (normalizedScore < -thresholds.strongScore) {
+      signal = 'STRONG_LOW';
+      confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3 + phaseConfig.confidenceBonus);
+    } else if (normalizedScore < -thresholds.highScore) {
+      signal = 'LOW';
+      confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4 + phaseConfig.confidenceBonus);
+    } else {
+      signal = 'NEUTRAL';
+      confidence = null;
+    }
+
+    // 信頼度の下限チェック
+    if (confidence !== null && confidence < thresholds.minConfidence) {
+      console.log(`[Analyzer-V2] 信頼度 ${Math.round(confidence)}% < 閾値 ${thresholds.minConfidence}% → NEUTRAL`);
+      signal = 'NEUTRAL';
+      confidence = null;
+    }
+
+    console.log(`[Analyzer-V2] シグナル判定: ${signal} (confidence: ${confidence !== null ? Math.round(confidence) + '%' : '--'})`);
+
+    // 8. 抵抗帯フィルター
+    let finalSignal = signal;
+    let finalConfidence = confidence;
+    let resistanceBlocked = false;
+
+    if (config.resistanceFilterEnabled && signal !== 'NEUTRAL') {
+      const resistanceCheck = this.resistanceFilter.checkResistance(prices, candles, signal, timeframeSeconds);
+      if (resistanceCheck.blocked) {
+        console.log(`[Analyzer-V2] ⚠️ 抵抗帯フィルター発動: ${resistanceCheck.reason}`);
+        finalSignal = 'NEUTRAL';
+        finalConfidence = null;
+        resistanceBlocked = true;
+      }
+    }
+
+    console.log(`[Analyzer-V2] ✅ 最終結果: ${finalSignal} (${finalConfidence !== null ? Math.round(finalConfidence) + '%' : '--'})`);
+    console.log(`[Analyzer-V2] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+    return {
+      signal: finalSignal,
+      confidence: finalConfidence !== null ? Math.round(finalConfidence) : null,
+      score: Math.round(normalizedScore),
+      timeframe: timeframeSeconds,
+      phase: phaseResult.phase,
+      phaseConfidence: phaseResult.confidence,
+      trendDirection: phaseResult.trendDirection,
+      resistanceBlocked,
+      breakdown: {
+        macd: macdResult,
+        adx: adxResult,
+        stochastic: stochasticResult,
+        atr: atrResult,
+        roc: rocResult,
+        sentiment: sentimentResult,
+        phase: phaseResult,
+        weights: weights,
+        thresholds: thresholds
+      }
+    };
+  }
+}
+
 // グローバルスコープに公開
 if (typeof window !== 'undefined') {
   window.MultiDimensionalAnalyzer = MultiDimensionalAnalyzer;
@@ -1002,4 +1571,11 @@ if (typeof window !== 'undefined') {
   window.TimeframeTrendAnalyzer = TimeframeTrendAnalyzer;
   window.EnhancedIndicatorCalculator = EnhancedIndicatorCalculator;
   window.MultiScaleTrendAnalyzer = MultiScaleTrendAnalyzer;
+
+  // 🆕 V2アーキテクチャ
+  window.PhaseDetector = PhaseDetector;
+  window.ResistanceFilter = ResistanceFilter;
+  window.MultiDimensionalAnalyzerV2 = MultiDimensionalAnalyzerV2;
+  window.TIMEFRAME_CONFIGS = TIMEFRAME_CONFIGS;
+  window.CRYPTO_ADJUSTMENTS = CRYPTO_ADJUSTMENTS;
 }
