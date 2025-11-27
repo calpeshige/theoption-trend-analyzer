@@ -336,17 +336,6 @@ setTimeout(() => {
   // 表示設定
   let fontSize = 'medium';    // デフォルト: 中サイズ
 
-  // トレンド強度フィルター設定
-  let trendStrengthFilter = 'medium';  // デフォルト: 普通 (>4)
-
-  // トレンド強度の閾値マッピング
-  const trendStrengthThresholds = {
-    weak: 3,       // 弱い: trendConfidence > 3
-    medium: 4,     // 普通: trendConfidence > 4
-    strong: 5,     // 強い: trendConfidence > 5
-    strongest: 7   // 最強: trendConfidence > 7
-  };
-
   /**
    * アラート音を鳴らす（選択したサウンドファイルを再生）
    */
@@ -1088,9 +1077,7 @@ setTimeout(() => {
         // 設定変更を適用
         console.log('[TheOption Analyzer] 設定変更:', message.key, '=', message.value);
 
-        if (message.key === 'trendStrengthFilter') {
-          trendStrengthFilter = message.value;
-        } else if (message.key === 'similarityThreshold') {
+        if (message.key === 'similarityThreshold') {
           currentSimilarityThreshold = message.value;
           // ML予測を再実行
           rerunMLPrediction();
@@ -1295,17 +1282,6 @@ setTimeout(() => {
       } else {
         chrome.storage.local.set({ fontSize: fontSize });
         console.log(`[TheOption Analyzer] フォントサイズ設定をデフォルト値に設定: ${fontSize}`);
-      }
-    });
-
-    // 保存されたトレンド強度フィルター設定を復元
-    chrome.storage.local.get(['trendStrengthFilter'], (result) => {
-      if (result.trendStrengthFilter !== undefined) {
-        trendStrengthFilter = result.trendStrengthFilter;
-        console.log(`[TheOption Analyzer] トレンド強度フィルター設定を復元: ${trendStrengthFilter} (閾値: ${trendStrengthThresholds[trendStrengthFilter]})`);
-      } else {
-        chrome.storage.local.set({ trendStrengthFilter: trendStrengthFilter });
-        console.log(`[TheOption Analyzer] トレンド強度フィルター設定をデフォルト値に設定: ${trendStrengthFilter}`);
       }
     });
 
@@ -2040,12 +2016,12 @@ setTimeout(() => {
           ticks: relevantTicks
         }, 60, currentAsset);
       } else {
-        const threshold = trendStrengthThresholds[trendStrengthFilter];
+        // V2が利用できない場合のフォールバック（デフォルト閾値5を使用）
         multiDimResult = multiDimAnalyzer.analyzeTimeframe({
           prices: relevantPrices,
           candles: candles,
           ticks: relevantTicks
-        }, 60, currentAsset, threshold);
+        }, 60, currentAsset, 5);
       }
     } catch (error) {
       console.error('[TheOption Analyzer] 多次元分析エラー:', error);
@@ -2194,13 +2170,12 @@ setTimeout(() => {
           resistanceBlocked: multiDimResult.resistanceBlocked
         });
       } else {
-        // レガシーアナライザーの場合（後方互換性）
-        const threshold = trendStrengthThresholds[trendStrengthFilter];
+        // レガシーアナライザーの場合（後方互換性、デフォルト閾値5を使用）
         multiDimResult = multiDimAnalyzer.analyzeTimeframe({
           prices: relevantPrices,
           candles: candles,
           ticks: relevantTicks
-        }, targetTimeframe, currentAsset, threshold);
+        }, targetTimeframe, currentAsset, 5);
         console.log(`[TheOption Analyzer] ${config.label} 多次元分析完了:`, multiDimResult);
       }
     } catch (error) {

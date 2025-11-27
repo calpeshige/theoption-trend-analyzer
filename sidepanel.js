@@ -18,7 +18,6 @@ let currentSettings = {
   alertSoundType: '01',
   volume: 'medium',
   fontSize: 'medium',
-  trendStrength: 'medium',
   similarityThreshold: 70,
   dataLimit: 'all'
 };
@@ -87,7 +86,7 @@ function listenForStorageChanges() {
 
 // 設定読み込み
 function loadSettings() {
-  chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'trendStrengthFilter', 'similarityThreshold', 'dataLimit'], (result) => {
+  chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit'], (result) => {
     if (result.alertSoundEnabled !== undefined) {
       currentSettings.alertSound = result.alertSoundEnabled;
       const toggle = document.getElementById('alert-sound-toggle');
@@ -105,10 +104,6 @@ function loadSettings() {
       currentSettings.fontSize = result.fontSize;
       document.getElementById('font-size-select').value = result.fontSize;
       applyFontSize(result.fontSize);
-    }
-    if (result.trendStrengthFilter) {
-      currentSettings.trendStrength = result.trendStrengthFilter;
-      document.getElementById('trend-strength-select').value = result.trendStrengthFilter;
     }
     if (result.similarityThreshold) {
       currentSettings.similarityThreshold = result.similarityThreshold;
@@ -168,13 +163,6 @@ function setupEventListeners() {
     currentSettings.fontSize = e.target.value;
     applyFontSize(e.target.value);
     chrome.storage.local.set({ fontSize: e.target.value });
-  });
-
-  // トレンド強度フィルター
-  document.getElementById('trend-strength-select').addEventListener('change', (e) => {
-    currentSettings.trendStrength = e.target.value;
-    chrome.storage.local.set({ trendStrengthFilter: e.target.value });
-    notifySettingChange('trendStrengthFilter', e.target.value);
   });
 
   // 時間枠チップ
