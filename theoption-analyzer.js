@@ -1157,13 +1157,10 @@ setTimeout(() => {
     // LocalStorageから履歴データを復元
     loadHistoryFromStorage();
 
-    // 多次元分析システム初期化（V2アーキテクチャを優先使用）
-    if (typeof MultiDimensionalAnalyzerV2 !== 'undefined') {
-      multiDimAnalyzer = new MultiDimensionalAnalyzerV2();
-      console.log('[TheOption Analyzer] ✅ 多次元分析システムV2初期化完了（新アーキテクチャ）');
-    } else if (typeof MultiDimensionalAnalyzer !== 'undefined') {
+    // 多次元分析システム初期化
+    if (typeof MultiDimensionalAnalyzer !== 'undefined') {
       multiDimAnalyzer = new MultiDimensionalAnalyzer();
-      console.log('[TheOption Analyzer] ✅ 多次元分析システム初期化完了（レガシー）');
+      console.log('[TheOption Analyzer] ✅ 多次元分析システム初期化完了');
     } else {
       console.error('[TheOption Analyzer] ❌ MultiDimensionalAnalyzerが見つかりません');
       return;
@@ -2030,23 +2027,15 @@ setTimeout(() => {
       return;
     }
 
-    // 多次元分析（代表として60秒を使用、V2アーキテクチャ対応）
+    // 多次元分析（代表として60秒を使用）
     let multiDimResult;
     try {
-      if (multiDimAnalyzer.analyzeV2) {
-        multiDimResult = multiDimAnalyzer.analyzeV2({
-          prices: relevantPrices,
-          candles: candles,
-          ticks: relevantTicks
-        }, 60, currentAsset);
-      } else {
-        const threshold = trendStrengthThresholds[trendStrengthFilter];
-        multiDimResult = multiDimAnalyzer.analyzeTimeframe({
-          prices: relevantPrices,
-          candles: candles,
-          ticks: relevantTicks
-        }, 60, currentAsset, threshold);
-      }
+      const threshold = trendStrengthThresholds[trendStrengthFilter];
+      multiDimResult = multiDimAnalyzer.analyzeTimeframe({
+        prices: relevantPrices,
+        candles: candles,
+        ticks: relevantTicks
+      }, 60, currentAsset, threshold);
     } catch (error) {
       console.error('[TheOption Analyzer] 多次元分析エラー:', error);
       return;
@@ -2176,33 +2165,16 @@ setTimeout(() => {
 
     console.log('[TheOption Analyzer] ローソク足生成完了:', candles.length);
 
-    // 多次元分析（V2アーキテクチャを優先使用）
+    // 多次元分析（時間枠別の重み付けを使用）
     let multiDimResult;
     try {
-      // V2アナライザーの場合はanalyzeV2を使用
-      if (multiDimAnalyzer.analyzeV2) {
-        multiDimResult = multiDimAnalyzer.analyzeV2({
-          prices: relevantPrices,
-          candles: candles,
-          ticks: relevantTicks
-        }, targetTimeframe, currentAsset);
-        console.log(`[TheOption Analyzer] ${config.label} V2多次元分析完了:`, {
-          signal: multiDimResult.signal,
-          confidence: multiDimResult.confidence,
-          phase: multiDimResult.phase,
-          trendDirection: multiDimResult.trendDirection,
-          resistanceBlocked: multiDimResult.resistanceBlocked
-        });
-      } else {
-        // レガシーアナライザーの場合（後方互換性）
-        const threshold = trendStrengthThresholds[trendStrengthFilter];
-        multiDimResult = multiDimAnalyzer.analyzeTimeframe({
-          prices: relevantPrices,
-          candles: candles,
-          ticks: relevantTicks
-        }, targetTimeframe, currentAsset, threshold);
-        console.log(`[TheOption Analyzer] ${config.label} 多次元分析完了:`, multiDimResult);
-      }
+      const threshold = trendStrengthThresholds[trendStrengthFilter];
+      multiDimResult = multiDimAnalyzer.analyzeTimeframe({
+        prices: relevantPrices,
+        candles: candles,
+        ticks: relevantTicks
+      }, targetTimeframe, currentAsset, threshold);
+      console.log(`[TheOption Analyzer] ${config.label} 多次元分析完了:`, multiDimResult);
     } catch (error) {
       console.error(`[TheOption Analyzer] ${config.label} 多次元分析エラー:`, error);
       return;
