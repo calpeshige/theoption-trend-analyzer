@@ -2161,7 +2161,9 @@ setTimeout(() => {
     let multiDimResult;
     try {
       // V2アナライザーの場合はanalyzeV2を使用
+      console.log(`[TheOption Analyzer] 🔄 analyzeV2メソッド存在確認: ${!!multiDimAnalyzer.analyzeV2}`);
       if (multiDimAnalyzer.analyzeV2) {
+        console.log(`[TheOption Analyzer] 📡 V2分析呼び出し開始 - ${config.label}`);
         multiDimResult = multiDimAnalyzer.analyzeV2({
           prices: relevantPrices,
           candles: candles,
