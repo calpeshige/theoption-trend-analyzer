@@ -941,7 +941,7 @@ class MachineLearningSystem {
   startCollecting(marketData, indicators) {
     const system = this.getCurrentSystem();
     if (!system) {
-      console.warn('[ML] データ収集失敗: システムが初期化されていません');
+      // 初期化前は静かにスキップ（タイミングの問題で初期化完了前に呼ばれることがある）
       return null;
     }
 

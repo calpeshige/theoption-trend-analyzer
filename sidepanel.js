@@ -43,6 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   listenForAnalysisUpdates();
   listenForStorageChanges();
+
+  // 初期状態でシグナルカードを「準備中」にする
+  resetSignalCardsToWaiting();
+
   requestAnalysisData();
 
   // 初期データ取得
@@ -258,6 +262,8 @@ function applyFontSize(size) {
 // 時間枠選択
 function selectTimeframe(timeframe) {
   currentTimeframe = timeframe;
+  // 時間枠に応じてカウントダウンの最大値をリセット
+  lastCountdownTotal = timeframe;
 
   document.querySelectorAll('.timeframe-chip').forEach(chip => {
     chip.classList.toggle('active', parseInt(chip.dataset.timeframe) === timeframe);
@@ -265,11 +271,15 @@ function selectTimeframe(timeframe) {
 
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: timeframe });
 
-  // 時間枠切替時は一旦リセットしてから新しいデータを表示
+  // 時間枠切替時はシグナルカードを「準備中」にリセット
+  // 実際のシグナル表示は次のSTATUS_UPDATEで適切なタイミング（prepTime以内）に更新される
+  resetSignalCardsToWaiting();
+
+  // 詳細カードを更新
   if (latestAnalysisData) {
     updateDisplay(latestAnalysisData);
   } else {
-    // データがない場合はリセット状態を表示
+    // データがない場合は完全リセット
     resetSignalCards();
   }
 }
@@ -383,6 +393,93 @@ function resetSignalCards() {
   lastAISignal = { signal: null, similarity: null, available: null };
 }
 
+// シグナルカードを「準備中」状態にリセット（詳細カードはそのまま）
+function resetSignalCardsToWaiting() {
+  // テクニカル分析シグナルカードを準備中に
+  const techCardEl = document.getElementById('tech-signal-card');
+  const techIconEl = document.getElementById('tech-signal-icon');
+  const techLabelEl = document.getElementById('tech-signal-label');
+  const techConfidenceEl = document.getElementById('tech-signal-confidence');
+  if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
+  if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
+  if (techLabelEl) techLabelEl.textContent = '準備中';
+  if (techConfidenceEl) techConfidenceEl.textContent = '--';
+
+  // AI予測シグナルカードを準備中に
+  const aiCardEl = document.getElementById('ai-signal-card');
+  const aiIconEl = document.getElementById('ai-signal-icon');
+  const aiLabelEl = document.getElementById('ai-signal-label');
+  const aiConfidenceEl = document.getElementById('ai-signal-confidence');
+  if (aiIconEl) aiIconEl.setAttribute('data-signal', 'wait');
+  if (aiCardEl) aiCardEl.setAttribute('data-signal-type', 'wait');
+  if (aiLabelEl) aiLabelEl.textContent = '準備中';
+  if (aiConfidenceEl) aiConfidenceEl.textContent = '--';
+}
+
+// STATUS_UPDATEのcurrentSignalからシグナルカードを更新
+function updateSignalCardsFromStatus(signal) {
+  if (!signal) return;
+
+  // テクニカル分析シグナルカード更新
+  const techCardEl = document.getElementById('tech-signal-card');
+  const techIconEl = document.getElementById('tech-signal-icon');
+  const techLabelEl = document.getElementById('tech-signal-label');
+  const techConfidenceEl = document.getElementById('tech-signal-confidence');
+
+  if (techIconEl && techLabelEl && techConfidenceEl) {
+    let dataSignal = 'wait';
+    let label = '見送り';
+    let confidence = '';
+
+    if (signal.tech === 'HIGH' || signal.tech === 'STRONG_HIGH') {
+      dataSignal = 'high';
+      label = 'HIGH';
+      confidence = signal.techConfidence ? `${Math.round(signal.techConfidence)}%` : '';
+    } else if (signal.tech === 'LOW' || signal.tech === 'STRONG_LOW') {
+      dataSignal = 'low';
+      label = 'LOW';
+      confidence = signal.techConfidence ? `${Math.round(signal.techConfidence)}%` : '';
+    }
+
+    techIconEl.setAttribute('data-signal', dataSignal);
+    techLabelEl.textContent = label;
+    techConfidenceEl.textContent = confidence;
+    if (techCardEl) techCardEl.setAttribute('data-signal-type', dataSignal);
+  }
+
+  // AI予測シグナルカード更新
+  const aiCardEl = document.getElementById('ai-signal-card');
+  const aiIconEl = document.getElementById('ai-signal-icon');
+  const aiLabelEl = document.getElementById('ai-signal-label');
+  const aiConfidenceEl = document.getElementById('ai-signal-confidence');
+
+  if (aiIconEl && aiLabelEl && aiConfidenceEl) {
+    let dataSignal = 'wait';
+    let label = '学習中';
+    let confidence = '';
+
+    if (signal.ai === 'HIGH') {
+      dataSignal = 'high';
+      label = 'HIGH';
+      confidence = signal.aiConfidence ? `${Math.round(signal.aiConfidence)}%` : '';
+    } else if (signal.ai === 'LOW') {
+      dataSignal = 'low';
+      label = 'LOW';
+      confidence = signal.aiConfidence ? `${Math.round(signal.aiConfidence)}%` : '';
+    } else if (signal.ai) {
+      // AIシグナルがあるが HIGH/LOW 以外の場合
+      dataSignal = 'wait';
+      label = '見送り';
+      confidence = '';
+    }
+
+    aiIconEl.setAttribute('data-signal', dataSignal);
+    aiLabelEl.textContent = label;
+    aiConfidenceEl.textContent = confidence;
+    if (aiCardEl) aiCardEl.setAttribute('data-signal-type', dataSignal);
+  }
+}
+
 // 円形プログレスリングの周長（2 * π * r = 2 * π * 26 ≈ 163.36）
 const RING_CIRCUMFERENCE = 163.36;
 let lastCountdownTotal = 60; // 直近の合計秒数を記憶
@@ -428,9 +525,11 @@ function updateRealtimeStatus(data) {
     const tradingRemaining = data.tradingRemaining || 0;
     const tradingDuration = data.tradingDuration || currentTimeframe;
 
-    // カウントダウンの最大値を更新（新しいサイクル開始時）
-    if (countdown > lastCountdownTotal) {
-      lastCountdownTotal = countdown;
+    // カウントダウンの最大値を更新
+    // 取引終了（signalReset）時または新しいサイクル開始時にリセット
+    if (data.signalReset || countdown > lastCountdownTotal) {
+      // 時間枠に応じた最大値を設定
+      lastCountdownTotal = currentTimeframe;
     }
     // 取引中の場合は取引時間を使用
     const totalForRing = isTrading ? tradingDuration : lastCountdownTotal;
@@ -455,6 +554,10 @@ function updateRealtimeStatus(data) {
         countdownContainer.classList.add('phase-trading');
       }
       if (countdownLabel) countdownLabel.textContent = '取引中';
+      // 取引中はシグナルカードを表示（保存されたシグナルを使用）
+      if (signal) {
+        updateSignalCardsFromStatus(signal);
+      }
     } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
       // 準備：シグナルがあり、残り5秒以内
       nextAnalysisEl.textContent = countdown;
@@ -463,6 +566,10 @@ function updateRealtimeStatus(data) {
         countdownContainer.classList.add('phase-ready');
       }
       if (countdownLabel) countdownLabel.textContent = '準備';
+      // 準備フェーズでシグナルカードを表示
+      if (signal) {
+        updateSignalCardsFromStatus(signal);
+      }
     } else {
       // 分析中：デフォルト状態
       nextAnalysisEl.textContent = countdown;
@@ -471,6 +578,8 @@ function updateRealtimeStatus(data) {
         countdownContainer.classList.add('phase-analyzing');
       }
       if (countdownLabel) countdownLabel.textContent = '分析中';
+      // 分析中はシグナルカードを「準備中」にリセット
+      resetSignalCardsToWaiting();
     }
 
     // プログレスリング更新
@@ -521,9 +630,13 @@ function updateDisplay(data) {
   });
 
   if (timeframeData) {
-    updateDualSignals(timeframeData);
+    // シグナルカードは常に「準備中」として表示
+    // 実際のシグナル表示は updateRealtimeStatus で prepTime 以内の時のみ行う
+    // ここでは詳細カード（テクニカル分析詳細、AI予測詳細）のみ更新
     updateTechnicalCard(timeframeData.technical);
     updateAICard(timeframeData.ai);
+    // シグナルカードは準備中状態を維持（updateRealtimeStatusで適切なタイミングで更新される）
+    console.log('[SidePanel] 詳細カードのみ更新（シグナルカードは準備中を維持）');
   } else {
     // 選択した時間枠のデータがない場合はカードをリセット
     console.log('[SidePanel] 時間枠のデータなし - カードをリセット');

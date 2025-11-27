@@ -381,14 +381,10 @@ setTimeout(() => {
   function checkExtensionContext() {
     if (!chrome.runtime?.id && !contextInvalidated) {
       contextInvalidated = true;
-      console.warn('[TheOption Analyzer] ⚠️ 拡張機能のコンテキストが無効化されました');
-      console.warn('[TheOption Analyzer] 🔄 5秒後に自動的にページをリロードします...');
-
-      // オーバーレイ削除のため、UI警告表示は行わない
+      // コンテキスト無効化を検出 → 静かに自動リロード（ユーザーへの警告は不要）
 
       // 5秒後に自動リロード
       setTimeout(() => {
-        console.log('[TheOption Analyzer] 🔄 ページをリロードします');
         window.location.reload();
       }, 5000);
 
@@ -452,7 +448,8 @@ setTimeout(() => {
     startTime: 0,            // 取引開始時刻（ms）
     duration: 0,             // 判定時間（秒）
     remainingTime: 0,        // 取引残り時間（秒）
-    timeframe: 0             // 取引を開始した時間枠
+    timeframe: 0,            // 取引を開始した時間枠
+    signal: null             // 取引開始時のシグナル（取引中に保持）
   };
 
   // 事前計算されたMLデータ（全判定時間のデータを15秒ごとに1回だけ計算）
@@ -844,24 +841,34 @@ setTimeout(() => {
       }
 
       // 現在のシグナルを取得
+      // 取引中は保存されたシグナルを使用（UIの操作でシグナルが消えるバグを防止）
       let currentSignal = null;
-      const currentResult = timeframeResults[currentTimeframe];
-      if (currentResult && currentResult.multiDim) {
-        const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml);
-        // signals.technical.signal は 'HIGH', 'LOW', 'NEUTRAL' など
-        // signals.ai.available が true なら signals.ai.signal が 'HIGH', 'LOW' など
-        currentSignal = {
-          tech: signals.technical ? signals.technical.signal : null,
-          techConfidence: signals.technical ? signals.technical.confidence : null,
-          ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
-          aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null
-        };
+      const isTradingForCurrentTimeframe = tradingState.isTrading && tradingState.timeframe === currentTimeframe;
+
+      if (isTradingForCurrentTimeframe && tradingState.signal) {
+        // 取引中は保存されたシグナルを使用
+        currentSignal = tradingState.signal;
+      } else {
+        // 通常時は timeframeResults から取得
+        const currentResult = timeframeResults[currentTimeframe];
+        if (currentResult && currentResult.multiDim) {
+          const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml);
+          // signals.technical.signal は 'HIGH', 'LOW', 'NEUTRAL' など
+          // signals.ai.available が true なら signals.ai.signal が 'HIGH', 'LOW' など
+          currentSignal = {
+            tech: signals.technical ? signals.technical.signal : null,
+            techConfidence: signals.technical ? signals.technical.confidence : null,
+            ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
+            aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null
+          };
+        }
       }
 
       const prepTime = config.prepTime || 5;
 
       // 取引中の場合は残り時間を計算
       let signalReset = false;
+      let tradingStatusUpdated = isTradingForCurrentTimeframe;  // 取引状態の更新後の値を保持
       if (tradingState.isTrading) {
         const elapsed = Math.floor((Date.now() - tradingState.startTime) / 1000);
         tradingState.remainingTime = Math.max(0, tradingState.duration - elapsed);
@@ -871,19 +878,19 @@ setTimeout(() => {
           const tradingTimeframe = tradingState.timeframe;  // 取引していた時間枠を保存
           tradingState.isTrading = false;
           tradingState.remainingTime = 0;
+          tradingState.signal = null;  // 保存されたシグナルもクリア
+          tradingStatusUpdated = false;  // 取引終了を反映
           // シグナルリセットは取引していた時間枠が現在の時間枠と一致する場合のみ
           if (tradingTimeframe === currentTimeframe) {
             signalReset = true;  // シグナルリセットフラグを設定
           }
           // 分析結果をクリア（取引していた時間枠の結果をクリア）
           timeframeResults[tradingTimeframe] = null;
-          console.log(`[TheOption Analyzer] 🔄 取引終了: ${tradingTimeframe}秒のシグナルをリセット`);
+          console.log(`[TheOption Analyzer] 🔄 取引終了: ${tradingTimeframe}秒のシグナルをリセット (現在の時間枠: ${currentTimeframe}秒, countdown: ${countdown})`);
         }
       }
 
       // 取引終了後はシグナルをnullにする
-      // 現在選択中の時間枠が取引中の時間枠と一致する場合のみ取引状態を表示
-      const isTradingForCurrentTimeframe = tradingState.isTrading && tradingState.timeframe === currentTimeframe;
       const statusData = {
         asset: currentAsset,
         dataCount: priceHistory.length,
@@ -891,8 +898,8 @@ setTimeout(() => {
         prepTime: prepTime,                // 準備時間（5秒）
         currentSignal: signalReset ? null : currentSignal,  // リセット時はnull
         signalReset: signalReset,          // シグナルリセットフラグ
-        isTrading: isTradingForCurrentTimeframe, // 取引中かどうか（現在の時間枠と一致する場合のみ）
-        tradingRemaining: isTradingForCurrentTimeframe ? tradingState.remainingTime : 0,  // 取引残り時間
+        isTrading: tradingStatusUpdated,   // 取引中かどうか（更新後の状態を使用）
+        tradingRemaining: tradingStatusUpdated ? tradingState.remainingTime : 0,  // 取引残り時間
         techProgress: techProgress,
         aiProgress: aiProgress,
         currentTimeframe: currentTimeframe,
@@ -1932,7 +1939,17 @@ setTimeout(() => {
                 tradingState.duration = currentTimeframe;
                 tradingState.remainingTime = currentTimeframe;
                 tradingState.timeframe = currentTimeframe;
+                // 取引開始時のシグナルを保存（取引中に保持するため）
+                tradingState.signal = {
+                  tech: techSignal,
+                  techConfidence: signals.technical ? signals.technical.confidence : null,
+                  ai: aiSignal,
+                  aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null
+                };
                 console.log(`[TheOption Analyzer] 🎯 取引開始: ${currentTimeframe}秒判定 (シグナル: tech=${techSignal}, ai=${aiSignal})`);
+                // エントリータイミング（0秒）でアラート音を再生（2回目）
+                console.log(`[TheOption Analyzer] 🔔 エントリータイミング: アラート音を再生`);
+                playAlertSound();
               } else {
                 console.log(`[TheOption Analyzer] ⏭️ 見送り: シグナルなし (tech=${techSignal}, ai=${aiSignal})`);
               }
@@ -2355,6 +2372,19 @@ setTimeout(() => {
       timestamp: Date.now()
     };
     console.log(`[TheOption Analyzer] ✅ ${config.label}の分析結果をキャッシュに保存しました`);
+
+    // シグナルが出た場合（HIGH/LOW）にアラート音を鳴らす（選択中の時間枠のみ）
+    if (targetTimeframe === currentTimeframe && !isTabSwitch) {
+      const techSignal = multiDimResult?.signal;
+      const aiSignal = mlPredictions?.predictions?.[targetTimeframe]?.signal;
+      const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
+      const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW';
+
+      if (hasTechSignal || hasAISignal) {
+        console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal}, AI=${aiSignal} - アラート音を再生`);
+        playAlertSound();
+      }
+    }
 
     // サイドパネルにデータを送信
     sendAnalysisToSidePanel();
