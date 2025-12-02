@@ -3,6 +3,12 @@
  * Professional Trading Interface
  */
 
+// デバッグモード（本番ではfalse）
+const DEBUG_MODE = false;
+
+// デバッグ用ログ関数
+const debugLog = DEBUG_MODE ? console.log.bind(console) : () => {};
+
 // 時間枠設定
 const TIMEFRAME_CONFIGS = {
   15: { label: '15秒', interval: 5000, dataWindow: 30000 },
@@ -36,7 +42,7 @@ let highestMLDataCount = 0;
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('[SidePanel] Material Design 3 インターフェース初期化');
+  debugLog('[SidePanel] Material Design 3 インターフェース初期化');
 
   loadSettings();
   setupEventListeners();
@@ -223,7 +229,7 @@ function closeDownload() {
 
 // ダウンロードリクエスト
 function requestDownload(type) {
-  console.log('[SidePanel] ダウンロードリクエスト:', type);
+  debugLog('[SidePanel] ダウンロードリクエスト:', type);
   chrome.runtime.sendMessage({ type: 'REQUEST_DOWNLOAD', downloadType: type });
   closeDownload();
 }
@@ -335,7 +341,7 @@ function listenForAnalysisUpdates() {
 
 // シグナルカードをリセット（取引終了時）
 function resetSignalCards() {
-  console.log('[SidePanel] シグナルカードをリセット');
+  debugLog('[SidePanel] シグナルカードをリセット');
 
   // テクニカル分析シグナルカードをリセット
   const techCardEl = document.getElementById('tech-signal-card');
@@ -591,7 +597,7 @@ function requestAnalysisData() {
   chrome.runtime.sendMessage({ type: 'GET_ANALYSIS_DATA' }, (response) => {
     // chrome.runtime.lastError をチェックしてエラーを抑制
     if (chrome.runtime.lastError) {
-      console.log('[SidePanel] メッセージ送信エラー（無視可能）:', chrome.runtime.lastError.message);
+      debugLog('[SidePanel] メッセージ送信エラー（無視可能）:', chrome.runtime.lastError.message);
       return;
     }
     if (response) {
@@ -615,8 +621,7 @@ function updateDisplay(data) {
 
   const timeframeData = data.timeframes ? data.timeframes[currentTimeframe] : null;
 
-  // デバッグログ
-  console.log('[SidePanel] 受信データ:', {
+  debugLog('[SidePanel] 受信データ:', {
     timeframe: currentTimeframe,
     hasTimeframeData: !!timeframeData,
     aiData: timeframeData?.ai,
@@ -629,11 +634,9 @@ function updateDisplay(data) {
     // ここでは詳細カード（テクニカル分析詳細、AI予測詳細）のみ更新
     updateTechnicalCard(timeframeData.technical);
     updateAICard(timeframeData.ai);
-    // シグナルカードは準備中状態を維持（updateRealtimeStatusで適切なタイミングで更新される）
-    console.log('[SidePanel] 詳細カードのみ更新（シグナルカードは準備中を維持）');
+    debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
-    // 選択した時間枠のデータがない場合はカードをリセット
-    console.log('[SidePanel] 時間枠のデータなし - カードをリセット');
+    debugLog('[SidePanel] 時間枠のデータなし - カードをリセット');
     resetSignalCards();
   }
 
@@ -710,8 +713,7 @@ function updateAISignalCard(ai) {
 
   if (!iconEl || !labelEl || !confidenceEl) return;
 
-  // デバッグログ
-  console.log('[SidePanel] AI予測データ:', ai);
+  debugLog('[SidePanel] AI予測データ:', ai);
 
   const available = ai ? ai.available : false;
   const status = ai ? ai.status : null;
@@ -1180,8 +1182,8 @@ function playAlertSound(soundType, volume) {
   audio.volume = volumeLevels[volume] || 0.6;
 
   audio.play().catch(err => {
-    console.warn('[SidePanel] アラート音再生エラー:', err);
+    debugLog('[SidePanel] アラート音再生エラー:', err);
   });
 }
 
-console.log('[SidePanel] Material Design 3 スクリプト読み込み完了');
+debugLog('[SidePanel] Material Design 3 スクリプト読み込み完了');

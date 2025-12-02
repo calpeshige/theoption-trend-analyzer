@@ -3,6 +3,10 @@
  * サイドパネルの制御とコンテンツスクリプトとの通信を担当
  */
 
+// デバッグモード（本番ではfalse）
+const DEBUG_MODE = false;
+const debugLog = DEBUG_MODE ? console.log.bind(console) : () => {};
+
 // 最新の分析データをキャッシュ
 let cachedAnalysisData = null;
 
@@ -120,4 +124,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // return trueはGET_ANALYSIS_DATAの処理内で既に返している
 });
 
-console.log('[Background] Service Worker 起動完了');
+debugLog('[Background] Service Worker 起動完了');
