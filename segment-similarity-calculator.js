@@ -3,6 +3,10 @@
  * DetailedSegmentAnalyzerの結果を比較して類似度を算出
  */
 
+// デバッグモード（本番ではfalse）
+const SSC_DEBUG = false;
+const sscLog = SSC_DEBUG ? sscLog.bind(console) : () => {};
+
 class SegmentSimilarityCalculator {
   constructor() {
     // 各特徴量の重み設定
@@ -56,8 +60,9 @@ class SegmentSimilarityCalculator {
     }
 
     // === 新システム: EnhancedSegmentScoring ===
-    const enhancedScoring = new window.EnhancedSegmentScoring();
-    const patternEvaluator = new window.MatchPatternEvaluator();
+    const globalScope = typeof window !== 'undefined' ? window : self;
+    const enhancedScoring = new globalScope.EnhancedSegmentScoring();
+    const patternEvaluator = new globalScope.MatchPatternEvaluator();
 
     // 1. 各セグメントのスコアと一致リストを取得
     const segmentScores = [];
@@ -86,7 +91,7 @@ class SegmentSimilarityCalculator {
     // === 低ボラティリティパターンの除外 ===
     if (result.lowVolatility) {
       // 🔬 診断用：低ボラティリティフィルターの影響を確認
-      console.log(`[🔬 低ボラティリティ] 類似度0を返却: ${result.reason}`);
+      sscLog(`[🔬 低ボラティリティ] 類似度0を返却: ${result.reason}`);
       return {
         similarity: 0,
         enhancedScore: 0,
@@ -114,7 +119,7 @@ class SegmentSimilarityCalculator {
 
     // 🔬 診断用：高スコア（70%以上）の場合のみログ出力
     if (finalScore * 100 >= 70) {
-      console.log(`[🔬 高スコア検出] 最終=${Math.round(finalScore * 100)}%, セグメント=${result.percentage}%, パターン評価=${patternEval.score}%`);
+      sscLog(`[🔬 高スコア検出] 最終=${Math.round(finalScore * 100)}%, セグメント=${result.percentage}%, パターン評価=${patternEval.score}%`);
     }
 
     return {
@@ -148,7 +153,7 @@ class SegmentSimilarityCalculator {
 
     // 🔬 診断用：リアルタイム計算時のデータ構造確認
     if (!currentAnalysis || !historicalAnalysis) {
-      console.log('[🔬 データ構造] currentAnalysis存在:', !!currentAnalysis, ', historicalAnalysis存在:', !!historicalAnalysis);
+      sscLog('[🔬 データ構造] currentAnalysis存在:', !!currentAnalysis, ', historicalAnalysis存在:', !!historicalAnalysis);
       return 0;
     }
 
@@ -158,7 +163,7 @@ class SegmentSimilarityCalculator {
     // 🔬 診断用：リアルタイム計算で70%以上の場合のみログ出力
     const finalScore = result.similarity * 100;
     if (finalScore >= 70) {
-      console.log(`[🔬 リアルタイム高スコア] 最終=${Math.round(finalScore)}%, current=${currentAnalysis.pattern}, historical=${historicalAnalysis.pattern}`);
+      sscLog(`[🔬 リアルタイム高スコア] 最終=${Math.round(finalScore)}%, current=${currentAnalysis.pattern}, historical=${historicalAnalysis.pattern}`);
     }
 
     // similarityの値をパーセンテージで返す（0-100）
@@ -404,12 +409,12 @@ class SegmentSimilarityCalculator {
 
     // 類似パターン
     if ((type1 === 'UPTREND' && type2 === 'V_SHAPE') ||
-        (type1 === 'V_SHAPE' && type2 === 'UPTREND')) {
+      (type1 === 'V_SHAPE' && type2 === 'UPTREND')) {
       return 0.5; // 50%
     }
 
     if ((type1 === 'DOWNTREND' && type2 === 'INVERTED_V_SHAPE') ||
-        (type1 === 'INVERTED_V_SHAPE' && type2 === 'DOWNTREND')) {
+      (type1 === 'INVERTED_V_SHAPE' && type2 === 'DOWNTREND')) {
       return 0.5; // 50%
     }
 
@@ -520,7 +525,8 @@ class SegmentSimilarityCalculator {
 }
 
 // グローバルスコープに公開
-window.SegmentSimilarityCalculator = SegmentSimilarityCalculator;
+// グローバルスコープに公開
+(typeof window !== 'undefined' ? window : self).SegmentSimilarityCalculator = SegmentSimilarityCalculator;
 
 /**
  * 強化されたセグメントスコアリングシステム
@@ -701,7 +707,7 @@ class EnhancedSegmentScoring {
 
     if (minActiveCount < minRequired) {
       // パフォーマンス最適化のため無効化（大量データ時に負荷が高い）
-      // console.log(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) [${timeframe}秒]`);
+      // sscLog(`[EnhancedScoring] ⚠️ 低ボラティリティパターン検出: アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) [${timeframe}秒]`);
       return {
         percentage: 0,
         totalScore: 0,
@@ -734,7 +740,7 @@ class EnhancedSegmentScoring {
     const percentage = (totalScore / maxScore) * 100;
 
     // パフォーマンス最適化のため無効化（大量データ時に負荷が高い）
-    // console.log(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
+    // sscLog(`[EnhancedScoring] ✅ アクティブセグメント ${minActiveCount}/${segmentCount} (${(activeRatio*100).toFixed(0)}%) - スコア計算実行`);
 
     return {
       percentage: Math.min(100, percentage),
@@ -832,7 +838,7 @@ class MatchPatternEvaluator {
     let groupStart = 0;
 
     for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i] === sorted[i-1] + 1) {
+      if (sorted[i] === sorted[i - 1] + 1) {
         currentConsecutive++;
         maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
       } else {
@@ -857,8 +863,8 @@ class MatchPatternEvaluator {
 
     // 直近から連続している場合、ボーナス
     const isRecentContinuous = sorted.length >= 2 &&
-                               sorted[sorted.length - 1] === 2 &&
-                               sorted[sorted.length - 2] === 1;
+      sorted[sorted.length - 1] === 2 &&
+      sorted[sorted.length - 2] === 1;
     const recentBonus = isRecentContinuous ? 1.25 : 1.0;
 
     // 複数の連続グループがある場合、軽微なボーナス (新規)
@@ -898,5 +904,5 @@ class MatchPatternEvaluator {
 }
 
 // グローバルスコープに公開
-window.EnhancedSegmentScoring = EnhancedSegmentScoring;
-window.MatchPatternEvaluator = MatchPatternEvaluator;
+(typeof window !== 'undefined' ? window : self).EnhancedSegmentScoring = EnhancedSegmentScoring;
+(typeof window !== 'undefined' ? window : self).MatchPatternEvaluator = MatchPatternEvaluator;

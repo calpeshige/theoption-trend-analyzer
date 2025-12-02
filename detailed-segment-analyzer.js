@@ -7,15 +7,13 @@
 // デバッグモード設定
 // ========================================
 // グローバル変数として定義（他のファイルと共有）
-if (typeof window.DEBUG_MODE === 'undefined') {
-  window.DEBUG_MODE = true; // true=デバッグ表示, false=本番（ログなし）
+const globalScope = typeof window !== 'undefined' ? window : self;
+if (typeof globalScope.DEBUG_MODE === 'undefined') {
+  globalScope.DEBUG_MODE = false; // 本番ではfalse
 }
 
-if (!window.DEBUG_MODE) {
-  console.log = () => {};
-  console.warn = () => {};
-  // console.errorはエラー確認のため残す
-}
+// デバッグ用ログ関数
+const dsaLog = globalScope.DEBUG_MODE ? console.log.bind(console) : () => {};
 // ========================================
 
 class DetailedSegmentAnalyzer {
@@ -118,7 +116,7 @@ class DetailedSegmentAnalyzer {
       cache.lastCalculated = now;
     }
 
-    console.log(`[DynamicThreshold] ${timeframe}秒: ATR=${(atrPercent * 100).toFixed(4)}%, 係数=${config.atrMultiplier}, 閾値=${(threshold * 100).toFixed(4)}%`);
+    dsaLog(`[DynamicThreshold] ${timeframe}秒: ATR=${(atrPercent * 100).toFixed(4)}%, 係数=${config.atrMultiplier}, 閾値=${(threshold * 100).toFixed(4)}%`);
 
     return threshold;
   }
@@ -575,4 +573,5 @@ class DetailedSegmentAnalyzer {
 }
 
 // グローバルスコープに公開
-window.DetailedSegmentAnalyzer = DetailedSegmentAnalyzer;
+// グローバルスコープに公開
+(typeof window !== 'undefined' ? window : self).DetailedSegmentAnalyzer = DetailedSegmentAnalyzer;

@@ -5,6 +5,10 @@
  * 20個以上のテクニカル指標を統合した高精度分析システム
  */
 
+// デバッグモード（本番ではfalse）
+const MIS_DEBUG = false;
+const misLog = MIS_DEBUG ? misLog.bind(console) : () => {};
+
 // ========================================
 // 1. MACD Indicator
 // ========================================
@@ -53,28 +57,61 @@ class MACDIndicator {
 class ADXIndicator {
   calculate(candles, timeframeSeconds = 15) {
     // タイムフレームに応じた観測期間を計算（判定時間の2倍）
-    // 全タイムフレームで一貫して30期間のADX計算を行う
+    // 短期タイムフレームでは期間を短くして計算可能にする
     const observationSeconds = timeframeSeconds * 2;
-    const period = 30; // 固定で30期間を使用
+
+    // タイムフレームに応じた期間設定
+    // 15秒: 7期間（キャンドル12個で計算可能）
+    // 30秒: 14期間
+    // 60秒以上: 30期間
+    let period;
+    if (timeframeSeconds <= 15) {
+      period = 7;  // 15秒用（超短期）
+    } else if (timeframeSeconds <= 30) {
+      period = 14; // 30秒用
+    } else {
+      period = 30; // 60秒以上用
+    }
 
     // 必要なキャンドル数を計算
     const requiredCandles = period;
 
+    // デバッグログ
+    misLog(`[ADX Debug] candles.length=${candles.length}, required=${requiredCandles}, timeframe=${timeframeSeconds}s`);
+
     if (candles.length < requiredCandles) {
-      return { adx: 0, plusDI: 0, minusDI: 0, strength: 0 };
+      misLog(`[ADX Debug] データ不足: ${candles.length} < ${requiredCandles}`);
+      return { adx: 0, plusDI: 0, minusDI: 0, strength: 0, reason: 'insufficient_data' };
     }
 
     // 直近の必要な期間分のキャンドルを取得
     const recentCandles = candles.slice(-requiredCandles);
 
+    // キャンドルデータの検証
+    if (recentCandles.length > 0) {
+      const sample = recentCandles[0];
+      misLog(`[ADX Debug] キャンドルサンプル: high=${sample.high}, low=${sample.low}, open=${sample.open}, close=${sample.close}`);
+
+      // high/lowが同じ（価格変動なし）キャンドルの数をカウント
+      const flatCandles = recentCandles.filter(c => c.high === c.low).length;
+      misLog(`[ADX Debug] フラットキャンドル数: ${flatCandles}/${recentCandles.length}`);
+    }
+
     let plusDM = 0, minusDM = 0, tr = 0;
+    let plusDMCount = 0, minusDMCount = 0;
 
     for (let i = 1; i < recentCandles.length; i++) {
       const highDiff = recentCandles[i].high - recentCandles[i-1].high;
       const lowDiff = recentCandles[i-1].low - recentCandles[i].low;
 
-      plusDM += highDiff > 0 && highDiff > lowDiff ? highDiff : 0;
-      minusDM += lowDiff > 0 && lowDiff > highDiff ? lowDiff : 0;
+      if (highDiff > 0 && highDiff > lowDiff) {
+        plusDM += highDiff;
+        plusDMCount++;
+      }
+      if (lowDiff > 0 && lowDiff > highDiff) {
+        minusDM += lowDiff;
+        minusDMCount++;
+      }
 
       const high = recentCandles[i].high;
       const low = recentCandles[i].low;
@@ -83,12 +120,26 @@ class ADXIndicator {
       tr += Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
     }
 
+    misLog(`[ADX Debug] plusDM=${plusDM.toFixed(6)}, minusDM=${minusDM.toFixed(6)}, TR=${tr.toFixed(6)}`);
+    misLog(`[ADX Debug] plusDMカウント=${plusDMCount}, minusDMカウント=${minusDMCount}`);
+
+    // TRが0の場合（価格変動なし）
+    if (tr === 0) {
+      misLog(`[ADX Debug] TR=0: 価格変動なし`);
+      return { adx: 0, plusDI: 0, minusDI: 0, strength: 0, reason: 'no_price_movement' };
+    }
+
     const plusDI = (plusDM / tr) * 100;
     const minusDI = (minusDM / tr) * 100;
-    const adx = Math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100;
+
+    // plusDI + minusDI が0の場合のガード
+    const diSum = plusDI + minusDI;
+    const adx = diSum > 0 ? Math.abs(plusDI - minusDI) / diSum * 100 : 0;
 
     // 強度スコア（0-10）
     const strength = Math.min(10, adx / 5);
+
+    misLog(`[ADX Debug] 結果: ADX=${adx.toFixed(2)}, +DI=${plusDI.toFixed(2)}, -DI=${minusDI.toFixed(2)}`);
 
     return { adx, plusDI, minusDI, strength, observationSeconds, period };
   }
@@ -594,7 +645,7 @@ class MultiDimensionalAnalyzer {
   analyze(data) {
     const { prices, candles, ticks } = data;
 
-    console.log(`[Multi-Indicator] 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
+    misLog(`[Multi-Indicator] 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件)`);
 
     // 各指標を計算
     const macdResult = this.macd.calculate(prices);
@@ -635,7 +686,7 @@ class MultiDimensionalAnalyzer {
     maxScore += 20;
 
     // デバッグ: 各指標のstrength値を確認
-    console.log(`[Multi-Indicator] 各指標のstrength値:`, {
+    misLog(`[Multi-Indicator] 各指標のstrength値:`, {
       macd: macdResult.strength.toFixed(2),
       adx: adxResult.strength.toFixed(2),
       stochastic: stochasticResult.strength.toFixed(2),
@@ -645,7 +696,7 @@ class MultiDimensionalAnalyzer {
     });
 
     // デバッグ: 各指標のスコア貢献度を確認
-    console.log(`[Multi-Indicator] 📊 各指標のスコア貢献度:`, {
+    misLog(`[Multi-Indicator] 📊 各指標のスコア貢献度:`, {
       'MACD貢献': (macdResult.strength * 2).toFixed(2) + '点',
       'ADX貢献': (adxResult.strength * 1.5).toFixed(2) + '点 ✨',
       'Stochastic貢献': (stochasticResult.strength * 1.5).toFixed(2) + '点',
@@ -658,7 +709,7 @@ class MultiDimensionalAnalyzer {
     const normalizedScore = (totalScore / maxScore) * 100;
 
     // デバッグ: スコアを確認
-    console.log(`[Multi-Indicator] ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
+    misLog(`[Multi-Indicator] ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
 
     // 🆕 ATRに基づく動的しきい値調整
     // ボラティリティが低い通貨ペア(USD/JPY等)では低いしきい値、高い通貨ペア(仮想通貨等)では高いしきい値を使用
@@ -671,7 +722,7 @@ class MultiDimensionalAnalyzer {
     const highThreshold = 15 * volatilityFactor;
     const strongThreshold = 50 * volatilityFactor;
 
-    console.log(`[Multi-Indicator] 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+    misLog(`[Multi-Indicator] 🎚️ 動的しきい値: ATR=${atrAbsolute.toFixed(2)} → volatilityFactor=${volatilityFactor.toFixed(2)} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
 
     // シグナル判定（動的しきい値を使用）
     let signal, confidence;
@@ -679,27 +730,27 @@ class MultiDimensionalAnalyzer {
     if (normalizedScore > strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
-      console.log(`[Multi-Indicator] 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+      misLog(`[Multi-Indicator] 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
     } else if (normalizedScore > highThreshold) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-      console.log(`[Multi-Indicator] 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)})`);
+      misLog(`[Multi-Indicator] 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)})`);
     } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
-      console.log(`[Multi-Indicator] 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+      misLog(`[Multi-Indicator] 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
     } else if (normalizedScore < -highThreshold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
-      console.log(`[Multi-Indicator] 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)})`);
+      misLog(`[Multi-Indicator] 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)})`);
     } else {
       signal = 'NEUTRAL';
       confidence = 50 + Math.abs(normalizedScore) * 1.5;
-      console.log(`[Multi-Indicator] 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内)`);
+      misLog(`[Multi-Indicator] 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内)`);
     }
 
-    console.log(`[Multi-Indicator] ✅ 最終結果: signal=${signal}, confidence=${Math.round(confidence)}%`);
-    console.log(`[Multi-Indicator] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    misLog(`[Multi-Indicator] ✅ 最終結果: signal=${signal}, confidence=${Math.round(confidence)}%`);
+    misLog(`[Multi-Indicator] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
     return {
       signal,
@@ -728,13 +779,13 @@ class MultiDimensionalAnalyzer {
   analyzeTimeframe(data, timeframeSeconds, asset = null, trendStrengthThreshold = 5) {
     const { prices, candles, ticks } = data;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件, トレンド強度閾値: ${trendStrengthThreshold})`);
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 テクニカル分析開始 (データ: prices=${prices.length}件, candles=${candles.length}件, ticks=${ticks.length}件, トレンド強度閾値: ${trendStrengthThreshold})`);
 
     // 時間枠に応じた係数を取得
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
     const periodScaleFactor = this.getPeriodScaleFactor(timeframeSeconds);
-    console.log(`[Multi-Indicator] 時間枠=${timeframeSeconds}秒, 感度係数=${scaleFactor}倍, 期間係数=${periodScaleFactor}倍`);
-    console.log(`[Multi-Indicator] ${timeframeSeconds}秒 入力データ: prices=${prices.length}件, 最新5件=${prices.slice(-5).map(p => p.toFixed(3)).join(', ')}`);
+    misLog(`[Multi-Indicator] 時間枠=${timeframeSeconds}秒, 感度係数=${scaleFactor}倍, 期間係数=${periodScaleFactor}倍`);
+    misLog(`[Multi-Indicator] ${timeframeSeconds}秒 入力データ: prices=${prices.length}件, 最新5件=${prices.slice(-5).map(p => p.toFixed(3)).join(', ')}`);
 
     // 時間枠に応じてデータをフィルタリング
     // 短期: 直近のデータのみ使用（ノイズに敏感）
@@ -780,7 +831,7 @@ class MultiDimensionalAnalyzer {
       timeframeSeconds
     );
 
-    console.log(`[Multi-Indicator-Enhanced] ${timeframeSeconds}秒 新規指標:`, {
+    misLog(`[Multi-Indicator-Enhanced] ${timeframeSeconds}秒 新規指標:`, {
       segmentConsistency: segmentedTrend.consistency.toFixed(1) + '%',
       trendReversals: segmentedTrend.trendReversals,
       macdConsistency: balancedMACD.consistency.toFixed(1) + '%',
@@ -817,7 +868,7 @@ class MultiDimensionalAnalyzer {
     maxScore += 15;
 
     // ADX観測期間の情報をログ出力
-    console.log(`[Multi-Indicator-ADX] ${timeframeSeconds}秒判定 → ADX観測期間: ${adxResult.observationSeconds || timeframeSeconds * 2}秒 (${adxResult.period || 30}期間), トレンド強度: ${adxResult.strength.toFixed(1)}, trendConfidence: ${trendConfidence.toFixed(1)}`);
+    misLog(`[Multi-Indicator-ADX] ${timeframeSeconds}秒判定 → ADX観測期間: ${adxResult.observationSeconds || timeframeSeconds * 2}秒 (${adxResult.period || 30}期間), トレンド強度: ${adxResult.strength.toFixed(1)}, trendConfidence: ${trendConfidence.toFixed(1)}`);
 
     totalScore += stochasticResult.strength * 1.5;
     maxScore += 15;
@@ -859,7 +910,7 @@ class MultiDimensionalAnalyzer {
     totalScore -= reversalPenalty;
 
     // デバッグ: 各指標のstrength値を確認
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 各指標のstrength値:`, {
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 各指標のstrength値:`, {
       macd: macdResult.strength.toFixed(2),
       adx: adxResult.strength.toFixed(2),
       stochastic: stochasticResult.strength.toFixed(2),
@@ -877,7 +928,7 @@ class MultiDimensionalAnalyzer {
     const sentimentContribution = sentimentResult.strength * sentimentWeight;
     const balancedMACDContribution = balancedMACD.strength * 2.0;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 📊 各指標のスコア貢献度:`, {
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 📊 各指標のスコア貢献度:`, {
       'MACD貢献': macdContribution.toFixed(2) + '点',
       'ADX貢献': adxContribution.toFixed(2) + '点 ✨',
       'Stochastic貢献': stochasticContribution.toFixed(2) + '点',
@@ -894,7 +945,7 @@ class MultiDimensionalAnalyzer {
     const normalizedScore = (totalScore / maxScore) * 100;
 
     // デバッグ: スコアを確認
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ⚖️ スコア計算: totalScore=${totalScore.toFixed(2)}点 / maxScore=${maxScore}点 = normalizedScore=${normalizedScore.toFixed(2)}, trendConfidence=${trendConfidence.toFixed(2)}`);
 
     // 🆕 ATRパーセント値に基づく動的しきい値調整（全通貨ペア対応）
     // ボラティリティが低い通貨ペア(USD/JPY等)では低いしきい値、高い通貨ペア(仮想通貨等)では高いしきい値を使用
@@ -912,7 +963,7 @@ class MultiDimensionalAnalyzer {
     let highThreshold = 15 * volatilityFactor * cryptoMultiplier;
     let strongThreshold = 50 * volatilityFactor * cryptoMultiplier;
 
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrPercent.toFixed(2)}% → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×1.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrPercent.toFixed(2)}% → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×1.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
 
     // シグナル判定（動的しきい値を使用）
     let signal, confidence;
@@ -920,23 +971,23 @@ class MultiDimensionalAnalyzer {
     if (normalizedScore > strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
     } else if (normalizedScore > highThreshold && trendConfidence > trendStrengthThreshold) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
     } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
     } else if (normalizedScore < -highThreshold && trendConfidence > trendStrengthThreshold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
     } else {
       signal = 'NEUTRAL';
       confidence = null;  // 見送りの場合はパーセンテージなし
-      console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内、または trendConfidence=${trendConfidence.toFixed(2)} <= ${trendStrengthThreshold})`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内、または trendConfidence=${trendConfidence.toFixed(2)} <= ${trendStrengthThreshold})`);
     }
 
     // 🆕 信頼度を一貫性・整合性で調整
@@ -954,8 +1005,8 @@ class MultiDimensionalAnalyzer {
     }
 
     const confidenceDisplay = adjustedConfidence !== null ? `${Math.round(adjustedConfidence)}%` : '--';
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ✅ 最終結果: signal=${signal}, confidence=${confidenceDisplay} (調整前: ${confidence !== null ? Math.round(confidence) : '--'})`);
-    console.log(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ✅ 最終結果: signal=${signal}, confidence=${confidenceDisplay} (調整前: ${confidence !== null ? Math.round(confidence) : '--'})`);
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
     return {
       signal,
@@ -998,12 +1049,26 @@ class PhaseDetector {
    * 現在の市場がTREND相場かRANGE相場かを判定
    */
   detectPhase(candles, prices, timeframeSeconds) {
-    if (candles.length < 20 || prices.length < 20) {
+    // タイムフレームに応じた必要期間を設定
+    // 15秒: 10期間（キャンドル12個で計算可能）
+    // 30秒: 14期間
+    // 60秒以上: 20期間
+    let requiredPeriod;
+    if (timeframeSeconds <= 15) {
+      requiredPeriod = 10;
+    } else if (timeframeSeconds <= 30) {
+      requiredPeriod = 14;
+    } else {
+      requiredPeriod = 20;
+    }
+
+    if (candles.length < requiredPeriod || prices.length < requiredPeriod) {
+      misLog(`[PhaseDetector] データ不足: candles=${candles.length}, prices=${prices.length}, required=${requiredPeriod}`);
       return { phase: 'UNKNOWN', confidence: 0, details: {} };
     }
 
-    // ボリンジャーバンド計算
-    const bbResult = this.calculateBollingerBands(prices, 20);
+    // ボリンジャーバンド計算（タイムフレームに応じた期間）
+    const bbResult = this.calculateBollingerBands(prices, requiredPeriod);
 
     // BB拡張率（現在の幅 / 20期間平均幅）
     const bbExpansionRate = bbResult.currentWidth / bbResult.avgWidth;
@@ -1351,6 +1416,34 @@ class MultiDimensionalAnalyzerV2 {
     this.timeframeTrendAnalyzer = new TimeframeTrendAnalyzer();
     this.enhancedIndicatorCalculator = new EnhancedIndicatorCalculator();
     this.multiScaleTrendAnalyzer = new MultiScaleTrendAnalyzer();
+
+    // 🆕 MTF（マルチタイムフレーム）用キャッシュ
+    // 各時間枠の最新分析結果を保存（5秒間有効）
+    this.mtfCache = new Map();
+    this.mtfCacheExpiry = 5000; // 5秒
+  }
+
+  // 🆕 MTFキャッシュに結果を保存
+  cacheMTFResult(timeframeSeconds, result) {
+    this.mtfCache.set(timeframeSeconds, {
+      result,
+      timestamp: Date.now()
+    });
+  }
+
+  // 🆕 MTFキャッシュから結果を取得
+  getMTFCache(timeframeSeconds) {
+    const cached = this.mtfCache.get(timeframeSeconds);
+    if (cached && (Date.now() - cached.timestamp) < this.mtfCacheExpiry) {
+      return cached.result;
+    }
+    return null;
+  }
+
+  // 🆕 上位タイムフレームのリストを取得
+  getUpperTimeframes(currentTimeframe) {
+    const allTimeframes = [15, 30, 60, 180, 300];
+    return allTimeframes.filter(tf => tf > currentTimeframe);
   }
 
   // 仮想通貨ペア判定
@@ -1385,27 +1478,27 @@ class MultiDimensionalAnalyzerV2 {
   analyzeV2(data, timeframeSeconds, asset = null) {
     const { prices, candles, ticks } = data;
 
-    console.log(`\n[V2] ════════════════════════════════════════════════════════`);
-    console.log(`[V2] 🔍 V2アーキテクチャ分析開始 - ${timeframeSeconds}秒`);
-    console.log(`[V2] 📊 データ量: prices=${prices.length}, candles=${candles.length}, ticks=${ticks.length}`);
+    misLog(`\n[V2] ════════════════════════════════════════════════════════`);
+    misLog(`[V2] 🔍 V2アーキテクチャ分析開始 - ${timeframeSeconds}秒`);
+    misLog(`[V2] 📊 データ量: prices=${prices.length}, candles=${candles.length}, ticks=${ticks.length}`);
 
     // 1. 通貨タイプ判定
     const isCrypto = this.isCryptocurrencyPair(asset);
-    console.log(`[V2] 💱 通貨: ${asset || 'unknown'} (${isCrypto ? '仮想通貨' : '法定通貨'})`);
+    misLog(`[V2] 💱 通貨: ${asset || 'unknown'} (${isCrypto ? '仮想通貨' : '法定通貨'})`);
 
     // 2. 時間枠設定を取得
     const config = TIMEFRAME_CONFIGS[timeframeSeconds] || TIMEFRAME_CONFIGS[60];
-    console.log(`[V2] ⏱️ 設定: ${config.name}`);
+    misLog(`[V2] ⏱️ 設定: ${config.name}`);
 
     // 3. Phase検出（TREND/RANGE）
     const phaseResult = this.phaseDetector.detectPhase(candles, prices, timeframeSeconds);
-    console.log(`[V2] ────────────────────────────────────────────────────────`);
-    console.log(`[V2] 📈 Phase検出結果:`);
-    console.log(`[V2]   Phase: ${phaseResult.phase} (信頼度: ${phaseResult.confidence}%)`);
-    console.log(`[V2]   トレンド方向: ${phaseResult.trendDirection}`);
-    console.log(`[V2]   BB拡張率: ${phaseResult.details.bbExpansionRate} (>1.2でTREND)`);
-    console.log(`[V2]   ADX: ${phaseResult.details.adx} (>20でトレンド強い)`);
-    console.log(`[V2]   %B: ${phaseResult.details.percentB} (0-1, 0.5が中央)`);
+    misLog(`[V2] ────────────────────────────────────────────────────────`);
+    misLog(`[V2] 📈 Phase検出結果:`);
+    misLog(`[V2]   Phase: ${phaseResult.phase} (信頼度: ${phaseResult.confidence}%)`);
+    misLog(`[V2]   トレンド方向: ${phaseResult.trendDirection}`);
+    misLog(`[V2]   BB拡張率: ${phaseResult.details.bbExpansionRate} (>1.2でTREND)`);
+    misLog(`[V2]   ADX: ${phaseResult.details.adx} (>20でトレンド強い)`);
+    misLog(`[V2]   %B: ${phaseResult.details.percentB} (0-1, 0.5が中央)`);
 
     // 4. 各指標を計算
     const scaleFactor = this.getScaleFactor(timeframeSeconds);
@@ -1424,67 +1517,275 @@ class MultiDimensionalAnalyzerV2 {
     }
 
     // 各指標のログ出力
-    console.log(`[V2] ────────────────────────────────────────────────────────`);
-    console.log(`[V2] 📊 各指標の計算結果:`);
-    console.log(`[V2]   MACD: signal=${macdResult.signal}, strength=${macdResult.strength.toFixed(2)}`);
-    console.log(`[V2]   ADX: adx=${adxResult.adx.toFixed(1)}, +DI=${adxResult.plusDI.toFixed(1)}, -DI=${adxResult.minusDI.toFixed(1)}`);
-    console.log(`[V2]   Stochastic: signal=${stochasticResult.signal}, K=${stochasticResult.k.toFixed(1)}, D=${stochasticResult.d.toFixed(1)}`);
-    console.log(`[V2]   ATR: strength=${atrResult.strength.toFixed(2)}, atr%=${atrResult.atrPercent.toFixed(4)}`);
-    console.log(`[V2]   ROC: signal=${rocResult.signal}, roc=${rocResult.roc.toFixed(4)}`);
+    misLog(`[V2] ────────────────────────────────────────────────────────`);
+    misLog(`[V2] 📊 各指標の計算結果:`);
+    misLog(`[V2]   MACD: signal=${macdResult.signal}, strength=${macdResult.strength.toFixed(2)}`);
+    misLog(`[V2]   ADX: adx=${adxResult.adx.toFixed(1)}, +DI=${adxResult.plusDI.toFixed(1)}, -DI=${adxResult.minusDI.toFixed(1)}`);
+    misLog(`[V2]   Stochastic: signal=${stochasticResult.signal}, K=${stochasticResult.k.toFixed(1)}, D=${stochasticResult.d.toFixed(1)}`);
+    misLog(`[V2]   ATR: strength=${atrResult.strength.toFixed(2)}, atr%=${atrResult.atrPercent.toFixed(4)}`);
+    misLog(`[V2]   ROC: signal=${rocResult.signal}, roc=${rocResult.roc.toFixed(4)}`);
     if (timeframeSeconds >= 180) {
-      console.log(`[V2]   Sentiment: ${sentimentResult.sentiment}, strength=${sentimentResult.strength.toFixed(2)}`);
+      misLog(`[V2]   Sentiment: ${sentimentResult.sentiment}, strength=${sentimentResult.strength.toFixed(2)}`);
     }
 
     // 5. Phase別ロジックでスコア計算
-    const weights = config.weights;
+    const baseWeights = config.weights;
     let totalScore = 0;
     let maxScore = 0;
 
-    // MACD
-    totalScore += macdResult.strength * weights.macd;
-    maxScore += 10 * weights.macd;
+    // 🆕 動的重み付けシステム
+    // ボラティリティレベルの判定（ATR%ベース）
+    const volatilityLevel = atrResult.atrPercent;
+    let volatilityClass;
+    if (volatilityLevel > 0.5) {
+      volatilityClass = 'HIGH';
+    } else if (volatilityLevel > 0.2) {
+      volatilityClass = 'MEDIUM';
+    } else {
+      volatilityClass = 'LOW';
+    }
 
-    // ADX（Phaseに応じて重み調整）
-    let adxWeight = weights.adx;
+    // 動的重み調整係数
+    const dynamicMultipliers = {
+      macd: 1.0,
+      adx: 1.0,
+      stochastic: 1.0,
+      atr: 1.0,
+      roc: 1.0,
+      sentiment: 1.0,
+      bb: 1.0
+    };
+
+    // Phase + ボラティリティに基づく動的調整
     if (phaseResult.phase === 'TREND') {
-      adxWeight *= 1.5; // トレンド相場ではADXを重視
+      // トレンド相場：トレンド追随指標を重視
+      dynamicMultipliers.macd *= 1.3;
+      dynamicMultipliers.adx *= 1.5;
+      dynamicMultipliers.roc *= 1.2;
+      dynamicMultipliers.stochastic *= 0.7; // 逆張り指標を軽視
+
+      if (volatilityClass === 'HIGH') {
+        // 高ボラ+トレンド：ATRとROCをさらに重視
+        dynamicMultipliers.atr *= 1.4;
+        dynamicMultipliers.roc *= 1.3;
+      }
     } else if (phaseResult.phase === 'RANGE') {
-      adxWeight *= 0.5; // レンジ相場ではADXを軽視
+      // レンジ相場：逆張り指標を重視
+      dynamicMultipliers.stochastic *= 1.5;
+      dynamicMultipliers.macd *= 0.8;
+      dynamicMultipliers.adx *= 0.5;
+
+      if (volatilityClass === 'LOW') {
+        // 低ボラ+レンジ：Stochasticをさらに重視
+        dynamicMultipliers.stochastic *= 1.3;
+      }
+    } else {
+      // TRANSITION相場：バランス重視、やや保守的
+      dynamicMultipliers.macd *= 0.9;
+      dynamicMultipliers.adx *= 0.9;
+      dynamicMultipliers.stochastic *= 1.1;
     }
-    totalScore += adxResult.strength * adxWeight;
-    maxScore += 10 * adxWeight;
 
-    // Stochastic（レンジ相場で重視）
-    let stochWeight = weights.stochastic;
-    if (phaseResult.phase === 'RANGE') {
-      stochWeight *= 1.5;
+    // ADX強度による追加調整
+    if (adxResult.adx > 40) {
+      // 強いトレンド時：トレンド指標をブースト
+      dynamicMultipliers.macd *= 1.2;
+      dynamicMultipliers.roc *= 1.2;
+    } else if (adxResult.adx < 20) {
+      // 弱いトレンド時：Stochasticをブースト
+      dynamicMultipliers.stochastic *= 1.2;
     }
-    totalScore += stochasticResult.strength * stochWeight;
-    maxScore += 10 * stochWeight;
 
-    // ATR
-    totalScore += atrResult.strength * weights.atr;
-    maxScore += 10 * weights.atr;
+    // 最終的な動的重み計算
+    const dynamicWeights = {
+      macd: baseWeights.macd * dynamicMultipliers.macd,
+      adx: baseWeights.adx * dynamicMultipliers.adx,
+      stochastic: baseWeights.stochastic * dynamicMultipliers.stochastic,
+      atr: baseWeights.atr * dynamicMultipliers.atr,
+      roc: baseWeights.roc * dynamicMultipliers.roc,
+      sentiment: baseWeights.sentiment * dynamicMultipliers.sentiment,
+      bb: baseWeights.bb * dynamicMultipliers.bb
+    };
 
-    // ROC
-    totalScore += rocResult.strength * weights.roc;
-    maxScore += 10 * weights.roc;
+    misLog(`[V2] ⚖️ 動的重み付け:`);
+    misLog(`[V2]   ボラティリティ: ${volatilityClass} (ATR%: ${(volatilityLevel * 100).toFixed(2)}%)`);
+    misLog(`[V2]   Phase: ${phaseResult.phase}, ADX: ${adxResult.adx.toFixed(1)}`);
+    misLog(`[V2]   MACD: ${baseWeights.macd}→${dynamicWeights.macd.toFixed(2)} | ADX: ${baseWeights.adx}→${dynamicWeights.adx.toFixed(2)}`);
+    misLog(`[V2]   Stoch: ${baseWeights.stochastic}→${dynamicWeights.stochastic.toFixed(2)} | ROC: ${baseWeights.roc}→${dynamicWeights.roc.toFixed(2)}`);
 
-    // Sentiment（長期のみ）
+    // MACD（動的重み適用）
+    totalScore += macdResult.strength * dynamicWeights.macd;
+    maxScore += 10 * dynamicWeights.macd;
+
+    // ADX（動的重み適用）
+    totalScore += adxResult.strength * dynamicWeights.adx;
+    maxScore += 10 * dynamicWeights.adx;
+
+    // Stochastic（動的重み適用）
+    totalScore += stochasticResult.strength * dynamicWeights.stochastic;
+    maxScore += 10 * dynamicWeights.stochastic;
+
+    // ATR（動的重み適用）
+    totalScore += atrResult.strength * dynamicWeights.atr;
+    maxScore += 10 * dynamicWeights.atr;
+
+    // ROC（動的重み適用）
+    totalScore += rocResult.strength * dynamicWeights.roc;
+    maxScore += 10 * dynamicWeights.roc;
+
+    // Sentiment（長期のみ、動的重み適用）
     if (timeframeSeconds >= 180) {
-      totalScore += sentimentResult.strength * weights.sentiment;
-      maxScore += 10 * weights.sentiment;
+      totalScore += sentimentResult.strength * dynamicWeights.sentiment;
+      maxScore += 10 * dynamicWeights.sentiment;
     }
 
-    // BB拡張率ボーナス（トレンド相場で方向が一致する場合）
-    if (phaseResult.phase === 'TREND' && weights.bb > 0) {
-      const bbBonus = (phaseResult.details.bbExpansionRate - 1) * 10 * weights.bb;
+    // BB拡張率ボーナス（トレンド相場で方向が一致する場合、動的重み適用）
+    if (phaseResult.phase === 'TREND' && dynamicWeights.bb > 0) {
+      const bbBonus = (phaseResult.details.bbExpansionRate - 1) * 10 * dynamicWeights.bb;
       if (phaseResult.trendDirection === 'UP') {
         totalScore += bbBonus;
       } else if (phaseResult.trendDirection === 'DOWN') {
         totalScore -= bbBonus;
       }
-      maxScore += 10 * weights.bb;
+      maxScore += 10 * dynamicWeights.bb;
+    }
+
+    // 🆕 指標コンセンサス計算
+    const indicatorDirections = [];
+
+    // 各指標の方向性を判定（正:HIGH方向, 負:LOW方向, 0:中立）
+    if (macdResult.strength > 2) indicatorDirections.push({ name: 'MACD', dir: 'HIGH' });
+    else if (macdResult.strength < -2) indicatorDirections.push({ name: 'MACD', dir: 'LOW' });
+    else indicatorDirections.push({ name: 'MACD', dir: 'NEUTRAL' });
+
+    if (adxResult.strength > 2) indicatorDirections.push({ name: 'ADX', dir: 'HIGH' });
+    else if (adxResult.strength < -2) indicatorDirections.push({ name: 'ADX', dir: 'LOW' });
+    else indicatorDirections.push({ name: 'ADX', dir: 'NEUTRAL' });
+
+    if (stochasticResult.strength > 2) indicatorDirections.push({ name: 'Stoch', dir: 'HIGH' });
+    else if (stochasticResult.strength < -2) indicatorDirections.push({ name: 'Stoch', dir: 'LOW' });
+    else indicatorDirections.push({ name: 'Stoch', dir: 'NEUTRAL' });
+
+    if (atrResult.strength > 2) indicatorDirections.push({ name: 'ATR', dir: 'HIGH' });
+    else if (atrResult.strength < -2) indicatorDirections.push({ name: 'ATR', dir: 'LOW' });
+    else indicatorDirections.push({ name: 'ATR', dir: 'NEUTRAL' });
+
+    if (rocResult.strength > 2) indicatorDirections.push({ name: 'ROC', dir: 'HIGH' });
+    else if (rocResult.strength < -2) indicatorDirections.push({ name: 'ROC', dir: 'LOW' });
+    else indicatorDirections.push({ name: 'ROC', dir: 'NEUTRAL' });
+
+    // Sentimentは長期のみカウント
+    if (timeframeSeconds >= 180) {
+      if (sentimentResult.strength > 2) indicatorDirections.push({ name: 'Sent', dir: 'HIGH' });
+      else if (sentimentResult.strength < -2) indicatorDirections.push({ name: 'Sent', dir: 'LOW' });
+      else indicatorDirections.push({ name: 'Sent', dir: 'NEUTRAL' });
+    }
+
+    // コンセンサス集計
+    const highCount = indicatorDirections.filter(i => i.dir === 'HIGH').length;
+    const lowCount = indicatorDirections.filter(i => i.dir === 'LOW').length;
+    const totalIndicators = indicatorDirections.length;
+    const consensusRatio = Math.max(highCount, lowCount) / totalIndicators;
+    const consensusDirection = highCount > lowCount ? 'HIGH' : (lowCount > highCount ? 'LOW' : 'NEUTRAL');
+
+    // コンセンサスボーナス計算（4/5以上で+5%, 5/5以上で+10%, 5/6以上で+12%, 6/6で+15%）
+    let consensusBonus = 0;
+    if (consensusRatio >= 1.0) {
+      consensusBonus = 15; // 全指標一致
+    } else if (consensusRatio >= 0.833) { // 5/6
+      consensusBonus = 12;
+    } else if (consensusRatio >= 0.8) { // 4/5 or 5/6
+      consensusBonus = 10;
+    } else if (consensusRatio >= 0.6) { // 3/5 or 4/6
+      consensusBonus = 5;
+    }
+
+    // スコアの方向とコンセンサス方向が一致する場合のみボーナス適用
+    const scoreDirection = totalScore > 0 ? 'HIGH' : (totalScore < 0 ? 'LOW' : 'NEUTRAL');
+    const consensusApplied = consensusBonus > 0 && scoreDirection === consensusDirection && scoreDirection !== 'NEUTRAL';
+
+    misLog(`[V2] 🤝 指標コンセンサス:`);
+    misLog(`[V2]   HIGH: ${highCount}/${totalIndicators} | LOW: ${lowCount}/${totalIndicators}`);
+    misLog(`[V2]   一致率: ${(consensusRatio * 100).toFixed(0)}% (${consensusDirection})`);
+    misLog(`[V2]   ボーナス: ${consensusApplied ? `+${consensusBonus}% (適用)` : `${consensusBonus}% (方向不一致で不適用)`}`);
+
+    // 各指標の方向を表示
+    const dirSymbols = indicatorDirections.map(i => {
+      const symbol = i.dir === 'HIGH' ? '↑' : (i.dir === 'LOW' ? '↓' : '→');
+      return `${i.name}:${symbol}`;
+    });
+    misLog(`[V2]   詳細: ${dirSymbols.join(' | ')}`);
+
+    // 🆕 指標矛盾検出システム
+    // 重要な指標ペア間の矛盾を検出し、信頼度にペナルティを適用
+    const contradictions = [];
+
+    // MACD vs Stochastic 矛盾チェック（トレンド vs モメンタム）
+    const macdDir = indicatorDirections.find(i => i.name === 'MACD');
+    const stochDir = indicatorDirections.find(i => i.name === 'Stoch');
+    if (macdDir && stochDir && macdDir.dir !== 'NEUTRAL' && stochDir.dir !== 'NEUTRAL') {
+      if (macdDir.dir !== stochDir.dir) {
+        contradictions.push({
+          pair: 'MACD-Stoch',
+          reason: `MACD:${macdDir.dir} vs Stoch:${stochDir.dir}`,
+          severity: 'medium'
+        });
+      }
+    }
+
+    // ADX vs ROC 矛盾チェック（トレンド強度 vs 変化率）
+    const adxDir = indicatorDirections.find(i => i.name === 'ADX');
+    const rocDir = indicatorDirections.find(i => i.name === 'ROC');
+    if (adxDir && rocDir && adxDir.dir !== 'NEUTRAL' && rocDir.dir !== 'NEUTRAL') {
+      if (adxDir.dir !== rocDir.dir) {
+        contradictions.push({
+          pair: 'ADX-ROC',
+          reason: `ADX:${adxDir.dir} vs ROC:${rocDir.dir}`,
+          severity: 'medium'
+        });
+      }
+    }
+
+    // MACD vs ROC 矛盾チェック（主要トレンド指標）
+    if (macdDir && rocDir && macdDir.dir !== 'NEUTRAL' && rocDir.dir !== 'NEUTRAL') {
+      if (macdDir.dir !== rocDir.dir) {
+        contradictions.push({
+          pair: 'MACD-ROC',
+          reason: `MACD:${macdDir.dir} vs ROC:${rocDir.dir}`,
+          severity: 'high' // 両方ともトレンド指標なので重要
+        });
+      }
+    }
+
+    // Phase vs 主要指標 矛盾チェック
+    if (phaseResult.trendDirection !== 'NEUTRAL' && phaseResult.phase === 'TREND') {
+      const phaseDir = phaseResult.trendDirection === 'UP' ? 'HIGH' : 'LOW';
+      if (macdDir && macdDir.dir !== 'NEUTRAL' && macdDir.dir !== phaseDir) {
+        contradictions.push({
+          pair: 'Phase-MACD',
+          reason: `Phase:${phaseDir} vs MACD:${macdDir.dir}`,
+          severity: 'high'
+        });
+      }
+    }
+
+    // 矛盾ペナルティ計算
+    let contradictionPenalty = 0;
+    const highSeverityCount = contradictions.filter(c => c.severity === 'high').length;
+    const mediumSeverityCount = contradictions.filter(c => c.severity === 'medium').length;
+
+    contradictionPenalty = (highSeverityCount * 8) + (mediumSeverityCount * 4);
+    contradictionPenalty = Math.min(contradictionPenalty, 25); // 最大25%ペナルティ
+
+    misLog(`[V2] ⚔️ 指標矛盾検出:`);
+    if (contradictions.length > 0) {
+      misLog(`[V2]   矛盾数: ${contradictions.length} (高: ${highSeverityCount}, 中: ${mediumSeverityCount})`);
+      contradictions.forEach(c => {
+        misLog(`[V2]   ⚠️ ${c.pair}: ${c.reason} [${c.severity}]`);
+      });
+      misLog(`[V2]   ペナルティ: -${contradictionPenalty}%`);
+    } else {
+      misLog(`[V2]   ✅ 矛盾なし - 指標は一貫しています`);
     }
 
     // Phase別スコア調整
@@ -1494,11 +1795,11 @@ class MultiDimensionalAnalyzerV2 {
     // 正規化
     const normalizedScore = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
 
-    console.log(`[V2] ────────────────────────────────────────────────────────`);
-    console.log(`[V2] 🧮 スコア計算:`);
-    console.log(`[V2]   Raw Score: ${totalScore.toFixed(2)} / Max: ${maxScore.toFixed(2)}`);
-    console.log(`[V2]   Normalized: ${normalizedScore.toFixed(2)}%`);
-    console.log(`[V2]   Phase乗数: ${phaseConfig.scoreMultiplier}x`);
+    misLog(`[V2] ────────────────────────────────────────────────────────`);
+    misLog(`[V2] 🧮 スコア計算:`);
+    misLog(`[V2]   Raw Score: ${totalScore.toFixed(2)} / Max: ${maxScore.toFixed(2)}`);
+    misLog(`[V2]   Normalized: ${normalizedScore.toFixed(2)}%`);
+    misLog(`[V2]   Phase乗数: ${phaseConfig.scoreMultiplier}x`);
 
     // 6. 閾値設定（仮想通貨の場合は調整）
     let thresholds = { ...config.thresholds };
@@ -1508,21 +1809,25 @@ class MultiDimensionalAnalyzerV2 {
       thresholds.minConfidence += CRYPTO_ADJUSTMENTS.minConfidenceBonus;
     }
 
-    // 7. シグナル判定
+    // 7. シグナル判定（コンセンサスボーナス + 矛盾ペナルティ適用）
     let signal, confidence;
+    const appliedConsensusBonus = consensusApplied ? consensusBonus : 0;
+    const netAdjustment = appliedConsensusBonus - contradictionPenalty; // コンセンサスボーナス - 矛盾ペナルティ
+
+    misLog(`[V2]   信頼度調整: コンセンサス+${appliedConsensusBonus}% - 矛盾${contradictionPenalty}% = ${netAdjustment >= 0 ? '+' : ''}${netAdjustment}%`);
 
     if (normalizedScore > thresholds.strongScore) {
       signal = 'STRONG_HIGH';
-      confidence = Math.min(95, 70 + normalizedScore / 3 + phaseConfig.confidenceBonus);
+      confidence = Math.min(95, 70 + normalizedScore / 3 + phaseConfig.confidenceBonus + netAdjustment);
     } else if (normalizedScore > thresholds.highScore) {
       signal = 'HIGH';
-      confidence = Math.min(85, 60 + normalizedScore / 4 + phaseConfig.confidenceBonus);
+      confidence = Math.min(85, 60 + normalizedScore / 4 + phaseConfig.confidenceBonus + netAdjustment);
     } else if (normalizedScore < -thresholds.strongScore) {
       signal = 'STRONG_LOW';
-      confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3 + phaseConfig.confidenceBonus);
+      confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3 + phaseConfig.confidenceBonus + netAdjustment);
     } else if (normalizedScore < -thresholds.highScore) {
       signal = 'LOW';
-      confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4 + phaseConfig.confidenceBonus);
+      confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4 + phaseConfig.confidenceBonus + netAdjustment);
     } else {
       signal = 'NEUTRAL';
       confidence = null;
@@ -1530,15 +1835,89 @@ class MultiDimensionalAnalyzerV2 {
 
     // 信頼度の下限チェック
     if (confidence !== null && confidence < thresholds.minConfidence) {
-      console.log(`[V2]   ⚠️ 信頼度不足: ${Math.round(confidence)}% < ${thresholds.minConfidence}% → NEUTRAL`);
+      misLog(`[V2]   ⚠️ 信頼度不足: ${Math.round(confidence)}% < ${thresholds.minConfidence}% → NEUTRAL`);
       signal = 'NEUTRAL';
       confidence = null;
     }
 
-    console.log(`[V2] ────────────────────────────────────────────────────────`);
-    console.log(`[V2] 🎯 シグナル判定:`);
-    console.log(`[V2]   閾値: HIGH>${thresholds.highScore}, STRONG>${thresholds.strongScore}`);
-    console.log(`[V2]   判定: ${signal} (${confidence !== null ? Math.round(confidence) + '%' : '--'})`);
+    misLog(`[V2] ────────────────────────────────────────────────────────`);
+    misLog(`[V2] 🎯 シグナル判定:`);
+    misLog(`[V2]   閾値: HIGH>${thresholds.highScore}, STRONG>${thresholds.strongScore}`);
+    misLog(`[V2]   判定: ${signal} (${confidence !== null ? Math.round(confidence) + '%' : '--'})`);
+
+    // 🆕 7.5. マルチタイムフレーム（MTF）確認
+    // 上位タイムフレームのトレンド方向を確認し、一致していればボーナス、逆ならペナルティ
+    let mtfBonus = 0;
+    let mtfPenalty = 0;
+    const mtfResults = [];
+    const upperTimeframes = this.getUpperTimeframes(timeframeSeconds);
+
+    // 現在のシグナル方向を判定
+    const currentDirection = signal.includes('HIGH') ? 'HIGH' : (signal.includes('LOW') ? 'LOW' : 'NEUTRAL');
+
+    misLog(`[V2] 🔄 MTF（マルチタイムフレーム）確認:`);
+    misLog(`[V2]   現在: ${timeframeSeconds}秒 → ${signal} (${currentDirection})`);
+    misLog(`[V2]   上位TF: [${upperTimeframes.join(', ')}]秒`);
+
+    if (signal !== 'NEUTRAL' && upperTimeframes.length > 0) {
+      for (const upperTf of upperTimeframes) {
+        const cachedResult = this.getMTFCache(upperTf);
+        if (cachedResult) {
+          const upperDirection = cachedResult.signal.includes('HIGH') ? 'HIGH' :
+                                 (cachedResult.signal.includes('LOW') ? 'LOW' : 'NEUTRAL');
+
+          mtfResults.push({
+            timeframe: upperTf,
+            signal: cachedResult.signal,
+            direction: upperDirection,
+            phase: cachedResult.phase
+          });
+
+          if (upperDirection === currentDirection) {
+            // 上位TFと方向一致 → ボーナス
+            const bonus = upperTf >= 180 ? 6 : (upperTf >= 60 ? 4 : 2);
+            mtfBonus += bonus;
+            misLog(`[V2]   ✅ ${upperTf}秒: ${cachedResult.signal} (${upperDirection}) → 一致 +${bonus}%`);
+          } else if (upperDirection !== 'NEUTRAL' && upperDirection !== currentDirection) {
+            // 上位TFと方向逆 → ペナルティ
+            const penalty = upperTf >= 180 ? 8 : (upperTf >= 60 ? 5 : 3);
+            mtfPenalty += penalty;
+            misLog(`[V2]   ⛔ ${upperTf}秒: ${cachedResult.signal} (${upperDirection}) → 逆行 -${penalty}%`);
+          } else {
+            misLog(`[V2]   ➖ ${upperTf}秒: ${cachedResult.signal} (${upperDirection}) → 中立`);
+          }
+        } else {
+          misLog(`[V2]   ❓ ${upperTf}秒: キャッシュなし（初回分析または期限切れ）`);
+        }
+      }
+
+      // MTFボーナス/ペナルティの上限設定
+      mtfBonus = Math.min(mtfBonus, 15);   // 最大+15%
+      mtfPenalty = Math.min(mtfPenalty, 20); // 最大-20%
+
+      const mtfNetAdjustment = mtfBonus - mtfPenalty;
+      misLog(`[V2]   MTF調整: +${mtfBonus}% - ${mtfPenalty}% = ${mtfNetAdjustment >= 0 ? '+' : ''}${mtfNetAdjustment}%`);
+
+      // 信頼度にMTF調整を適用
+      if (confidence !== null) {
+        confidence += mtfNetAdjustment;
+        // 再度上限/下限チェック
+        if (signal.includes('STRONG')) {
+          confidence = Math.min(95, confidence);
+        } else {
+          confidence = Math.min(85, confidence);
+        }
+
+        // MTF逆行で信頼度が下限以下になった場合
+        if (confidence < thresholds.minConfidence) {
+          misLog(`[V2]   ⚠️ MTF逆行により信頼度低下: ${Math.round(confidence)}% < ${thresholds.minConfidence}% → NEUTRAL`);
+          signal = 'NEUTRAL';
+          confidence = null;
+        }
+      }
+    } else {
+      misLog(`[V2]   ➖ MTF確認スキップ（NEUTRAL or 最上位TF）`);
+    }
 
     // 8. 抵抗帯フィルター
     let finalSignal = signal;
@@ -1547,28 +1926,29 @@ class MultiDimensionalAnalyzerV2 {
 
     if (config.resistanceFilterEnabled && signal !== 'NEUTRAL') {
       const resistanceCheck = this.resistanceFilter.checkResistance(prices, candles, signal, timeframeSeconds);
-      console.log(`[V2] 🛡️ 抵抗帯フィルター: ${config.resistanceFilterEnabled ? '有効' : '無効'}`);
+      misLog(`[V2] 🛡️ 抵抗帯フィルター: ${config.resistanceFilterEnabled ? '有効' : '無効'}`);
       if (resistanceCheck.blocked) {
-        console.log(`[V2]   ⛔ ブロック: ${resistanceCheck.reason}`);
+        misLog(`[V2]   ⛔ ブロック: ${resistanceCheck.reason}`);
         if (resistanceCheck.details) {
-          console.log(`[V2]   詳細: 現在価格=${resistanceCheck.details.currentPrice?.toFixed(5)}`);
+          misLog(`[V2]   詳細: 現在価格=${resistanceCheck.details.currentPrice?.toFixed(5)}`);
         }
         finalSignal = 'NEUTRAL';
         finalConfidence = null;
         resistanceBlocked = true;
       } else {
-        console.log(`[V2]   ✅ 通過（抵抗帯なし）`);
+        misLog(`[V2]   ✅ 通過（抵抗帯なし）`);
       }
     } else if (!config.resistanceFilterEnabled) {
-      console.log(`[V2] 🛡️ 抵抗帯フィルター: 無効（この時間枠では使用しない）`);
+      misLog(`[V2] 🛡️ 抵抗帯フィルター: 無効（この時間枠では使用しない）`);
     }
 
-    console.log(`[V2] ════════════════════════════════════════════════════════`);
-    console.log(`[V2] ✅ 最終結果: ${finalSignal} ${finalConfidence !== null ? `(${Math.round(finalConfidence)}%)` : ''}`);
-    console.log(`[V2]    Phase: ${phaseResult.phase} | 方向: ${phaseResult.trendDirection} | スコア: ${normalizedScore.toFixed(1)}`);
-    console.log(`[V2] ════════════════════════════════════════════════════════\n`);
+    misLog(`[V2] ════════════════════════════════════════════════════════`);
+    misLog(`[V2] ✅ 最終結果: ${finalSignal} ${finalConfidence !== null ? `(${Math.round(finalConfidence)}%)` : ''}`);
+    misLog(`[V2]    Phase: ${phaseResult.phase} | 方向: ${phaseResult.trendDirection} | スコア: ${normalizedScore.toFixed(1)}`);
+    misLog(`[V2] ════════════════════════════════════════════════════════\n`);
 
-    return {
+    // 🆕 MTFキャッシュに結果を保存（他の時間枠から参照可能にする）
+    const result = {
       signal: finalSignal,
       confidence: finalConfidence !== null ? Math.round(finalConfidence) : null,
       score: Math.round(normalizedScore),
@@ -1577,6 +1957,36 @@ class MultiDimensionalAnalyzerV2 {
       phaseConfidence: phaseResult.confidence,
       trendDirection: phaseResult.trendDirection,
       resistanceBlocked,
+      consensus: {
+        highCount,
+        lowCount,
+        totalIndicators,
+        ratio: consensusRatio,
+        direction: consensusDirection,
+        bonus: appliedConsensusBonus,
+        applied: consensusApplied
+      },
+      contradictions: {
+        count: contradictions.length,
+        highSeverity: highSeverityCount,
+        mediumSeverity: mediumSeverityCount,
+        penalty: contradictionPenalty,
+        details: contradictions
+      },
+      mtf: {
+        bonus: mtfBonus,
+        penalty: mtfPenalty,
+        netAdjustment: mtfBonus - mtfPenalty,
+        upperTimeframesChecked: mtfResults.length,
+        results: mtfResults
+      },
+      dynamicWeights: {
+        volatilityClass,
+        volatilityLevel,
+        baseWeights: baseWeights,
+        appliedWeights: dynamicWeights,
+        multipliers: dynamicMultipliers
+      },
       breakdown: {
         macd: macdResult,
         adx: adxResult,
@@ -1585,10 +1995,15 @@ class MultiDimensionalAnalyzerV2 {
         roc: rocResult,
         sentiment: sentimentResult,
         phase: phaseResult,
-        weights: weights,
+        weights: dynamicWeights,
         thresholds: thresholds
       }
     };
+
+    // キャッシュに保存
+    this.cacheMTFResult(timeframeSeconds, result);
+
+    return result;
   }
 }
 
