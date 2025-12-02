@@ -116,7 +116,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
 
-  return true;
+  // GET_ANALYSIS_DATA以外は同期処理なのでreturn falseまたは省略
+  // return trueはGET_ANALYSIS_DATAの処理内で既に返している
 });
 
 console.log('[Background] Service Worker 起動完了');

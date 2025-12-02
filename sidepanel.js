@@ -328,7 +328,8 @@ function listenForAnalysisUpdates() {
         document.getElementById('asset-data-count').textContent = `${message.data.dataCount}件`;
       }
     }
-    return true;
+    // 同期的に処理完了するため、return falseまたは省略
+    // return trueは非同期レスポンスが必要な場合のみ使用
   });
 }
 
@@ -588,6 +589,11 @@ function requestAnalysisData() {
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
 
   chrome.runtime.sendMessage({ type: 'GET_ANALYSIS_DATA' }, (response) => {
+    // chrome.runtime.lastError をチェックしてエラーを抑制
+    if (chrome.runtime.lastError) {
+      console.log('[SidePanel] メッセージ送信エラー（無視可能）:', chrome.runtime.lastError.message);
+      return;
+    }
     if (response) {
       latestAnalysisData = response;
       updateDisplay(response);
@@ -778,41 +784,33 @@ function updateAISignalCard(ai) {
   }
 }
 
-// テクニカル分析詳細カード更新（KPIカードスタイル）
+// テクニカル分析詳細カード更新（案1: デュアルゲージ - 強度+ボラティリティ）
+// 前回の値を保持（アニメーション用）
+let lastTechValues = { strength: 0, grade: 'C', volatility: '中', judgment: '', volaPercent: 50 };
+
 function updateTechnicalCard(technical) {
   const detailBox = document.getElementById('tech-detail');
 
   if (!detailBox) return;
 
+  // 固定高さのコンテナを常に維持（待機中もデータ表示時と同じ高さ）
   if (!technical) {
-    detailBox.innerHTML = '<p class="detail-text">分析データを待機中...</p>';
+    detailBox.innerHTML = `
+      <div class="tech-dashboard">
+        <div class="tech-waiting-state">
+          <div class="tech-waiting-icon">📊</div>
+          <div class="tech-waiting-text">分析データを待機中...</div>
+        </div>
+      </div>
+    `;
     return;
   }
-
-  // チカチカ防止
-  const signal = technical.signal || 'NEUTRAL';
-  const conf = technical.confidence;
-  if (lastTechSignal.signal === signal && lastTechSignal.confidence === conf) {
-    return;
-  }
-  lastTechSignal = { signal, confidence: conf };
 
   // トレンド情報を解析
   const trendText = technical.trendDisplayText || '';
-  let trendDirection = '横ばい';
-  let trendClass = 'trend-neutral';
   let strength = 0;
   let grade = 'C';
   let gradeLabel = '普通';
-
-  // トレンド方向を判定
-  if (trendText.includes('上昇')) {
-    trendDirection = '上昇';
-    trendClass = 'trend-up';
-  } else if (trendText.includes('下降')) {
-    trendDirection = '下降';
-    trendClass = 'trend-down';
-  }
 
   // 強度を抽出 (例: "強度: 40/100")
   const strengthMatch = trendText.match(/強度[：:]\s*(\d+)/);
@@ -837,7 +835,7 @@ function updateTechnicalCard(technical) {
   };
   gradeLabel = gradeLabels[grade] || '普通';
 
-  // 判定の色クラス
+  // 判定テキストと色クラス
   let judgmentClass = '';
   const judgment = technical.overallJudgment || '';
   if (judgment.includes('上昇') || judgment.includes('HIGH')) {
@@ -846,38 +844,228 @@ function updateTechnicalCard(technical) {
     judgmentClass = 'judgment-down';
   }
 
-  // KPIカードスタイルのHTML生成
-  detailBox.innerHTML = `
-    <div class="tech-kpi-grid">
-      <div class="tech-kpi-card">
-        <div class="tech-kpi-label">トレンド</div>
-        <div class="tech-kpi-value ${trendClass}">${trendDirection === '上昇' ? '↑' : trendDirection === '下降' ? '↓' : '→'}</div>
-        <div class="tech-kpi-sub">${trendDirection}</div>
-      </div>
-      <div class="tech-kpi-card">
-        <div class="tech-kpi-label">強度</div>
-        <div class="tech-kpi-value ${trendClass}">${strength}</div>
-        <div class="tech-strength-bar">
-          <div class="tech-strength-fill ${trendClass}" style="width: ${strength}%"></div>
+  // ボラティリティを解析（高/中/低 → ゲージ用パーセント変換）
+  const volatilityRaw = technical.volatility || '-';
+  let volatilityLevel = '中';
+  let volatilityClass = 'vola-medium';
+  let volaPercent = 50; // デフォルト中間
+  let volaColor = '#ff9800'; // orange
+
+  if (volatilityRaw === '高い' || volatilityRaw === '非常に高い' || volatilityRaw.includes('高')) {
+    volatilityLevel = '高';
+    volatilityClass = 'vola-high';
+    volaPercent = volatilityRaw === '非常に高い' ? 95 : 80;
+    volaColor = '#f44336'; // red
+  } else if (volatilityRaw === '低い' || volatilityRaw === '非常に低い' || volatilityRaw.includes('低')) {
+    volatilityLevel = '低';
+    volatilityClass = 'vola-low';
+    volaPercent = volatilityRaw === '非常に低い' ? 10 : 25;
+    volaColor = '#4caf50'; // green
+  } else if (volatilityRaw === '-') {
+    volatilityLevel = '-';
+    volatilityClass = 'vola-unknown';
+    volaPercent = 0;
+    volaColor = '#9e9e9e';
+  }
+
+  // 強度に基づく色
+  let strengthColor = '#9e9e9e'; // neutral
+  if (strength >= 70) {
+    strengthColor = '#4caf50'; // green
+  } else if (strength >= 40) {
+    strengthColor = '#ff9800'; // orange
+  } else if (strength > 0) {
+    strengthColor = '#f44336'; // red
+  }
+
+  // 初回レンダリングかどうか（tech-dual-gaugesがあれば既にデータ表示済み）
+  const isFirstRender = !detailBox.querySelector('.tech-dual-gauges');
+
+  if (isFirstRender) {
+    // 初回: HTML構造を作成（デュアルゲージレイアウト）
+    detailBox.innerHTML = `
+      <div class="tech-dashboard">
+        <div class="tech-dual-gauges">
+          <!-- 強度ゲージ -->
+          <div class="tech-gauge-item">
+            <div class="tech-circle-gauge" id="tech-strength-gauge">
+              <svg viewBox="0 0 100 100">
+                <circle class="gauge-bg" cx="50" cy="50" r="42" />
+                <circle class="gauge-fill strength-fill" cx="50" cy="50" r="42"
+                        stroke-dasharray="264"
+                        stroke-dashoffset="264"
+                        style="stroke: ${strengthColor};" />
+              </svg>
+              <div class="gauge-center">
+                <span class="gauge-value" id="strength-value">0</span>
+                <span class="gauge-unit">%</span>
+              </div>
+            </div>
+            <div class="tech-gauge-label">強度</div>
+          </div>
+
+          <!-- ボラティリティゲージ -->
+          <div class="tech-gauge-item">
+            <div class="tech-circle-gauge" id="tech-vola-gauge">
+              <svg viewBox="0 0 100 100">
+                <circle class="gauge-bg" cx="50" cy="50" r="42" />
+                <circle class="gauge-fill vola-fill" cx="50" cy="50" r="42"
+                        stroke-dasharray="264"
+                        stroke-dashoffset="264"
+                        style="stroke: ${volaColor};" />
+              </svg>
+              <div class="gauge-center">
+                <span class="gauge-vola-label ${volatilityClass}" id="vola-label">${volatilityLevel}</span>
+              </div>
+            </div>
+            <div class="tech-gauge-label">ボラ</div>
+          </div>
+        </div>
+
+        <!-- 情報エリア -->
+        <div class="tech-compact-info">
+          <div class="tech-compact-row">
+            <span class="tech-compact-label">判定</span>
+            <span class="tech-compact-value ${judgmentClass}" id="tech-judgment">${judgment || '-'}</span>
+          </div>
+          <div class="tech-compact-row">
+            <span class="tech-compact-label">グレード</span>
+            <span class="tech-compact-value">
+              <span class="tech-grade-pill grade-${grade.toLowerCase()}" id="tech-grade">${grade}</span>
+              <span class="tech-grade-text" id="tech-grade-label">${gradeLabel}</span>
+            </span>
+          </div>
         </div>
       </div>
-      <div class="tech-kpi-card">
-        <div class="tech-kpi-label">グレード</div>
-        <div class="tech-grade-badge grade-${grade.toLowerCase()}">${grade}</div>
-        <div class="tech-kpi-sub">${gradeLabel}</div>
-      </div>
-    </div>
-    <div class="tech-summary">
-      <div class="tech-summary-row">
-        <span class="tech-summary-label">判定</span>
-        <span class="tech-summary-value ${judgmentClass}">${judgment || '-'}</span>
-      </div>
-      <div class="tech-summary-row">
-        <span class="tech-summary-label">推奨</span>
-        <span class="tech-summary-value">${technical.recommendation || '-'}</span>
-      </div>
-    </div>
-  `;
+    `;
+
+    // 初回アニメーション（少し遅延させて開始）
+    requestAnimationFrame(() => {
+      animateStrengthGauge(0, strength, strengthColor);
+      animateVolaGauge(0, volaPercent, volaColor);
+    });
+  } else {
+    // 更新: 既存の要素を滑らかに更新
+    const judgmentEl = detailBox.querySelector('#tech-judgment');
+    const gradeEl = detailBox.querySelector('#tech-grade');
+    const gradeLabelEl = detailBox.querySelector('#tech-grade-label');
+    const volaLabelEl = detailBox.querySelector('#vola-label');
+
+    // 強度ゲージをアニメーション更新
+    if (lastTechValues.strength !== strength) {
+      animateStrengthGauge(lastTechValues.strength, strength, strengthColor);
+    }
+
+    // ボラゲージをアニメーション更新
+    if (lastTechValues.volaPercent !== volaPercent) {
+      animateVolaGauge(lastTechValues.volaPercent, volaPercent, volaColor);
+    }
+
+    // ボララベル更新
+    if (volaLabelEl && lastTechValues.volatility !== volatilityLevel) {
+      volaLabelEl.classList.add('value-updating');
+      setTimeout(() => {
+        volaLabelEl.textContent = volatilityLevel;
+        volaLabelEl.className = `gauge-vola-label ${volatilityClass}`;
+        volaLabelEl.id = 'vola-label';
+        volaLabelEl.classList.remove('value-updating');
+      }, 150);
+    }
+
+    // 判定更新（フェードアニメーション）
+    if (judgmentEl && lastTechValues.judgment !== judgment) {
+      judgmentEl.classList.add('value-updating');
+      setTimeout(() => {
+        judgmentEl.textContent = judgment || '-';
+        judgmentEl.className = `tech-compact-value ${judgmentClass}`;
+        judgmentEl.id = 'tech-judgment';
+        judgmentEl.classList.remove('value-updating');
+      }, 150);
+    }
+
+    // グレード更新
+    if (gradeEl && lastTechValues.grade !== grade) {
+      gradeEl.classList.add('value-updating');
+      gradeLabelEl.classList.add('value-updating');
+      setTimeout(() => {
+        gradeEl.textContent = grade;
+        gradeEl.className = `tech-grade-pill grade-${grade.toLowerCase()}`;
+        gradeEl.id = 'tech-grade';
+        gradeLabelEl.textContent = gradeLabel;
+        gradeEl.classList.remove('value-updating');
+        gradeLabelEl.classList.remove('value-updating');
+      }, 150);
+    }
+  }
+
+  // 値を保存
+  lastTechValues = { strength, grade, volatility: volatilityLevel, judgment, volaPercent };
+}
+
+// 強度ゲージアニメーション関数
+function animateStrengthGauge(fromValue, toValue, color) {
+  const detailBox = document.getElementById('tech-detail');
+  if (!detailBox) return;
+
+  const gaugeFill = detailBox.querySelector('.strength-fill');
+  const gaugeValue = detailBox.querySelector('#strength-value');
+  if (!gaugeFill || !gaugeValue) return;
+
+  const duration = 600; // ms
+  const startTime = performance.now();
+
+  function animate(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // イージング (ease-out-cubic)
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    const currentValue = Math.round(fromValue + (toValue - fromValue) * eased);
+    const offset = 264 - (currentValue / 100) * 264;
+
+    gaugeFill.style.strokeDashoffset = offset;
+    gaugeFill.style.stroke = color;
+    gaugeValue.textContent = currentValue;
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+// ボラゲージアニメーション関数
+function animateVolaGauge(fromValue, toValue, color) {
+  const detailBox = document.getElementById('tech-detail');
+  if (!detailBox) return;
+
+  const gaugeFill = detailBox.querySelector('.vola-fill');
+  if (!gaugeFill) return;
+
+  const duration = 600; // ms
+  const startTime = performance.now();
+
+  function animate(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // イージング (ease-out-cubic)
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    const currentValue = fromValue + (toValue - fromValue) * eased;
+    const offset = 264 - (currentValue / 100) * 264;
+
+    gaugeFill.style.strokeDashoffset = offset;
+    gaugeFill.style.stroke = color;
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    }
+  }
+
+  requestAnimationFrame(animate);
 }
 
 // AI予測詳細カード更新（シグナルはメインカードのみ）
