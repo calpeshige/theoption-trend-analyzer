@@ -427,6 +427,15 @@ body {
   background: linear-gradient(180deg, #ea4335 0%, #f4511e 50%, #ff7043 100%);
 }
 
+/* 傾向表示用サイドバー（薄い色） */
+.signal-card[data-signal-type="trend-high"]::after {
+  background: linear-gradient(180deg, rgba(52, 168, 83, 0.5) 0%, rgba(0, 137, 123, 0.5) 50%, rgba(38, 166, 154, 0.5) 100%);
+}
+
+.signal-card[data-signal-type="trend-low"]::after {
+  background: linear-gradient(180deg, rgba(234, 67, 53, 0.5) 0%, rgba(244, 81, 30, 0.5) 50%, rgba(255, 112, 67, 0.5) 100%);
+}
+
 /* ホバーエフェクト */
 .signal-card:hover {
   transform: translateY(-2px);
@@ -544,6 +553,28 @@ body {
 
 .signal-card-icon[data-signal="low"] .signal-dot {
   color: var(--signal-down);
+}
+
+/* 傾向表示用スタイル（白丸+色付き縁） */
+.signal-card-icon[data-signal="trend-high"] .signal-dot,
+.signal-card-icon[data-signal="trend-low"] .signal-dot {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: white;
+  font-size: 0; /* ●を非表示 */
+  box-sizing: border-box;
+}
+
+.signal-card-icon[data-signal="trend-high"] .signal-dot {
+  border: 4px solid var(--signal-up);
+  box-shadow: 0 0 12px rgba(52, 168, 83, 0.4);
+}
+
+.signal-card-icon[data-signal="trend-low"] .signal-dot {
+  border: 4px solid var(--signal-down);
+  box-shadow: 0 0 12px rgba(234, 67, 53, 0.4);
 }
 
 .signal-card-label {
@@ -702,140 +733,268 @@ body {
   line-height: 1.6;
 }
 
-/* Tech KPI Cards */
-.tech-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-}
+/* ========================================
+   Tech Dashboard - デュアルゲージ（強度+ボラ）
+   ======================================== */
 
-.tech-kpi-card {
-  background: var(--md-sys-color-surface-container-low);
-  border-radius: var(--md-sys-shape-corner-small);
+/* 固定高さコンテナ - データ表示時と同じ高さを常に維持 */
+.tech-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 12px 8px;
-  text-align: center;
-  border: 1px solid var(--md-sys-color-outline-variant);
+  min-height: 180px;
+  box-sizing: border-box;
 }
 
-.tech-kpi-label {
+/* 待機状態 - 同じ高さで中央配置 */
+.tech-waiting-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 150px;
+  gap: 12px;
+}
+
+.tech-waiting-icon {
+  font-size: 48px;
+  opacity: 0.5;
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.tech-waiting-text {
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 500;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* デュアルゲージコンテナ */
+.tech-dual-gauges {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+}
+
+.tech-gauge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ゲージサイズを大きく（88px） */
+.tech-circle-gauge {
+  position: relative;
+  width: 88px;
+  height: 88px;
+}
+
+.tech-circle-gauge svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.tech-circle-gauge .gauge-bg {
+  fill: none;
+  stroke: var(--md-sys-color-surface-container-high);
+  stroke-width: 8;
+}
+
+.tech-circle-gauge .gauge-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke 0.3s ease;
+}
+
+.gauge-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+}
+
+/* 強度の数値を大きく（26px） */
+.gauge-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface);
+  line-height: 1;
+}
+
+.gauge-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* ボラゲージ中央ラベルを大きく（22px） */
+.gauge-vola-label {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  transition: color 0.3s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.gauge-vola-label.vola-high { color: #f44336; }
+.gauge-vola-label.vola-medium { color: #ff9800; }
+.gauge-vola-label.vola-low { color: #4caf50; }
+.gauge-vola-label.vola-unknown { color: var(--md-sys-color-on-surface-variant); }
+
+/* ゲージラベルを大きく（12px） */
+.tech-gauge-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--md-sys-color-on-surface-variant);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  margin-top: 6px;
 }
 
-.tech-kpi-value {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.2;
-  margin-bottom: 6px;
+/* 情報エリア - 文字を大きく */
+.tech-compact-info {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 10px 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  margin-top: 8px;
 }
 
-.tech-kpi-value.trend-up {
-  color: var(--signal-up);
-}
-
-.tech-kpi-value.trend-down {
-  color: var(--signal-down);
-}
-
-.tech-kpi-value.trend-neutral {
-  color: var(--signal-neutral);
-}
-
-.tech-kpi-sub {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-/* Strength Bar */
-.tech-strength-bar {
-  height: 6px;
-  background: var(--md-sys-color-surface-container-high);
-  border-radius: 3px;
-  margin: 6px 4px 0;
-  overflow: hidden;
-}
-
-.tech-strength-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.tech-strength-fill.trend-up {
-  background: linear-gradient(90deg, #81c784, #4caf50);
-}
-
-.tech-strength-fill.trend-down {
-  background: linear-gradient(90deg, #e57373, #f44336);
-}
-
-.tech-strength-fill.trend-neutral {
-  background: linear-gradient(90deg, #bdbdbd, #9e9e9e);
-}
-
-/* Grade Badge */
-.tech-grade-badge {
-  display: inline-block;
-  font-size: 22px;
-  font-weight: 700;
-  width: 40px;
-  height: 40px;
-  line-height: 40px;
-  border-radius: 50%;
-  color: #fff;
-}
-
-.tech-grade-badge.grade-s { background: linear-gradient(135deg, #ffd700, #ffb300); }
-.tech-grade-badge.grade-a { background: linear-gradient(135deg, #66bb6a, #43a047); }
-.tech-grade-badge.grade-b { background: linear-gradient(135deg, #26c6da, #00acc1); }
-.tech-grade-badge.grade-c { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
-.tech-grade-badge.grade-d { background: linear-gradient(135deg, #ffa726, #fb8c00); }
-.tech-grade-badge.grade-e { background: linear-gradient(135deg, #ef5350, #e53935); }
-
-/* Tech Summary */
-.tech-summary {
-  background: var(--md-sys-color-surface-container);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 12px;
-  border-left: 3px solid var(--md-sys-color-primary);
-}
-
-.tech-summary-row {
+.tech-compact-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
 }
 
-.tech-summary-row:last-child {
-  margin-bottom: 0;
-}
-
-.tech-summary-label {
+/* ラベルを大きく（12px） */
+.tech-compact-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--md-sys-color-on-surface-variant);
-  min-width: 36px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.tech-summary-value {
-  font-size: 13px;
+/* 判定テキストを大きく（15px） */
+.tech-compact-value {
+  font-size: 15px;
   font-weight: 700;
   color: var(--md-sys-color-on-surface);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.tech-summary-value.judgment-up {
+.tech-compact-value.judgment-up {
   color: var(--signal-up);
 }
 
-.tech-summary-value.judgment-down {
+.tech-compact-value.judgment-down {
   color: var(--signal-down);
+}
+
+/* 値更新アニメーション */
+.value-updating {
+  opacity: 0.3;
+  transform: scale(0.95);
+}
+
+/* グレードピルを大きく（26x26px） */
+.tech-grade-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: #fff;
+  transition: background 0.3s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+.tech-grade-pill.grade-s { background: linear-gradient(135deg, #ffd700, #ffb300); }
+.tech-grade-pill.grade-a { background: linear-gradient(135deg, #66bb6a, #43a047); }
+.tech-grade-pill.grade-b { background: linear-gradient(135deg, #26c6da, #00acc1); }
+.tech-grade-pill.grade-c { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+.tech-grade-pill.grade-d { background: linear-gradient(135deg, #ffa726, #fb8c00); }
+.tech-grade-pill.grade-e { background: linear-gradient(135deg, #ef5350, #e53935); }
+
+/* グレードテキストを大きく（14px） */
+.tech-grade-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+/* 旧ボラバッジ（互換用） */
+.tech-vola-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  transition: background 0.3s ease, color 0.3s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+.tech-vola-badge.vola-high {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+}
+
+.tech-vola-badge.vola-medium {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+
+.tech-vola-badge.vola-low {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.tech-vola-badge.vola-unknown {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* ========================================
+   旧スタイル（後方互換用・非表示）
+   ======================================== */
+
+/* Tech KPI Cards - 旧形式 */
+.tech-kpi-grid {
+  display: none;
+}
+
+.tech-kpi-card,
+.tech-kpi-label,
+.tech-kpi-value,
+.tech-kpi-sub,
+.tech-strength-bar,
+.tech-strength-fill,
+.tech-grade-badge,
+.tech-summary,
+.tech-summary-row,
+.tech-summary-label,
+.tech-summary-value {
+  display: none;
 }
 
 /* Probability Bar */

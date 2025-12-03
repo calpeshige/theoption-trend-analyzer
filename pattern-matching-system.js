@@ -7,7 +7,7 @@
 
 // デバッグモード（本番ではfalse）
 const PMS_DEBUG = false;
-const pmsLog = PMS_DEBUG ? pmsLog.bind(console) : () => {};
+const pmsLog = PMS_DEBUG ? console.log.bind(console) : () => {};
 
 class PatternMatchingSystem {
     constructor(trainingData) {
@@ -27,13 +27,27 @@ class PatternMatchingSystem {
         const totalDataCount = this.trainingData.length;
         const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
 
-        if (maxDataCount !== null && maxDataCount > 0) {
-            // 最新のmaxDataCount件を使用
-            targetData = this.trainingData.slice(-maxDataCount);
+        // 🔍 デバッグ: maxDataCountの値を確認
+        console.log(`[ML Debug] findSimilarPatterns called: maxDataCount=${maxDataCount}, type=${typeof maxDataCount}`);
+        console.log(`[ML Debug] trainingData.length=${this.trainingData.length}`);
+
+        // maxDataCountが文字列"all"の場合はnullとして扱う
+        const effectiveMaxDataCount = (maxDataCount === 'all' || maxDataCount === null || maxDataCount === undefined) ? null : Number(maxDataCount);
+
+        if (effectiveMaxDataCount !== null && effectiveMaxDataCount > 0) {
+            // 最新のeffectiveMaxDataCount件を使用
+            targetData = this.trainingData.slice(-effectiveMaxDataCount);
             const targetDataWithResults = targetData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
+
+            // 🔍 デバッグ: フィルタリング結果を確認
+            console.log(`[ML Debug] データ範囲フィルタ適用: 全${totalDataCount}件 → 直近${effectiveMaxDataCount}件 → 実際のtargetData=${targetData.length}件 → 結果あり${targetDataWithResults}件`);
+
             pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
-            pmsLog(`[ML] 📊 データ範囲: 直近${maxDataCount}件指定 → 実際の検索対象=${targetDataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
+            pmsLog(`[ML] 📊 データ範囲: 直近${effectiveMaxDataCount}件指定 → 実際の検索対象=${targetDataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
         } else {
+            // 🔍 デバッグ: 全期間使用を確認
+            console.log(`[ML Debug] データ範囲フィルタなし（全期間）: 全${totalDataCount}件 → 結果あり${dataWithResults}件`);
+
             pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
             pmsLog(`[ML] 📊 データ範囲: 全期間使用 → 検索対象=${dataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
         }
@@ -70,12 +84,17 @@ class PatternMatchingSystem {
 
         pmsLog(`[ML] 🔍 フィルタリング結果: チェック=${totalChecked}件, 閾値通過=${passedThreshold}件, minSimilarity=${minSimilarity}%`);
 
-        // 🔬 診断: 類似度の分布を確認
+        // 🔬 診断: 類似度の分布を確認（常時出力）
         if (allSimilarities.length > 0) {
             allSimilarities.sort((a, b) => b - a);
             const above70 = allSimilarities.filter(s => s >= 70).length;
             const above60 = allSimilarities.filter(s => s >= 60).length;
             const above50 = allSimilarities.filter(s => s >= 50).length;
+            const above40 = allSimilarities.filter(s => s >= 40).length;
+            const above30 = allSimilarities.filter(s => s >= 30).length;
+            console.log(`[ML診断] 類似度分布: チェック=${totalChecked}件, 最大=${Math.round(allSimilarities[0])}%`);
+            console.log(`[ML診断] 閾値別: 70%以上=${above70}件, 60%以上=${above60}件, 50%以上=${above50}件, 40%以上=${above40}件, 30%以上=${above30}件`);
+            console.log(`[ML診断] 上位10件: [${allSimilarities.slice(0, 10).map(s => Math.round(s)).join(', ')}]`);
             pmsLog(`[🔬 診断] 類似度分布: 最大=${Math.round(allSimilarities[0])}%, 70%以上=${above70}件, 60%以上=${above60}件, 50%以上=${above50}件`);
             pmsLog(`[🔬 診断] 上位10件の類似度:`, allSimilarities.slice(0, 10).map(s => Math.round(s)));
         }
@@ -87,21 +106,16 @@ class PatternMatchingSystem {
         const top5Similarities = similarPatterns.slice(0, 5).map(p => Math.round(p.similarity));
         pmsLog(`[ML] 📊 上位5件の類似度: [${top5Similarities.join(', ')}]`);
 
-        // 閾値に応じて使用するパターン数を調整
-        // 低い閾値ではより多くのパターンを使用し、高い閾値では厳格にフィルタリング
-        let maxPatterns;
-        if (minSimilarity >= 90) {
-            maxPatterns = 100;  // 90%以上: 最も厳格（上位100件）
-        } else if (minSimilarity >= 80) {
-            maxPatterns = 200;  // 80%以上: 中程度（上位200件）
-        } else if (minSimilarity >= 70) {
-            maxPatterns = 300;  // 70%以上: 標準（上位300件）
-        } else {
-            maxPatterns = 500;  // 50-69%: より多くのパターン（上位500件）
-        }
-
+        // v2.4: maxPatterns制限を撤廃
+        // 以前は閾値ごとに上限を設けていたが、これが「高閾値で多い、低閾値で少ない」という
+        // 逆転現象の原因になっていた。閾値を通過したパターンはすべて使用する。
+        // パフォーマンスのため上限500件は維持
+        const maxPatterns = 500;
         const result = similarPatterns.slice(0, maxPatterns);
-        pmsLog(`[ML] ✅ 返却するパターン数: ${result.length}件 (閾値${minSimilarity}%の上限${maxPatterns}件)`);
+
+        // 🔍 デバッグ: マッチパターン数を確認
+        console.log(`[ML Debug] マッチパターン結果: 閾値${minSimilarity}%通過=${similarPatterns.length}件 → 上限${maxPatterns}件適用後=${result.length}件`);
+        pmsLog(`[ML] ✅ 返却するパターン数: ${result.length}件 (閾値${minSimilarity}%通過、上限${maxPatterns}件)`);
 
         // 詳細スコア内訳を出力（閾値通過した上位5件のみ）
         // _detailedSamplesには閾値未満のデータも含まれているため、フィルタリングが必要
@@ -152,7 +166,7 @@ class PatternMatchingSystem {
         return this.similarityCalculator.calculateSimilarity(current, past, timeframe);
     }
 
-    // 予測を生成（改善版: より柔軟な判定）
+    // 予測を生成（改善版: 重み付け投票による精度向上）
     predict(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null) {
         const similarPatterns = this.findSimilarPatterns(currentSituation, timeframe, minSimilarity, maxDataCount);
 
@@ -161,6 +175,7 @@ class PatternMatchingSystem {
         pmsLog(`[ML] 予測実行: timeframe=${timeframe}s, 閾値=${minSimilarity}%, 結果記録済み=${dataWithResults}件, 類似パターン=${similarPatterns.length}件`);
 
         if (similarPatterns.length < 10) {
+            console.log(`[AI予測] ⚠️ マッチパターン不足: ${similarPatterns.length}件（最低10件必要）, 結果記録済み=${dataWithResults}件`);
             return {
                 prediction: 'INSUFFICIENT_DATA',
                 confidence: 0,
@@ -170,40 +185,80 @@ class PatternMatchingSystem {
             };
         }
 
-        // 結果を集計
-        const upCount = similarPatterns.filter(p => p.result.direction === 'UP').length;
-        const downCount = similarPatterns.filter(p => p.result.direction === 'DOWN').length;
+        // 重み付け投票: 類似度をそのまま票数として使用
+        // 例: 類似度85%のパターン → 0.85票
+        let weightedUpVotes = 0;
+        let weightedDownVotes = 0;
+        let totalWeight = 0;
+
+        // 単純投票も記録（比較用）
+        let upCount = 0;
+        let downCount = 0;
+
+        for (const pattern of similarPatterns) {
+            const weight = pattern.similarity / 100; // 0.0〜1.0に正規化
+            totalWeight += weight;
+
+            if (pattern.result.direction === 'UP') {
+                weightedUpVotes += weight;
+                upCount++;
+            } else if (pattern.result.direction === 'DOWN') {
+                weightedDownVotes += weight;
+                downCount++;
+            }
+        }
+
         const totalCount = similarPatterns.length;
 
-        const upRate = (upCount / totalCount) * 100;
-        const downRate = (downCount / totalCount) * 100;
+        // 重み付け投票率を計算
+        const weightedUpRate = (weightedUpVotes / totalWeight) * 100;
+        const weightedDownRate = (weightedDownVotes / totalWeight) * 100;
 
-        // 平均変化率
-        const avgChangePercent = similarPatterns.reduce((sum, p) =>
-            sum + p.result.changePercent, 0) / totalCount;
+        // 単純投票率も計算（UI表示用）
+        const simpleUpRate = (upCount / totalCount) * 100;
+        const simpleDownRate = (downCount / totalCount) * 100;
 
-        // 予測（60%以上でHIGH/LOW判定 - テクニカル分析と統一）
+        // 平均変化率（重み付け）
+        const weightedAvgChange = similarPatterns.reduce((sum, p) =>
+            sum + (p.result.changePercent * (p.similarity / 100)), 0) / totalWeight;
+
+        // 予測（重み付き60%以上でHIGH/LOW判定）
         let prediction, confidence;
-        const CONFIDENCE_THRESHOLD = 60;  // テクニカル分析と同じ閾値
+        const CONFIDENCE_THRESHOLD = 60;
 
-        if (upRate >= CONFIDENCE_THRESHOLD) {
+        if (weightedUpRate >= CONFIDENCE_THRESHOLD) {
             prediction = 'HIGH';
-            confidence = Math.round(upRate);
-        } else if (downRate >= CONFIDENCE_THRESHOLD) {
+            confidence = Math.round(weightedUpRate);
+        } else if (weightedDownRate >= CONFIDENCE_THRESHOLD) {
             prediction = 'LOW';
-            confidence = Math.round(downRate);
+            confidence = Math.round(weightedDownRate);
         } else {
             prediction = 'NEUTRAL';
-            confidence = null; // 見送りの場合はパーセンテージなし
+            confidence = null;
         }
+
+        pmsLog(`[ML] 📊 投票結果: 単純(UP=${simpleUpRate.toFixed(1)}% DOWN=${simpleDownRate.toFixed(1)}%) → 重み付け(UP=${weightedUpRate.toFixed(1)}% DOWN=${weightedDownRate.toFixed(1)}%)`);
+
+        // 🔍 デバッグ: 予測結果を毎回出力
+        const similarityDistribution = {
+            '90-100': similarPatterns.filter(p => p.similarity >= 90).length,
+            '80-89': similarPatterns.filter(p => p.similarity >= 80 && p.similarity < 90).length,
+            '70-79': similarPatterns.filter(p => p.similarity >= 70 && p.similarity < 80).length,
+            '60-69': similarPatterns.filter(p => p.similarity >= 60 && p.similarity < 70).length,
+            '50-59': similarPatterns.filter(p => p.similarity >= 50 && p.similarity < 60).length
+        };
+        console.log(`[AI予測] 類似度分布: ${JSON.stringify(similarityDistribution)}`);
+        console.log(`[AI予測] 予測=${prediction}, 信頼度=${confidence}%, UP率=${weightedUpRate.toFixed(1)}%, DOWN率=${weightedDownRate.toFixed(1)}%, マッチパターン=${totalCount}件`);
 
         return {
             prediction,
             confidence,
-            upRate: Math.round(upRate),
-            downRate: Math.round(downRate),
+            upRate: Math.round(weightedUpRate),      // 重み付け率を返す
+            downRate: Math.round(weightedDownRate),  // 重み付け率を返す
+            simpleUpRate: Math.round(simpleUpRate),  // 単純投票率（参考用）
+            simpleDownRate: Math.round(simpleDownRate),
             sampleSize: totalCount,
-            avgChange: avgChangePercent.toFixed(3),
+            avgChange: weightedAvgChange.toFixed(3),
             topPatterns: similarPatterns.slice(0, 5).map(p => ({
                 similarity: Math.round(p.similarity),
                 result: p.result.direction,

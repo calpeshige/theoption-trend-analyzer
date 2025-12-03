@@ -553,6 +553,8 @@ function initializeAnalyzer() {
       }
 
       try {
+        // 🔍 デバッグ: currentDataLimitの値と型を確認
+        console.log(`[TheOption Analyzer Debug] currentDataLimit value: ${currentDataLimit}, type: ${typeof currentDataLimit}`);
         console.log(`[TheOption Analyzer] 🔄 設定変更により予測を再実行 (閾値: ${currentSimilarityThreshold}%, データ: ${currentDataLimit || '全期間'})`);
 
         // 新しい設定で予測を再実行
@@ -874,7 +876,8 @@ function initializeAnalyzer() {
               tech: signals.technical ? signals.technical.signal : null,
               techConfidence: signals.technical ? signals.technical.confidence : null,
               ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
-              aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null
+              aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
+              aiDiff: signals.ai ? signals.ai.diff : null
             };
           }
         }
@@ -1108,6 +1111,8 @@ function initializeAnalyzer() {
 
         if (message.type === 'SETTING_CHANGED') {
           // 設定変更を適用
+          // 🔍 デバッグ: 受け取った値の詳細を出力
+          console.log(`[TheOption Analyzer Debug] SETTING_CHANGED received: key=${message.key}, value=${message.value}, type=${typeof message.value}`);
           console.log('[TheOption Analyzer] 設定変更:', message.key, '=', message.value);
 
           if (message.key === 'similarityThreshold') {
@@ -1115,7 +1120,9 @@ function initializeAnalyzer() {
             // ML予測を再実行
             rerunMLPrediction();
           } else if (message.key === 'dataLimit') {
+            console.log(`[TheOption Analyzer Debug] Before update: currentDataLimit=${currentDataLimit}`);
             currentDataLimit = message.value;
+            console.log(`[TheOption Analyzer Debug] After update: currentDataLimit=${currentDataLimit}`);
             // ML予測を再実行
             rerunMLPrediction();
           }
@@ -1241,8 +1248,16 @@ function initializeAnalyzer() {
       // 保存されたデータ件数制限を復元（保存がなければデフォルトnull = 全期間）
       chrome.storage.local.get(['dataLimit'], (result) => {
         if (result.dataLimit !== undefined) {
-          currentDataLimit = result.dataLimit;
-          console.log(`[TheOption Analyzer] データ件数制限を復元: ${currentDataLimit === null ? '全期間' : currentDataLimit + '件'}`);
+          // 文字列'all'が保存されている場合はnullに変換（後方互換性）
+          const storedValue = result.dataLimit;
+          if (storedValue === 'all' || storedValue === null) {
+            currentDataLimit = null;
+          } else if (typeof storedValue === 'string') {
+            currentDataLimit = parseInt(storedValue) || null;
+          } else {
+            currentDataLimit = storedValue;
+          }
+          console.log(`[TheOption Analyzer] データ件数制限を復元: ${currentDataLimit === null ? '全期間' : currentDataLimit + '件'} (raw: ${storedValue})`);
         } else {
           // 初回起動時はデフォルトnull（全期間）をストレージに保存
           chrome.storage.local.set({ dataLimit: currentDataLimit });
@@ -2319,6 +2334,9 @@ function initializeAnalyzer() {
 
       // 機械学習用の状況データ
       const currentSituation = {
+        // 通貨ペア名（コンテキスト対応の形状分類に使用）
+        assetName: currentAsset || 'UNKNOWN',
+
         price: currentPrice,
         rsi: 50, // ダミー
         ma5: currentIndicators.ma5,
@@ -2442,15 +2460,32 @@ function initializeAnalyzer() {
       };
       console.log(`[TheOption Analyzer] ✅ ${config.label}の分析結果をキャッシュに保存しました`);
 
-      // シグナルが出た場合（HIGH/LOW）にアラート音を鳴らす（選択中の時間枠のみ）
+      // シグナルが出た場合にアラート音を鳴らす（選択中の時間枠のみ）
+      // テクニカル: HIGH/LOW/STRONG_HIGH/STRONG_LOW
+      // AI: HIGH/LOW + 傾向(20pt差以上)
       if (targetTimeframe === currentTimeframe && !isTabSwitch) {
         const techSignal = multiDimResult?.signal;
-        const aiSignal = mlPredictions?.predictions?.[targetTimeframe]?.signal;
+        // 注意: predictionsのキーは '15s', '30s' などの文字列形式
+        const predictionKey = `${targetTimeframe}s`;
+        const mlPred = mlPredictions?.predictions?.[predictionKey];
         const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
-        const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW';
+
+        // AI予測のシグナル判定（60%シグナル + 20pt差傾向）
+        let hasAISignal = false;
+        if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
+          const upRate = mlPred.upRate || 0;
+          const downRate = mlPred.downRate || 0;
+          const drawRate = 100 - upRate - downRate;
+          const diff = Math.abs(upRate - downRate);
+
+          // 同値率30%以下で、60%シグナルまたは20pt差傾向がある場合
+          if (drawRate <= 30 && (upRate >= 60 || downRate >= 60 || diff >= 20)) {
+            hasAISignal = true;
+          }
+        }
 
         if (hasTechSignal || hasAISignal) {
-          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal}, AI=${aiSignal} - アラート音を再生`);
+          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal}, AI=${hasAISignal ? '傾向あり' : 'なし'} - アラート音を再生`);
           playAlertSound();
         }
       }
@@ -2519,24 +2554,54 @@ function initializeAnalyzer() {
 
       if (ml.status === 'READY' && ml.predictions[`${currentTimeframe}s`]) {
         const mlPred = ml.predictions[`${currentTimeframe}s`];
+        const upRate = mlPred.upRate || 0;
+        const downRate = mlPred.downRate || 0;
+        const drawRate = 100 - upRate - downRate;
+        const diff = Math.abs(upRate - downRate);
 
-        let aiDirection;
-        if (mlPred.prediction === 'HIGH') {
+        // === AI予測シグナル判定ロジック ===
+        // 優先度: 1.同値率チェック → 2.60%シグナル → 3.20pt差傾向 → 4.見送り
+        let aiSignal = mlPred.prediction;
+        let aiDirection = '見送り';
+
+        if (drawRate > 30) {
+          // 同値率が30%超え → 見送り
+          aiSignal = 'NEUTRAL';
+          aiDirection = '見送り';
+        } else if (upRate >= 60) {
+          // 上昇60%以上 → HIGHシグナル
+          aiSignal = 'HIGH';
           aiDirection = 'HIGH';
-        } else if (mlPred.prediction === 'LOW') {
+        } else if (downRate >= 60) {
+          // 下降60%以上 → LOWシグナル
+          aiSignal = 'LOW';
           aiDirection = 'LOW';
+        } else if (diff >= 20) {
+          // 20pt以上の差がある → 傾向表示
+          if (upRate > downRate) {
+            aiSignal = 'TREND_HIGH';
+            aiDirection = '上昇傾向';
+          } else {
+            aiSignal = 'TREND_LOW';
+            aiDirection = '下降傾向';
+          }
         } else {
+          // それ以外 → 見送り
+          aiSignal = 'NEUTRAL';
           aiDirection = '見送り';
         }
 
         ai = {
-          available: true,
-          signal: mlPred.prediction,
+          available: aiSignal !== 'NEUTRAL' && aiSignal !== 'INSUFFICIENT_DATA',
+          signal: aiSignal,
           confidence: mlPred.confidence,
           direction: aiDirection,
           timeframe: TIMEFRAME_CONFIGS[currentTimeframe].label,
           mlDataCount: ml.dataCountWithResults || ml.dataCount || 0,
-          mlDataTotal: ml.dataCount || 0
+          mlDataTotal: ml.dataCount || 0,
+          upRate: upRate,
+          downRate: downRate,
+          diff: diff
         };
       }
 

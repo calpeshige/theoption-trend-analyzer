@@ -34,6 +34,7 @@
         "technical-timeseries-analyzer.js",
         "detailed-segment-analyzer.js",
         "segment-similarity-calculator.js",
+        "db-manager.js",
         "machine-learning-system.js",
         "theoption-analyzer.js"
       ],
@@ -54,8 +55,17 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sound/*.mp3"],
-      "matches": ["<all_urls>"],
+      "resources": [
+        "sound/*.mp3",
+        "pattern-matcher.worker.js",
+        "scripts/ml-worker.js",
+        "detailed-segment-analyzer.js",
+        "segment-similarity-calculator.js",
+        "pattern-matching-system.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
       "extension_ids": []
     }
   ]
