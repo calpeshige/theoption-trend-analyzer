@@ -653,7 +653,7 @@ function updateDisplay(data) {
   if (timeframeData) {
     // シグナルカードは常に「準備中」として表示
     // 実際のシグナル表示は updateRealtimeStatus で prepTime 以内の時のみ行う
-    // ここでは詳細カード（テクニカル分析詳細、AI予測詳細）のみ更新
+    // ここでは詳細カード（相場状況、AI予測詳細）のみ更新
     updateTechnicalCard(timeframeData.technical);
     updateAICard(timeframeData.ai);
     debugLog('[SidePanel] 詳細カードのみ更新');
@@ -864,7 +864,7 @@ function updateAISignalCard(ai) {
   }
 }
 
-// テクニカル分析詳細カード更新（案1: デュアルゲージ - 強度+ボラティリティ）
+// 相場状況カード更新（案1: デュアルゲージ - 強度+ボラティリティ）
 // 前回の値を保持（アニメーション用）
 let lastTechValues = { strength: 0, grade: 'C', volatility: '中', judgment: '', volaPercent: 50 };
 
