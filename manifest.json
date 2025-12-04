@@ -36,6 +36,7 @@
         "segment-similarity-calculator.js",
         "db-manager.js",
         "machine-learning-system.js",
+        "signal-enhancer-system.js",
         "theoption-analyzer.js"
       ],
       "run_at": "document_idle"

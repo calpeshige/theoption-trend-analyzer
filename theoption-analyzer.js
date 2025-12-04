@@ -396,6 +396,7 @@ function initializeAnalyzer() {
 
     let multiDimAnalyzer = null;
     let mlSystem = null;
+    let signalEnhancer = null;  // シグナル強化システム（複数時間枠統合 + クラスタリング + ボラティリティ適応）
     let techTimeSeriesAnalyzer = null;  // テクニカル指標時系列分析
     let detailedSegmentAnalyzer = null;  // 詳細セグメント分析
     let priceUpdateInterval = null;
@@ -777,12 +778,52 @@ function initializeAnalyzer() {
           };
         }
 
+        // === シグナル強化システムによる追加シグナル ===
+        let enhancedSignal = null;
+        if (signalEnhancer && currentResult && currentResult.currentSituation) {
+          try {
+            // 全時間枠の予測を収集
+            const allPredictions = {};
+            Object.keys(timeframeResults).forEach(tf => {
+              const tfResult = timeframeResults[tf];
+              if (tfResult && tfResult.ml && tfResult.ml.predictions) {
+                const mlPred = tfResult.ml.predictions[`${tf}s`];
+                if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
+                  allPredictions[tf] = {
+                    prediction: mlPred.prediction,
+                    upRate: mlPred.upRate || 0,
+                    downRate: mlPred.downRate || 0,
+                    similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
+                    sampleSize: mlPred.sampleSize || 0
+                  };
+                }
+              }
+            });
+
+            // シグナル強化を実行
+            enhancedSignal = signalEnhancer.enhance({
+              situation: currentResult.currentSituation,
+              predictions: allPredictions,
+              matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
+              primaryTimeframe: currentTimeframe,
+              baseThreshold: currentSimilarityThreshold
+            });
+
+            if (enhancedSignal && enhancedSignal.enhanced) {
+              console.log(`[TheOption Analyzer] 🚀 強化シグナル検出: type=${enhancedSignal.signal.type}, dir=${enhancedSignal.signal.direction}, ★${enhancedSignal.signal.starLevel}`);
+            }
+          } catch (error) {
+            console.error('[TheOption Analyzer] シグナル強化エラー:', error);
+          }
+        }
+
         const data = {
           asset: currentAsset,
           dataCount: priceHistory.length,
           timeframes: timeframesData,
           currentTimeframe: currentTimeframe,
-          mlStats: mlStats
+          mlStats: mlStats,
+          enhancedSignal: enhancedSignal  // 強化シグナルを追加
         };
 
         console.log('[TheOption Analyzer] 📤 サイドパネル送信 mlStats:', mlStats);
@@ -1231,6 +1272,16 @@ function initializeAnalyzer() {
       } else {
         console.error('[TheOption Analyzer] ❌ DetailedSegmentAnalyzerが見つかりません');
         return;
+      }
+
+      // シグナル強化システム初期化（複数時間枠統合 + クラスタリング + ボラティリティ適応）
+      if (typeof SignalEnhancerSystem !== 'undefined') {
+        signalEnhancer = new SignalEnhancerSystem();
+        window.signalEnhancer = signalEnhancer;
+        console.log('[TheOption Analyzer] ✅ シグナル強化システム初期化完了');
+      } else {
+        console.warn('[TheOption Analyzer] ⚠️ SignalEnhancerSystemが見つかりません（オプション機能）');
+        // 必須ではないため続行
       }
 
       // 保存された設定を復元（保存がなければデフォルト50%を使用）

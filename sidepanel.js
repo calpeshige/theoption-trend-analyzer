@@ -31,6 +31,7 @@ let currentSettings = {
 // 状態管理
 let currentTimeframe = 60;
 let latestAnalysisData = null;
+let latestEnhancedSignal = null;  // 強化シグナル情報
 let expandedCards = new Set(['tech-card', 'ai-card']); // デフォルトで展開
 
 // チカチカ防止用の前回値
@@ -482,8 +483,17 @@ function updateSignalCardsFromStatus(signal) {
       dataSignal = 'trend-low';
       label = '下降傾向';
       confidence = signal.aiDiff ? getStarRating(signal.aiDiff >= 30 ? 2 : 1) : getStarRating(1);
+    } else if (signal.ai === 'ENHANCED_HIGH') {
+      // 強化シグナル（複数時間枠合意/高勝率クラスタ/ボラティリティ適応）
+      dataSignal = 'enhanced-high';
+      label = '統合HIGH';
+      confidence = signal.aiStarLevel ? getStarRating(signal.aiStarLevel) : getStarRating(2);
+    } else if (signal.ai === 'ENHANCED_LOW') {
+      dataSignal = 'enhanced-low';
+      label = '統合LOW';
+      confidence = signal.aiStarLevel ? getStarRating(signal.aiStarLevel) : getStarRating(2);
     } else if (signal.ai) {
-      // AIシグナルがあるが HIGH/LOW/TREND 以外の場合
+      // AIシグナルがあるが HIGH/LOW/TREND/ENHANCED 以外の場合
       dataSignal = 'wait';
       label = '見送り';
       confidence = '';
@@ -641,13 +651,20 @@ function updateDisplay(data) {
     document.getElementById('asset-data-count').textContent = `${data.dataCount}件`;
   }
 
+  // 強化シグナル情報を保存
+  if (data.enhancedSignal) {
+    latestEnhancedSignal = data.enhancedSignal;
+    debugLog('[SidePanel] 強化シグナル受信:', data.enhancedSignal);
+  }
+
   const timeframeData = data.timeframes ? data.timeframes[currentTimeframe] : null;
 
   debugLog('[SidePanel] 受信データ:', {
     timeframe: currentTimeframe,
     hasTimeframeData: !!timeframeData,
     aiData: timeframeData?.ai,
-    techData: timeframeData?.technical?.signal
+    techData: timeframeData?.technical?.signal,
+    enhanced: data.enhancedSignal?.enhanced
   });
 
   if (timeframeData) {
@@ -706,6 +723,22 @@ function getAIStarLevel(confidence) {
   if (confidence >= 70) return 3;
   if (confidence >= 65) return 2;
   return 1; // 60-64%
+}
+
+// 強化シグナルのラベルを取得
+// type: MULTI_TIMEFRAME, HIGH_WIN_CLUSTER, VOLATILITY_ADAPTED
+function getEnhancedLabel(type, direction) {
+  const dirLabel = direction === 'HIGH' ? '↑' : '↓';
+  switch (type) {
+    case 'MULTI_TIMEFRAME':
+      return `統合${dirLabel}`;  // 複数時間枠で合意
+    case 'HIGH_WIN_CLUSTER':
+      return `好条件${dirLabel}`; // 高勝率パターン
+    case 'VOLATILITY_ADAPTED':
+      return `高ボラ${dirLabel}`; // ボラティリティ適応
+    default:
+      return direction === 'HIGH' ? '上昇傾向' : '下降傾向';
+  }
 }
 
 // テクニカル分析シグナルカード更新
@@ -807,9 +840,14 @@ function updateAISignalCard(ai) {
   const drawRate = 100 - upRate - downRate; // 同値率
   const diff = Math.abs(upRate - downRate); // 上昇と下降の差
 
-  // === 新しい判定ロジック ===
-  // 優先度: 1.同値率チェック → 2.60%シグナル → 3.20pt差傾向 → 4.見送り
-  // 星表示: シグナル(60%以上)は★1-4、傾向(20pt差)は★1-2
+  // === 強化シグナルシステム ===
+  // 1. 標準シグナル（60%以上）
+  // 2. 強化シグナル（複数時間枠統合、高勝率クラスタ、ボラティリティ適応）
+  // 3. 傾向シグナル（20pt差）
+
+  // 強化シグナルがある場合は優先して使用
+  const enhanced = latestEnhancedSignal;
+  const hasEnhancedSignal = enhanced && enhanced.enhanced && enhanced.signal && enhanced.signal.type !== 'NONE';
 
   if (drawRate > 30) {
     // 同値率が30%超え → 見送り
@@ -817,19 +855,37 @@ function updateAISignalCard(ai) {
     label = '見送り';
     confidence = '';
   } else if (upRate >= 60) {
-    // 上昇60%以上 → HIGHシグナル（★1-4）
+    // 上昇60%以上 → HIGHシグナル（★1-5）
     dataSignal = 'high';
     label = 'HIGH';
-    // 60-69%→★1, 70-79%→★2, 80-89%→★3, 90%+→★4
     confidence = getStarRating(getAIStarLevel(upRate));
   } else if (downRate >= 60) {
-    // 下降60%以上 → LOWシグナル（★1-4）
+    // 下降60%以上 → LOWシグナル（★1-5）
     dataSignal = 'low';
     label = 'LOW';
     confidence = getStarRating(getAIStarLevel(downRate));
+  } else if (hasEnhancedSignal && enhanced.signal.type !== 'TREND' && enhanced.signal.type !== 'STANDARD') {
+    // 強化シグナル（複数時間枠統合、高勝率クラスタ、ボラティリティ適応）
+    const sig = enhanced.signal;
+    const starLevel = Math.min(5, Math.max(1, sig.starLevel || 1));
+
+    if (sig.direction === 'HIGH') {
+      dataSignal = 'enhanced-high';
+      label = getEnhancedLabel(sig.type, 'HIGH');
+      confidence = getStarRating(starLevel);
+    } else if (sig.direction === 'LOW') {
+      dataSignal = 'enhanced-low';
+      label = getEnhancedLabel(sig.type, 'LOW');
+      confidence = getStarRating(starLevel);
+    } else {
+      // 強化シグナルだが方向不明 → 見送り
+      dataSignal = 'wait';
+      label = '見送り';
+      confidence = '';
+    }
+    debugLog('[SidePanel] 強化シグナル表示:', { type: sig.type, dir: sig.direction, star: starLevel });
   } else if (diff >= 20) {
     // 20pt以上の差がある → 傾向表示（★1-2）
-    // 差が大きいほど★が増える: 20-29pt→★1, 30pt+→★2
     const starLevel = diff >= 30 ? 2 : 1;
     if (upRate > downRate) {
       dataSignal = 'trend-high';
