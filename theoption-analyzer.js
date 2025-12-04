@@ -918,8 +918,58 @@ function initializeAnalyzer() {
               techConfidence: signals.technical ? signals.technical.confidence : null,
               ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
               aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
-              aiDiff: signals.ai ? signals.ai.diff : null
+              aiDiff: signals.ai ? signals.ai.diff : null,
+              aiStarLevel: null  // 強化シグナル用
             };
+
+            // === 強化シグナルのチェック ===
+            // 標準のAIシグナル（60%シグナル）がない場合、強化シグナルをチェック
+            if (signalEnhancer && currentResult.currentSituation &&
+                (!signals.ai.available || signals.ai.signal === 'NEUTRAL' ||
+                 signals.ai.signal === 'TREND_HIGH' || signals.ai.signal === 'TREND_LOW')) {
+              try {
+                // 全時間枠の予測を収集
+                const allPredictions = {};
+                Object.keys(timeframeResults).forEach(tf => {
+                  const tfResult = timeframeResults[tf];
+                  if (tfResult && tfResult.ml && tfResult.ml.predictions) {
+                    const mlPred = tfResult.ml.predictions[`${tf}s`];
+                    if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
+                      allPredictions[tf] = {
+                        prediction: mlPred.prediction,
+                        upRate: mlPred.upRate || 0,
+                        downRate: mlPred.downRate || 0,
+                        similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
+                        sampleSize: mlPred.sampleSize || 0
+                      };
+                    }
+                  }
+                });
+
+                // シグナル強化を実行
+                const enhanced = signalEnhancer.enhance({
+                  situation: currentResult.currentSituation,
+                  predictions: allPredictions,
+                  matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
+                  primaryTimeframe: currentTimeframe,
+                  baseThreshold: currentSimilarityThreshold
+                });
+
+                // 強化シグナルがあり、標準シグナルより優先する場合
+                if (enhanced && enhanced.enhanced && enhanced.signal.type !== 'TREND') {
+                  const enhDir = enhanced.signal.direction;
+                  if (enhDir === 'HIGH') {
+                    currentSignal.ai = 'ENHANCED_HIGH';
+                    currentSignal.aiStarLevel = enhanced.signal.starLevel;
+                  } else if (enhDir === 'LOW') {
+                    currentSignal.ai = 'ENHANCED_LOW';
+                    currentSignal.aiStarLevel = enhanced.signal.starLevel;
+                  }
+                }
+              } catch (error) {
+                // エラーは無視（強化シグナルはオプション機能）
+              }
+            }
           }
         }
 
