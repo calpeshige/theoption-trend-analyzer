@@ -1,18 +1,124 @@
 /**
  * Signal Enhancer System
- * Version: 1.0.0
+ * Version: 1.1.0
  *
  * AI予測の精度を維持しながらシグナル回数を増やす3つの機能:
  * 1. 複数時間枠統合シグナル (Multi-Timeframe Consensus)
  * 2. パターンクラスタリング (Pattern Clustering)
  * 3. ボラティリティ適応型閾値 (Volatility-Adaptive Threshold)
+ *
+ * v1.1.0: 仮想通貨/法定通貨の特性別設定を追加
  */
 
 // デバッグモード
 if (typeof window.DEBUG_MODE === 'undefined') {
   window.DEBUG_MODE = false;
 }
-const sesLog = window.DEBUG_MODE ? console.log.bind(console) : () => {};
+// シグナル強化システム専用ログ（動作確認用に常に出力）
+const SES_DEBUG = true;  // 動作確認後はfalseに変更
+const sesLog = SES_DEBUG ? console.log.bind(console) : () => {};
+
+// ========================================
+// 通貨ペアタイプ別設定
+// ========================================
+
+const ASSET_TYPE_CONFIG = {
+  // 仮想通貨ペア（BTC, ETH, LTC, XRP等）
+  CRYPTO: {
+    name: '仮想通貨',
+    // ボラティリティ閾値（法定通貨の約3倍）
+    volatilityThresholds: {
+      VERY_HIGH: 0.001,    // 法定通貨の3.3倍
+      HIGH: 0.0006,        // 法定通貨の3倍
+      MEDIUM: 0.0003,      // 法定通貨の3倍
+      LOW: 0.00015         // 法定通貨の3倍
+    },
+    // シグナル発出閾値（ノイズ対策で厳しめ）
+    signalThresholds: {
+      TREND_DIFF: 15,              // 法定通貨: 10pt
+      HIGH_WIN_CLUSTER_DIFF: 12,   // 法定通貨: 10pt
+      VOLATILITY_ADAPTED_DIFF: 18  // 法定通貨: 12pt
+    },
+    // マルチタイムフレーム重み付け（短期重視）
+    timeframeWeights: {
+      15: 1.2,   // 15秒: 高重視（仮想通貨は短期変動が重要）
+      30: 1.0,   // 30秒: 基準
+      60: 0.8,   // 60秒: やや低め
+      180: 0.6,  // 3分: 低め
+      300: 0.4   // 5分: 最低（トレンド反転が多い）
+    },
+    // 星レベル閾値（より厳格）
+    starLevelThresholds: {
+      star3: 45,  // 法定通貨: 30pt
+      star2: 30,  // 法定通貨: 20pt
+      star1: 15   // 法定通貨: 10pt
+    }
+  },
+
+  // 法定通貨ペア（EUR/USD, GBP/USD等）
+  FIAT: {
+    name: '法定通貨',
+    // ボラティリティ閾値（標準）
+    volatilityThresholds: {
+      VERY_HIGH: 0.0003,
+      HIGH: 0.0002,
+      MEDIUM: 0.0001,
+      LOW: 0.00005
+    },
+    // シグナル発出閾値（標準）
+    signalThresholds: {
+      TREND_DIFF: 10,
+      HIGH_WIN_CLUSTER_DIFF: 10,
+      VOLATILITY_ADAPTED_DIFF: 12
+    },
+    // マルチタイムフレーム重み付け（長期重視）
+    timeframeWeights: {
+      15: 0.5,   // 15秒: ノイズが多い
+      30: 0.8,   // 30秒: やや信頼
+      60: 1.0,   // 60秒: 基準
+      180: 1.2,  // 3分: 高信頼
+      300: 1.5   // 5分: 最高信頼
+    },
+    // 星レベル閾値（標準）
+    starLevelThresholds: {
+      star3: 30,
+      star2: 20,
+      star1: 10
+    }
+  }
+};
+
+// TheOptionで利用可能な仮想通貨ペア（4種類のみ）
+const CRYPTO_PAIRS = ['BTC/JPY', 'BTC/USD', 'ETH/JPY', 'ETH/USD'];
+
+/**
+ * 通貨ペアから資産タイプを判定
+ * @param {string} symbol - 通貨ペアシンボル（例: "BTC/JPY", "EUR/USD"）
+ * @returns {string} 'CRYPTO' または 'FIAT'
+ */
+function getAssetType(symbol) {
+  if (!symbol) return 'FIAT';
+
+  // 通貨ペア名を正規化（スラッシュなし→スラッシュあり、大文字化）
+  const normalizedSymbol = symbol.toUpperCase().replace(/([A-Z]{3})([A-Z]{3})/, '$1/$2');
+
+  // TheOptionの仮想通貨ペア4種類のみをチェック
+  if (CRYPTO_PAIRS.includes(normalizedSymbol)) {
+    return 'CRYPTO';
+  }
+
+  return 'FIAT';
+}
+
+/**
+ * 資産タイプに応じた設定を取得
+ * @param {string} symbol - 通貨ペアシンボル
+ * @returns {Object} 設定オブジェクト
+ */
+function getAssetConfig(symbol) {
+  const assetType = getAssetType(symbol);
+  return ASSET_TYPE_CONFIG[assetType];
+}
 
 // ========================================
 // 1. 複数時間枠統合シグナル
@@ -20,17 +126,32 @@ const sesLog = window.DEBUG_MODE ? console.log.bind(console) : () => {};
 
 class MultiTimeframeConsensus {
   constructor() {
-    // 各時間枠の重み（長い時間枠ほど信頼性が高い）
-    this.timeframeWeights = {
-      15: 0.6,   // 15秒: ノイズが多い
-      30: 0.8,   // 30秒: やや信頼
-      60: 1.0,   // 60秒: 基準
-      180: 1.1,  // 3分: 高信頼
-      300: 1.2   // 5分: 最高信頼
-    };
+    // デフォルトの重み付け（法定通貨用）- 実際の重みはcalculateConsensusで通貨タイプに応じて取得
+    this.defaultTimeframeWeights = ASSET_TYPE_CONFIG.FIAT.timeframeWeights;
 
     // 統合シグナル発出の最小合意スコア
     this.minConsensusScore = 1.5; // 重み付き合意スコア
+
+    // 現在の通貨ペア
+    this.currentSymbol = null;
+  }
+
+  /**
+   * 現在の通貨ペアを設定
+   * @param {string} symbol - 通貨ペアシンボル
+   */
+  setSymbol(symbol) {
+    this.currentSymbol = symbol;
+    sesLog(`[MTC] 通貨ペア設定: ${symbol} → ${getAssetType(symbol)}`);
+  }
+
+  /**
+   * 現在の通貨ペアに応じた重み付けを取得
+   * @returns {Object} 時間枠ごとの重み
+   */
+  getTimeframeWeights() {
+    const config = getAssetConfig(this.currentSymbol);
+    return config.timeframeWeights;
   }
 
   /**
@@ -40,6 +161,8 @@ class MultiTimeframeConsensus {
    * @returns {Object} 統合シグナル結果
    */
   calculateConsensus(predictions, primaryTimeframe) {
+    // 通貨タイプに応じた重み付けを取得
+    const timeframeWeights = this.getTimeframeWeights();
     const timeframes = Object.keys(predictions).map(Number).filter(tf => predictions[tf]);
 
     if (timeframes.length < 2) {
@@ -55,7 +178,7 @@ class MultiTimeframeConsensus {
       const pred = predictions[tf];
       if (!pred || pred.prediction === 'INSUFFICIENT_DATA') continue;
 
-      const weight = this.timeframeWeights[tf] || 1.0;
+      const weight = timeframeWeights[tf] || 1.0;
       totalWeight += weight;
 
       const upRate = pred.upRate || 0;
@@ -345,6 +468,27 @@ class VolatilityAdaptiveThreshold {
     // ボラティリティ履歴（移動平均計算用）
     this.volatilityHistory = [];
     this.maxHistorySize = 100;
+
+    // 現在の通貨ペア
+    this.currentSymbol = null;
+  }
+
+  /**
+   * 現在の通貨ペアを設定
+   * @param {string} symbol - 通貨ペアシンボル
+   */
+  setSymbol(symbol) {
+    this.currentSymbol = symbol;
+    sesLog(`[VAT] 通貨ペア設定: ${symbol} → ${getAssetType(symbol)}`);
+  }
+
+  /**
+   * 現在の通貨ペアに応じたボラティリティ閾値を取得
+   * @returns {Object} ボラティリティ閾値設定
+   */
+  getVolatilityThresholds() {
+    const config = getAssetConfig(this.currentSymbol);
+    return config.volatilityThresholds;
   }
 
   /**
@@ -379,21 +523,29 @@ class VolatilityAdaptiveThreshold {
     // 複数のソースからボラティリティを取得
     const sources = [];
 
+    // 🔍 デバッグ: situationの中身を確認
+    sesLog('[VAT Debug] situation keys:', situation ? Object.keys(situation).filter(k => k.includes('Segment') || k.includes('atr')).join(', ') : 'null');
+
     // priceSegmentsから
     for (const tf of [15, 30, 60]) {
       const segments = situation[`priceSegments${tf}s`];
       if (segments && typeof segments.volatility === 'number') {
         sources.push(segments.volatility);
+        sesLog(`[VAT Debug] priceSegments${tf}s.volatility =`, segments.volatility);
       }
     }
 
     // ATRから（存在すれば）
     if (situation.atrPercent) {
       sources.push(situation.atrPercent / 100);
+      sesLog('[VAT Debug] atrPercent =', situation.atrPercent);
     }
 
     // 平均を計算
-    if (sources.length === 0) return 0.015; // デフォルト値
+    if (sources.length === 0) {
+      sesLog('[VAT Debug] ⚠️ ボラティリティソースなし、デフォルト値0.015を使用');
+      return 0.015; // デフォルト値
+    }
 
     const avgVolatility = sources.reduce((a, b) => a + b, 0) / sources.length;
 
@@ -422,11 +574,16 @@ class VolatilityAdaptiveThreshold {
       return 'VERY_LOW';
     }
 
-    // 履歴不足時は絶対値で判断（FX 30秒足の典型的な範囲）
-    if (volatility >= 0.04) return 'VERY_HIGH';
-    if (volatility >= 0.025) return 'HIGH';
-    if (volatility >= 0.01) return 'MEDIUM';
-    if (volatility >= 0.005) return 'LOW';
+    // 履歴不足時は絶対値で判断（通貨タイプに応じた閾値を使用）
+    const thresholds = this.getVolatilityThresholds();
+    const assetType = getAssetType(this.currentSymbol);
+
+    sesLog(`[VAT] ボラティリティ分類: vol=${volatility.toFixed(6)}, type=${assetType}, thresholds=`, thresholds);
+
+    if (volatility >= thresholds.VERY_HIGH) return 'VERY_HIGH';
+    if (volatility >= thresholds.HIGH) return 'HIGH';
+    if (volatility >= thresholds.MEDIUM) return 'MEDIUM';
+    if (volatility >= thresholds.LOW) return 'LOW';
     return 'VERY_LOW';
   }
 
@@ -468,7 +625,46 @@ class SignalEnhancerSystem {
     this.enhancedSignalHistory = [];
     this.maxHistorySize = 500;
 
+    // 現在の通貨ペア
+    this.currentSymbol = null;
+    this.currentAssetType = 'FIAT';
+
     sesLog('[SES] Signal Enhancer System initialized');
+  }
+
+  /**
+   * 現在の通貨ペアを設定（全サブシステムに伝播）
+   * @param {string} symbol - 通貨ペアシンボル
+   */
+  setSymbol(symbol) {
+    this.currentSymbol = symbol;
+    this.currentAssetType = getAssetType(symbol);
+
+    // サブシステムにも設定を伝播
+    this.multiTimeframe.setSymbol(symbol);
+    this.volatilityAdapter.setSymbol(symbol);
+
+    const config = getAssetConfig(symbol);
+    sesLog(`[SES] 通貨ペア変更: ${symbol} → ${this.currentAssetType} (${config.name})`);
+    sesLog(`[SES] シグナル閾値: TREND=${config.signalThresholds.TREND_DIFF}pt, CLUSTER=${config.signalThresholds.HIGH_WIN_CLUSTER_DIFF}pt, VOLATILITY=${config.signalThresholds.VOLATILITY_ADAPTED_DIFF}pt`);
+  }
+
+  /**
+   * 現在の通貨ペアに応じたシグナル閾値を取得
+   * @returns {Object} シグナル閾値設定
+   */
+  getSignalThresholds() {
+    const config = getAssetConfig(this.currentSymbol);
+    return config.signalThresholds;
+  }
+
+  /**
+   * 現在の通貨ペアに応じた星レベル閾値を取得
+   * @returns {Object} 星レベル閾値設定
+   */
+  getStarLevelThresholds() {
+    const config = getAssetConfig(this.currentSymbol);
+    return config.starLevelThresholds;
   }
 
   /**
@@ -483,6 +679,17 @@ class SignalEnhancerSystem {
    */
   enhance(params) {
     const { situation, predictions, matchedPatterns, primaryTimeframe, baseThreshold } = params;
+
+    // 🔍 デバッグ: 入力パラメータを確認
+    sesLog('[SES] enhance() 入力:', {
+      hasSituation: !!situation,
+      situationKeys: situation ? Object.keys(situation).length : 0,
+      predictionsCount: Object.keys(predictions || {}).length,
+      predictions: predictions,
+      matchedPatternsCount: (matchedPatterns || []).length,
+      primaryTimeframe,
+      baseThreshold
+    });
 
     // 1. 複数時間枠統合
     const consensus = this.multiTimeframe.calculateConsensus(predictions, primaryTimeframe);
@@ -514,6 +721,16 @@ class SignalEnhancerSystem {
 
     // シグナル発出条件のチェック
 
+    // 差分を事前計算
+    const diff = Math.abs(primaryUpRate - primaryDownRate);
+
+    // 通貨タイプに応じたシグナル閾値を取得
+    const signalThresholds = this.getSignalThresholds();
+    const starThresholds = this.getStarLevelThresholds();
+
+    sesLog(`[SES] 判定開始: upRate=${primaryUpRate.toFixed(1)}%, downRate=${primaryDownRate.toFixed(1)}%, diff=${diff.toFixed(1)}pt, similarity=${primarySimilarity}, effectiveThreshold=${effectiveThreshold}`);
+    sesLog(`[SES] 適用閾値 (${this.currentAssetType}): TREND=${signalThresholds.TREND_DIFF}pt, CLUSTER=${signalThresholds.HIGH_WIN_CLUSTER_DIFF}pt, VOLATILITY=${signalThresholds.VOLATILITY_ADAPTED_DIFF}pt`);
+
     // A. 標準シグナル（60%以上）
     if (primaryUpRate >= 60 || primaryDownRate >= 60) {
       enhancedSignal = {
@@ -535,47 +752,43 @@ class SignalEnhancerSystem {
         consensusDetails: consensus
       };
     }
-    // C. 高勝率クラスタシグナル（クラスタが HIGH_WIN で類似度が調整後閾値以上）
-    else if (cluster.cluster === 'HIGH_WIN' && primarySimilarity >= effectiveThreshold) {
-      const diff = Math.abs(primaryUpRate - primaryDownRate);
-      if (diff >= 15) { // 15pt以上の差がある場合
-        enhancedSignal = {
-          type: 'HIGH_WIN_CLUSTER',
-          direction: primaryUpRate > primaryDownRate ? 'HIGH' : 'LOW',
-          confidence: cluster.winRate,
-          starLevel: Math.min(3, Math.floor((cluster.winRate - 50) / 10) + 1),
-          source: ['HIGH_WIN_CLUSTER'],
-          clusterDetails: cluster
-        };
-      }
+    // C. 高勝率クラスタシグナル（クラスタが HIGH_WIN または MEDIUM_WIN で差が閾値以上）
+    else if ((cluster.cluster === 'HIGH_WIN' || cluster.cluster === 'MEDIUM_WIN') && diff >= signalThresholds.HIGH_WIN_CLUSTER_DIFF) {
+      enhancedSignal = {
+        type: 'HIGH_WIN_CLUSTER',
+        direction: primaryUpRate > primaryDownRate ? 'HIGH' : 'LOW',
+        confidence: cluster.winRate,
+        starLevel: cluster.cluster === 'HIGH_WIN' ?
+          Math.min(3, Math.floor((cluster.winRate - 50) / 10) + 1) : 1,
+        source: [cluster.cluster === 'HIGH_WIN' ? 'HIGH_WIN_CLUSTER' : 'MEDIUM_WIN_CLUSTER'],
+        clusterDetails: cluster
+      };
     }
-    // D. ボラティリティ適応シグナル（高ボラ時で類似度が調整後閾値以上）
-    else if ((volatility.level === 'HIGH' || volatility.level === 'VERY_HIGH') &&
-             primarySimilarity >= effectiveThreshold) {
-      const diff = Math.abs(primaryUpRate - primaryDownRate);
-      if (diff >= 15) {
-        enhancedSignal = {
-          type: 'VOLATILITY_ADAPTED',
-          direction: primaryUpRate > primaryDownRate ? 'HIGH' : 'LOW',
-          confidence: 50 + diff / 2,
-          starLevel: volatility.level === 'VERY_HIGH' ? 2 : 1,
-          source: ['VOLATILITY_ADAPTED'],
-          volatilityDetails: volatility
-        };
-      }
+    // D. ボラティリティ適応シグナル（高ボラ時で差が閾値以上）
+    else if ((volatility.level === 'HIGH' || volatility.level === 'VERY_HIGH') && diff >= signalThresholds.VOLATILITY_ADAPTED_DIFF) {
+      enhancedSignal = {
+        type: 'VOLATILITY_ADAPTED',
+        direction: primaryUpRate > primaryDownRate ? 'HIGH' : 'LOW',
+        confidence: 50 + diff / 2,
+        starLevel: volatility.level === 'VERY_HIGH' ? 2 : 1,
+        source: ['VOLATILITY_ADAPTED'],
+        volatilityDetails: volatility
+      };
     }
-    // E. 傾向シグナル（20pt以上の差）- 既存ロジック
-    else {
-      const diff = Math.abs(primaryUpRate - primaryDownRate);
-      if (diff >= 20) {
-        enhancedSignal = {
-          type: 'TREND',
-          direction: primaryUpRate > primaryDownRate ? 'TREND_HIGH' : 'TREND_LOW',
-          confidence: diff,
-          starLevel: diff >= 30 ? 2 : 1,
-          source: ['TREND']
-        };
-      }
+    // E. 傾向シグナル（差が閾値以上）- 通貨タイプに応じた閾値を使用
+    else if (diff >= signalThresholds.TREND_DIFF) {
+      // 星レベルも通貨タイプに応じた閾値を使用
+      let trendStarLevel = 1;
+      if (diff >= starThresholds.star3) trendStarLevel = 3;
+      else if (diff >= starThresholds.star2) trendStarLevel = 2;
+
+      enhancedSignal = {
+        type: 'TREND',
+        direction: primaryUpRate > primaryDownRate ? 'TREND_HIGH' : 'TREND_LOW',
+        confidence: diff,
+        starLevel: trendStarLevel,
+        source: ['TREND']
+      };
     }
 
     // 複数ソースの統合（シグナルが複数の条件を満たす場合）
@@ -673,4 +886,10 @@ window.MultiTimeframeConsensus = MultiTimeframeConsensus;
 window.PatternClusterer = PatternClusterer;
 window.VolatilityAdaptiveThreshold = VolatilityAdaptiveThreshold;
 
-sesLog('[SES] Signal Enhancer System module loaded');
+// ヘルパー関数もグローバルに公開
+window.getAssetType = getAssetType;
+window.getAssetConfig = getAssetConfig;
+window.ASSET_TYPE_CONFIG = ASSET_TYPE_CONFIG;
+window.CRYPTO_PAIRS = CRYPTO_PAIRS;
+
+sesLog('[SES] Signal Enhancer System module loaded (v1.1.0 - 通貨タイプ別設定対応)');

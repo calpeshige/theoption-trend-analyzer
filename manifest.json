@@ -36,6 +36,7 @@
         "segment-similarity-calculator.js",
         "db-manager.js",
         "machine-learning-system.js",
+        "pattern-stratification-system.js",
         "signal-enhancer-system.js",
         "theoption-analyzer.js"
       ],

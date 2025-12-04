@@ -1065,6 +1065,129 @@ body {
   transition: width var(--md-sys-motion-duration-medium);
 }
 
+/* Stratification Insights - 層別化分析インサイト */
+.stratification-insights {
+  padding: 8px 16px 0;
+}
+
+.stratification-insights:empty {
+  display: none;
+}
+
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-sys-shape-corner-small);
+  border-left: 3px solid var(--md-sys-color-primary);
+}
+
+.insight-item.positive {
+  border-left-color: var(--signal-up);
+  background: var(--signal-up-light);
+}
+
+.insight-item.negative {
+  border-left-color: var(--signal-down);
+  background: var(--signal-down-light);
+}
+
+.insight-item.neutral {
+  border-left-color: var(--signal-neutral);
+  background: var(--signal-neutral-light);
+}
+
+.insight-icon {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.insight-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  line-height: 1.4;
+}
+
+.stratification-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  margin-top: 4px;
+  background: var(--md-sys-color-surface-container);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.stratification-boost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stratification-boost.high {
+  color: var(--signal-up);
+}
+
+.stratification-boost.medium {
+  color: #ff9800;
+}
+
+.stratification-boost.low {
+  color: var(--signal-neutral);
+}
+
+.context-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.original-vs-stratified {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: var(--md-sys-color-surface-container);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 11px;
+}
+
+.original-rate {
+  color: var(--md-sys-color-on-surface-variant);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.arrow-icon {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.stratified-rate {
+  font-weight: 700;
+}
+
+.stratified-rate.up {
+  color: var(--signal-up);
+}
+
+.stratified-rate.down {
+  color: var(--signal-down);
+}
+
 /* ML Stats */
 .ml-stats {
   display: grid;

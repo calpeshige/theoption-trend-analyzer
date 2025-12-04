@@ -263,6 +263,22 @@ class PatternMatchingSystem {
                 similarity: Math.round(p.similarity),
                 result: p.result.direction,
                 change: p.result.changePercent.toFixed(3)
+            })),
+            // 層別化分析用: 全マッチパターン（元データ含む）
+            // 学習データのフィールド名に合わせてマッピング:
+            // - trendStrength: macdStrength (トレンドの強さ)
+            // - sentiment: sentimentScore (センチメント)
+            // - momentum: rocValue (モメンタム)
+            // - volatility: atrPercent (ボラティリティ)
+            allMatchedPatterns: similarPatterns.map(p => ({
+                pattern: {
+                    trendStrength: p.pattern.macdStrength || 0,
+                    sentiment: p.pattern.sentimentScore || 0.5,
+                    momentum: p.pattern.rocValue || 0,
+                    volatility: p.pattern.atrPercent || 0
+                },
+                similarity: p.similarity,
+                result: p.result
             }))
         };
     }

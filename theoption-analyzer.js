@@ -397,6 +397,7 @@ function initializeAnalyzer() {
     let multiDimAnalyzer = null;
     let mlSystem = null;
     let signalEnhancer = null;  // シグナル強化システム（複数時間枠統合 + クラスタリング + ボラティリティ適応）
+    let patternStratifier = null;  // パターン層別化システム（コンテキスト + ボラ + 連続パターン）
     let techTimeSeriesAnalyzer = null;  // テクニカル指標時系列分析
     let detailedSegmentAnalyzer = null;  // 詳細セグメント分析
     let priceUpdateInterval = null;
@@ -607,7 +608,7 @@ function initializeAnalyzer() {
     // ========================================
 
     // サイドパネルに分析データを送信
-    function sendAnalysisToSidePanel() {
+    async function sendAnalysisToSidePanel() {
       console.log('[TheOption Analyzer] 🔵 sendAnalysisToSidePanel 呼び出し開始');
       if (!chrome.runtime || !chrome.runtime.sendMessage) {
         console.log('[TheOption Analyzer] ⚠️ chrome.runtime が利用不可');
@@ -718,6 +719,41 @@ function initializeAnalyzer() {
             const mlDataCountWithResults = currentMlStats?.dataCountWithResults || result.ml?.dataCountWithResults;
             const isMLReady = mlStatus === 'READY';
 
+            // 60%シグナル判定用のレート取得
+            const aiUpRate = mlPred?.upRate || 0;
+            const aiDownRate = mlPred?.downRate || 0;
+            const aiDrawRate = 100 - aiUpRate - aiDownRate;
+            // 60%以上のシグナルがあるか、または予測が有効かを判定
+            // 同値率が30%以下で、かつ60%以上のレートがあればシグナル可能
+            const has60Signal = aiDrawRate <= 30 && (aiUpRate >= 60 || aiDownRate >= 60);
+            const isValidPrediction = isMLReady && !!mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA';
+            const aiAvailable = has60Signal || isValidPrediction;
+
+            // デバッグ: available判定の詳細
+            console.log('[TheOption Analyzer] 🔍 AI available判定:', {
+              tf,
+              aiUpRate,
+              aiDownRate,
+              aiDrawRate,
+              has60Signal,
+              isValidPrediction,
+              aiAvailable,
+              mlStatus,
+              prediction: mlPred?.prediction
+            });
+
+            // AI用のシグナル判定（60%シグナルを優先）
+            let aiSignalValue = 'NEUTRAL';
+            if (has60Signal) {
+              if (aiUpRate >= 60) {
+                aiSignalValue = 'HIGH';
+              } else if (aiDownRate >= 60) {
+                aiSignalValue = 'LOW';
+              }
+            } else if (isMLReady && mlPred) {
+              aiSignalValue = mlPred.prediction;
+            }
+
             timeframesData[tf] = {
               technical: {
                 signal: multiDim.signal || 'NEUTRAL',
@@ -738,12 +774,12 @@ function initializeAnalyzer() {
                 volatility: volatility
               },
               ai: {
-                signal: isMLReady && mlPred ? mlPred.prediction : 'NEUTRAL',
+                signal: aiSignalValue,
                 similarity: mlSimilarity,
                 matchCount: mlPred?.sampleSize,
-                upRate: mlPred?.upRate,
-                downRate: mlPred?.downRate,
-                available: isMLReady && !!mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA',
+                upRate: aiUpRate,
+                downRate: aiDownRate,
+                available: aiAvailable,
                 status: mlStatus,
                 dataCount: mlDataCount,
                 dataCountWithResults: mlDataCountWithResults
@@ -782,38 +818,197 @@ function initializeAnalyzer() {
         let enhancedSignal = null;
         if (signalEnhancer && currentResult && currentResult.currentSituation) {
           try {
+            // 強化シグナル用に低い閾値（50%）で再予測を実行
+            // これにより、ユーザー設定の閾値が高くてもマッチパターンが増える
+            const enhancedThreshold = 50; // 強化シグナル専用の閾値
+            let enhancedPrediction = null;
+            try {
+              enhancedPrediction = await mlSystem.predictWithThreshold(
+                currentResult.currentSituation,
+                currentTimeframe,
+                enhancedThreshold,
+                currentDataLimit
+              );
+              console.log('[SES Debug] 低閾値予測結果:', enhancedPrediction);
+            } catch (e) {
+              console.error('[SES Debug] 低閾値予測エラー:', e);
+            }
+
             // 全時間枠の予測を収集
+            // 注: INSUFFICIENT_DATAでもupRate/downRateがあれば強化シグナルの判定に使用
             const allPredictions = {};
+
+            // 現在の時間枠は低閾値予測の結果を使用
+            if (enhancedPrediction && (enhancedPrediction.upRate !== undefined || enhancedPrediction.downRate !== undefined)) {
+              allPredictions[currentTimeframe] = {
+                prediction: enhancedPrediction.prediction,
+                upRate: enhancedPrediction.upRate || 0,
+                downRate: enhancedPrediction.downRate || 0,
+                similarity: enhancedPrediction.topPatterns?.[0]?.similarity || enhancedPrediction.confidence || 0,
+                sampleSize: enhancedPrediction.sampleSize || 0,
+                isInsufficient: enhancedPrediction.prediction === 'INSUFFICIENT_DATA'
+              };
+            }
+
+            // 他の時間枠はキャッシュから取得
             Object.keys(timeframeResults).forEach(tf => {
+              if (tf == currentTimeframe) return; // 現在の時間枠はスキップ
               const tfResult = timeframeResults[tf];
               if (tfResult && tfResult.ml && tfResult.ml.predictions) {
                 const mlPred = tfResult.ml.predictions[`${tf}s`];
-                if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
+                if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
                   allPredictions[tf] = {
                     prediction: mlPred.prediction,
                     upRate: mlPred.upRate || 0,
                     downRate: mlPred.downRate || 0,
                     similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
-                    sampleSize: mlPred.sampleSize || 0
+                    sampleSize: mlPred.sampleSize || 0,
+                    isInsufficient: mlPred.prediction === 'INSUFFICIENT_DATA'
                   };
                 }
               }
+            });
+
+            // マッチパターンも低閾値予測から取得
+            const matchedPatterns = enhancedPrediction?.topPatterns ||
+                                   currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [];
+
+            // 🔍 デバッグ: 入力データを確認
+            console.log('[SES Debug] 📊 入力データ:', {
+              hasSituation: !!currentResult.currentSituation,
+              predictionsCount: Object.keys(allPredictions).length,
+              predictions: allPredictions,
+              matchedPatternsCount: matchedPatterns.length,
+              primaryTimeframe: currentTimeframe,
+              baseThreshold: currentSimilarityThreshold,
+              enhancedThreshold: enhancedThreshold
             });
 
             // シグナル強化を実行
             enhancedSignal = signalEnhancer.enhance({
               situation: currentResult.currentSituation,
               predictions: allPredictions,
-              matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
+              matchedPatterns: matchedPatterns,
               primaryTimeframe: currentTimeframe,
               baseThreshold: currentSimilarityThreshold
             });
 
+            // 🔍 デバッグ: 出力結果を確認
+            console.log('[SES Debug] 📤 出力結果:', {
+              enhanced: enhancedSignal?.enhanced,
+              signalType: enhancedSignal?.signal?.type,
+              signalDirection: enhancedSignal?.signal?.direction,
+              starLevel: enhancedSignal?.signal?.starLevel,
+              sources: enhancedSignal?.signal?.source,
+              consensus: enhancedSignal?.analysis?.consensus?.hasConsensus,
+              cluster: enhancedSignal?.analysis?.cluster?.cluster,
+              volatilityLevel: enhancedSignal?.analysis?.volatility?.level,
+              effectiveThreshold: enhancedSignal?.analysis?.effectiveThreshold
+            });
+
             if (enhancedSignal && enhancedSignal.enhanced) {
               console.log(`[TheOption Analyzer] 🚀 強化シグナル検出: type=${enhancedSignal.signal.type}, dir=${enhancedSignal.signal.direction}, ★${enhancedSignal.signal.starLevel}`);
+            } else {
+              console.log('[SES Debug] ⏭️ 強化シグナルなし（標準判定へ）');
             }
           } catch (error) {
             console.error('[TheOption Analyzer] シグナル強化エラー:', error);
+          }
+        }
+
+        // === パターン層別化システムによる詳細分析 ===
+        let stratificationResult = null;
+        if (patternStratifier && currentResult && currentResult.currentSituation) {
+          try {
+            // 層別化用の低閾値でマッチパターンを取得
+            // 通常のAI予測閾値（50%）より低い30%を使用して、より多くのパターンを分析対象にする
+            const stratificationThreshold = 30;
+            console.log(`[TheOption Analyzer] 🔍 層別化用パターン取得中... (閾値: ${stratificationThreshold}%)`);
+
+            const matchPatterns = await mlSystem.predictWithThreshold(
+              currentResult.currentSituation,
+              currentTimeframe,
+              stratificationThreshold,
+              currentDataLimit
+            );
+
+            // allMatchedPatterns（全パターン・元データ付き）があればそれを使用、なければtopPatternsにフォールバック
+            const hasAllPatterns = matchPatterns.allMatchedPatterns && matchPatterns.allMatchedPatterns.length > 0;
+            const hasTopPatterns = matchPatterns.topPatterns && matchPatterns.topPatterns.length > 0;
+
+            // パターンデータがない場合（INSUFFICIENT_DATAなど）は空配列
+            let patternsForStratification = [];
+
+            if (hasAllPatterns) {
+              patternsForStratification = matchPatterns.allMatchedPatterns.map(p => ({
+                pattern: {
+                  trendStrength: p.pattern.trendStrength,
+                  sentiment: p.pattern.sentiment,
+                  momentum: p.pattern.momentum,
+                  volatility: p.pattern.volatility,
+                  [`result${currentTimeframe}s`]: {
+                    direction: p.result.direction,
+                    pending: false
+                  }
+                },
+                similarity: p.similarity
+              }));
+            } else if (hasTopPatterns) {
+              patternsForStratification = matchPatterns.topPatterns.map(p => ({
+                pattern: {
+                  // 学習データのフィールド名に合わせてマッピング
+                  trendStrength: currentResult.currentSituation.macdStrength || 0,
+                  sentiment: currentResult.currentSituation.sentimentScore || 0.5,
+                  momentum: currentResult.currentSituation.rocValue || 0,
+                  volatility: currentResult.currentSituation.atrPercent || 0,
+                  [`result${currentTimeframe}s`]: {
+                    direction: p.result,
+                    pending: false
+                  }
+                },
+                similarity: p.similarity
+              }));
+            } else {
+              console.log('[TheOption Analyzer] ⚠️ 層別化: パターンデータなし（INSUFFICIENT_DATA）');
+            }
+
+            if (patternsForStratification.length > 0) {
+              console.log(`[TheOption Analyzer] 📦 層別化対象パターン: ${patternsForStratification.length}件 (${hasAllPatterns ? '全パターン' : 'top5のみ'})`);
+
+              // 層別化分析を実行
+              stratificationResult = patternStratifier.analyze(
+                patternsForStratification,
+                currentResult.currentSituation,
+                currentTimeframe
+              );
+
+              // 結果をログ出力
+              if (stratificationResult?.hasEnoughData) {
+                const orig = stratificationResult.original;
+                console.log(`[TheOption Analyzer] 📊 層別化分析結果:`, {
+                  '元の予測': `UP ${orig?.upRate}% / DOWN ${orig?.downRate}%`,
+                  '層別化後': `UP ${stratificationResult.upRate}% / DOWN ${stratificationResult.downRate}%`,
+                  'コンテキスト': stratificationResult.context?.contextName,
+                  'ボラティリティ': stratificationResult.volatility?.levelName,
+                  '連続パターン': stratificationResult.sequential?.hasSequential ? 'あり' : 'なし',
+                  '信頼度': stratificationResult.confidence
+                });
+              } else {
+                console.log('[TheOption Analyzer] ⚠️ 層別化: データ不足', stratificationResult?.reason);
+              }
+            } else {
+              console.log('[TheOption Analyzer] ⚠️ 層別化スキップ: マッチパターンなし');
+            }
+          } catch (error) {
+            console.error('[TheOption Analyzer] ❌ 層別化分析エラー:', error);
+          }
+        } else {
+          if (!patternStratifier) {
+            console.log('[TheOption Analyzer] ⚠️ 層別化スキップ: patternStratifierが未初期化');
+          } else if (!currentResult) {
+            console.log('[TheOption Analyzer] ⚠️ 層別化スキップ: currentResultなし');
+          } else if (!currentResult.currentSituation) {
+            console.log('[TheOption Analyzer] ⚠️ 層別化スキップ: currentSituationなし');
           }
         }
 
@@ -823,7 +1018,8 @@ function initializeAnalyzer() {
           timeframes: timeframesData,
           currentTimeframe: currentTimeframe,
           mlStats: mlStats,
-          enhancedSignal: enhancedSignal  // 強化シグナルを追加
+          enhancedSignal: enhancedSignal,  // 強化シグナルを追加
+          stratification: stratificationResult  // 層別化結果を追加
         };
 
         console.log('[TheOption Analyzer] 📤 サイドパネル送信 mlStats:', mlStats);
@@ -928,19 +1124,21 @@ function initializeAnalyzer() {
                 (!signals.ai.available || signals.ai.signal === 'NEUTRAL' ||
                  signals.ai.signal === 'TREND_HIGH' || signals.ai.signal === 'TREND_LOW')) {
               try {
-                // 全時間枠の予測を収集
+                // 全時間枠の予測を収集（INSUFFICIENT_DATAでもupRate/downRateがあれば使用）
                 const allPredictions = {};
                 Object.keys(timeframeResults).forEach(tf => {
                   const tfResult = timeframeResults[tf];
                   if (tfResult && tfResult.ml && tfResult.ml.predictions) {
                     const mlPred = tfResult.ml.predictions[`${tf}s`];
-                    if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
+                    // upRateまたはdownRateがあれば収集（INSUFFICIENT_DATAでも可）
+                    if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
                       allPredictions[tf] = {
                         prediction: mlPred.prediction,
                         upRate: mlPred.upRate || 0,
                         downRate: mlPred.downRate || 0,
                         similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
-                        sampleSize: mlPred.sampleSize || 0
+                        sampleSize: mlPred.sampleSize || 0,
+                        isInsufficient: mlPred.prediction === 'INSUFFICIENT_DATA'
                       };
                     }
                   }
@@ -1328,10 +1526,35 @@ function initializeAnalyzer() {
       if (typeof SignalEnhancerSystem !== 'undefined') {
         signalEnhancer = new SignalEnhancerSystem();
         window.signalEnhancer = signalEnhancer;
-        console.log('[TheOption Analyzer] ✅ シグナル強化システム初期化完了');
+
+        // 初期化時に現在の通貨ペアを検出して設定
+        const initialAsset = getCurrentAssetPair();
+        if (initialAsset && signalEnhancer.setSymbol) {
+          signalEnhancer.setSymbol(initialAsset);
+          console.log(`[TheOption Analyzer] ✅ シグナル強化システム初期化完了 (通貨ペア: ${initialAsset})`);
+        } else {
+          console.log('[TheOption Analyzer] ✅ シグナル強化システム初期化完了 (通貨ペア未検出)');
+        }
       } else {
         console.warn('[TheOption Analyzer] ⚠️ SignalEnhancerSystemが見つかりません（オプション機能）');
         // 必須ではないため続行
+      }
+
+      // パターン層別化システム初期化（コンテキスト + ボラティリティ + 連続パターン）
+      if (typeof PatternStratificationSystem !== 'undefined') {
+        patternStratifier = new PatternStratificationSystem();
+        window.patternStratifier = patternStratifier;
+
+        // 初期化時に現在の通貨ペアを検出して設定
+        const initialAssetForPSS = getCurrentAssetPair();
+        if (initialAssetForPSS && patternStratifier.setSymbol) {
+          patternStratifier.setSymbol(initialAssetForPSS);
+          console.log(`[TheOption Analyzer] ✅ パターン層別化システム初期化完了 (通貨ペア: ${initialAssetForPSS})`);
+        } else {
+          console.log('[TheOption Analyzer] ✅ パターン層別化システム初期化完了 (通貨ペア未検出)');
+        }
+      } else {
+        console.warn('[TheOption Analyzer] ⚠️ PatternStratificationSystemが見つかりません（オプション機能）');
       }
 
       // 保存された設定を復元（保存がなければデフォルト50%を使用）
@@ -1912,6 +2135,17 @@ function initializeAnalyzer() {
 
               // 機械学習システムも通貨ペア別に切り替え
               mlSystem.setCurrentAsset(detectedAsset);
+
+              // シグナル強化システムにも通貨ペアを設定（仮想通貨/法定通貨の特性別処理）
+              if (signalEnhancer && signalEnhancer.setSymbol) {
+                signalEnhancer.setSymbol(detectedAsset);
+              }
+
+              // パターン層別化システムにも通貨ペアを設定
+              if (patternStratifier && patternStratifier.setSymbol) {
+                patternStratifier.setSymbol(detectedAsset);
+              }
+
               mlSystem.initialize(detectedAsset).then(() => {
                 console.log(`[TheOption Analyzer] 🧠 ${detectedAsset} のMLシステムを初期化完了`);
 
@@ -1959,6 +2193,16 @@ function initializeAnalyzer() {
               }
 
               mlSystem.setCurrentAsset(detectedAsset);
+
+              // シグナル強化システムにも通貨ペアを設定（仮想通貨/法定通貨の特性別処理）
+              if (signalEnhancer && signalEnhancer.setSymbol) {
+                signalEnhancer.setSymbol(detectedAsset);
+              }
+
+              // パターン層別化システムにも通貨ペアを設定
+              if (patternStratifier && patternStratifier.setSymbol) {
+                patternStratifier.setSymbol(detectedAsset);
+              }
 
               // 統計情報の更新リスナーを設定（初期化中のデータロードをキャッチするため先に設定）
               mlSystem.onStatsUpdated = (stats) => {
@@ -2089,9 +2333,11 @@ function initializeAnalyzer() {
                 const techSignal = signals.technical ? signals.technical.signal : null;
                 const aiSignal = signals.ai && signals.ai.available ? signals.ai.signal : null;
 
-                // HIGH/LOWシグナルがある場合のみ取引状態を開始（STRONG_HIGH/STRONG_LOWも含む）
+                // HIGH/LOWシグナルがある場合のみ取引状態を開始（STRONG_HIGH/STRONG_LOW、TREND_HIGH/TREND_LOW、ENHANCED_HIGH/ENHANCED_LOWも含む）
                 const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
-                const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW';
+                const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW' ||
+                                    aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW' ||
+                                    aiSignal === 'ENHANCED_HIGH' || aiSignal === 'ENHANCED_LOW';
                 if (hasTechSignal || hasAISignal) {
                   tradingState.isTrading = true;
                   tradingState.startTime = Date.now();
@@ -2653,8 +2899,13 @@ function initializeAnalyzer() {
         mlDataTotal: ml.dataCount || 0
       };
 
-      if (ml.status === 'READY' && ml.predictions[`${currentTimeframe}s`]) {
-        const mlPred = ml.predictions[`${currentTimeframe}s`];
+      // デバッグ: シグナル判定の詳細ログ
+      const timeframeKey = `${currentTimeframe}s`;
+      const mlPred = ml.predictions?.[timeframeKey];
+      console.log(`[シグナル判定] ml.status=${ml.status}, predictions[${timeframeKey}]=${mlPred ? '存在' : 'なし'}, upRate=${mlPred?.upRate}, downRate=${mlPred?.downRate}`);
+
+      // upRate/downRateがあればシグナル判定を実行（statusに関係なく）
+      if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
         const upRate = mlPred.upRate || 0;
         const downRate = mlPred.downRate || 0;
         const drawRate = 100 - upRate - downRate;
@@ -2662,7 +2913,7 @@ function initializeAnalyzer() {
 
         // === AI予測シグナル判定ロジック ===
         // 優先度: 1.同値率チェック → 2.60%シグナル → 3.20pt差傾向 → 4.見送り
-        let aiSignal = mlPred.prediction;
+        let aiSignal = mlPred.prediction || 'NEUTRAL';
         let aiDirection = '見送り';
 
         if (drawRate > 30) {
@@ -2704,6 +2955,9 @@ function initializeAnalyzer() {
           downRate: downRate,
           diff: diff
         };
+
+        // デバッグ: シグナル判定結果
+        console.log(`[シグナル判定] UP=${upRate}%, DOWN=${downRate}%, 同値率=${drawRate}%, 差=${diff}pt → aiSignal=${aiSignal}, available=${ai.available}`);
       }
 
       return { technical, ai };

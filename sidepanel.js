@@ -672,7 +672,8 @@ function updateDisplay(data) {
     // 実際のシグナル表示は updateRealtimeStatus で prepTime 以内の時のみ行う
     // ここでは詳細カード（相場状況、AI予測詳細）のみ更新
     updateTechnicalCard(timeframeData.technical);
-    updateAICard(timeframeData.ai);
+    updateAICard(timeframeData.ai, data.stratification);
+    updateStratificationInsights(data.stratification);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
     debugLog('[SidePanel] 時間枠のデータなし - カードをリセット');
@@ -804,6 +805,15 @@ function updateAISignalCard(ai) {
   const available = ai ? ai.available : false;
   const status = ai ? ai.status : null;
 
+  // デバッグ: available状態を確認
+  console.log('[SidePanel] 🔍 AI available状態:', {
+    available,
+    status,
+    upRate: ai?.upRate,
+    downRate: ai?.downRate,
+    signal: ai?.signal
+  });
+
   if (!available) {
     const prevSignal = iconEl.getAttribute('data-signal');
     if (prevSignal !== 'wait' && cardEl) {
@@ -849,6 +859,14 @@ function updateAISignalCard(ai) {
   const enhanced = latestEnhancedSignal;
   const hasEnhancedSignal = enhanced && enhanced.enhanced && enhanced.signal && enhanced.signal.type !== 'NONE';
 
+  // 🔍 デバッグログ
+  console.log('[SidePanel SES Debug] 📊 AI判定入力:', {
+    upRate, downRate, drawRate, diff,
+    hasEnhanced: hasEnhancedSignal,
+    enhancedType: enhanced?.signal?.type,
+    enhancedDir: enhanced?.signal?.direction
+  });
+
   if (drawRate > 30) {
     // 同値率が30%超え → 見送り
     dataSignal = 'wait';
@@ -883,7 +901,7 @@ function updateAISignalCard(ai) {
       label = '見送り';
       confidence = '';
     }
-    debugLog('[SidePanel] 強化シグナル表示:', { type: sig.type, dir: sig.direction, star: starLevel });
+    console.log('[SidePanel SES Debug] ✅ 強化シグナル適用:', { type: sig.type, dir: sig.direction, star: starLevel, label, dataSignal });
   } else if (diff >= 20) {
     // 20pt以上の差がある → 傾向表示（★1-2）
     const starLevel = diff >= 30 ? 2 : 1;
@@ -902,6 +920,9 @@ function updateAISignalCard(ai) {
     label = '見送り';
     confidence = '';
   }
+
+  // 🔍 最終判定結果ログ
+  console.log('[SidePanel SES Debug] 📤 最終判定:', { dataSignal, label, confidence });
 
   // シグナル変更時のアニメーション
   const prevSignal = iconEl.getAttribute('data-signal');
@@ -1205,7 +1226,7 @@ function animateVolaGauge(fromValue, toValue, color) {
 }
 
 // AI予測詳細カード更新（シグナルはメインカードのみ）
-function updateAICard(ai) {
+function updateAICard(ai, stratification) {
   const probUp = document.getElementById('prob-up');
   const probDown = document.getElementById('prob-down');
   const probBarUp = document.getElementById('prob-bar-up');
@@ -1248,27 +1269,115 @@ function updateAICard(ai) {
     return;
   }
 
-  // 確率バー更新
-  const upRate = ai.upRate || 0;
-  const downRate = ai.downRate || 0;
-  if (probUp) probUp.textContent = `上昇 ${upRate}%`;
-  if (probDown) probDown.textContent = `下降 ${downRate}%`;
-  if (probBarUp) probBarUp.style.width = `${upRate}%`;
-  if (probBarDown) probBarDown.style.width = `${downRate}%`;
+  // 層別化データがある場合はそちらを優先表示
+  let displayUpRate = ai.upRate || 0;
+  let displayDownRate = ai.downRate || 0;
+  let hasStratification = false;
+  let originalUpRate = ai.upRate || 0;
+  let originalDownRate = ai.downRate || 0;
 
-  // 詳細情報のみ表示（シグナルバッジは表示しない）
-  // 閾値、マッチ件数、同値率を表示
-  // matchCountは上で既に定義済み
+  if (stratification && stratification.hasEnoughData) {
+    displayUpRate = stratification.upRate;
+    displayDownRate = stratification.downRate;
+    hasStratification = true;
+    if (stratification.original) {
+      originalUpRate = stratification.original.upRate;
+      originalDownRate = stratification.original.downRate;
+    }
+  }
+
+  // 確率バー更新（層別化後の値を表示）
+  if (probUp) probUp.textContent = `上昇 ${displayUpRate}%`;
+  if (probDown) probDown.textContent = `下降 ${displayDownRate}%`;
+  if (probBarUp) probBarUp.style.width = `${displayUpRate}%`;
+  if (probBarDown) probBarDown.style.width = `${displayDownRate}%`;
+
+  // 詳細情報
   const threshold = currentSettings.similarityThreshold || 50;
-  const drawRate = 100 - upRate - downRate; // 同値率
+  const drawRate = 100 - displayUpRate - displayDownRate;
+
   if (detailBox) {
-    detailBox.innerHTML = `
+    let detailHTML = `
       <p class="detail-text" style="font-weight: 600;">
         閾値${threshold}%以上: <strong style="font-weight: 700;">${matchCount}件</strong>
         <span style="color: #999; font-size: 0.85em; margin-left: 8px;">同値率: ${Math.round(drawRate)}%</span>
       </p>
     `;
+
+    // 層別化による変更があった場合、元の値との比較を表示
+    if (hasStratification && (originalUpRate !== displayUpRate || originalDownRate !== displayDownRate)) {
+      const upDiff = displayUpRate - originalUpRate;
+      const downDiff = displayDownRate - originalDownRate;
+      const upChange = upDiff > 0 ? `+${upDiff}` : upDiff;
+      const downChange = downDiff > 0 ? `+${downDiff}` : downDiff;
+
+      detailHTML += `
+        <div class="original-vs-stratified">
+          <span class="original-rate">元: 上昇${originalUpRate}% / 下降${originalDownRate}%</span>
+          <span class="arrow-icon">→</span>
+          <span class="stratified-rate ${displayUpRate > displayDownRate ? 'up' : displayDownRate > displayUpRate ? 'down' : ''}">
+            層別化後: 上昇${displayUpRate}% (${upChange}) / 下降${displayDownRate}% (${downChange})
+          </span>
+        </div>
+      `;
+    }
+
+    detailBox.innerHTML = detailHTML;
   }
+}
+
+// 層別化インサイトを表示
+function updateStratificationInsights(stratification) {
+  const insightsContainer = document.getElementById('stratification-insights');
+  if (!insightsContainer) return;
+
+  // 層別化データがない場合は非表示
+  if (!stratification || !stratification.hasEnoughData || !stratification.summary) {
+    insightsContainer.innerHTML = '';
+    return;
+  }
+
+  const summary = stratification.summary;
+
+  // インサイトがない場合も非表示
+  if (!summary.hasSignificantInsight || !summary.insights || summary.insights.length === 0) {
+    insightsContainer.innerHTML = '';
+    return;
+  }
+
+  let html = '';
+
+  // 各インサイトを表示
+  for (const insight of summary.insights) {
+    const impactClass = insight.impact || 'neutral';
+    html += `
+      <div class="insight-item ${impactClass}">
+        <span class="insight-icon">${insight.icon}</span>
+        <span class="insight-text">${insight.text}</span>
+      </div>
+    `;
+  }
+
+  // サマリー行を追加
+  if (summary.totalBoost > 0) {
+    const boostLevel = summary.confidenceLevel || 'low';
+    const contextInfo = stratification.context?.contextName || '';
+    const volInfo = stratification.volatility?.levelName || '';
+
+    html += `
+      <div class="stratification-summary">
+        <div class="context-info">
+          ${contextInfo ? `<span class="context-badge">${contextInfo}</span>` : ''}
+          ${volInfo ? `<span class="context-badge">${volInfo}</span>` : ''}
+        </div>
+        <div class="stratification-boost ${boostLevel}">
+          精度向上: +${summary.totalBoost}pt
+        </div>
+      </div>
+    `;
+  }
+
+  insightsContainer.innerHTML = html;
 }
 
 // ML学習状況更新

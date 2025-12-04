@@ -114,7 +114,7 @@
             <span class="card-expand-icon">▼</span>
           </button>
           <div class="card-content" id="ai-content">
-            <!-- 上昇/下降確率バー -->
+            <!-- 上昇/下降確率バー（層別化適用後） -->
             <div class="probability-bar-container" id="probability-container">
               <div class="probability-labels">
                 <span class="prob-up" id="prob-up">上昇 --%</span>
@@ -125,6 +125,11 @@
                 <div class="prob-bar-down" id="prob-bar-down"></div>
               </div>
             </div>
+            <!-- 層別化分析インサイト -->
+            <div class="stratification-insights" id="stratification-insights">
+              <!-- JSで動的に生成 -->
+            </div>
+            <!-- 基本情報 -->
             <div class="detail-box" id="ai-detail">
               <p class="detail-text">学習データ収集中...</p>
             </div>
