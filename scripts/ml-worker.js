@@ -49,7 +49,7 @@ self.onmessage = function (e) {
 
 // 初期化処理
 function handleInit(payload, id) {
-    console.log(`[ML Worker] Initializing for ${payload.assetName} with ${payload.data.length} records`);
+    // console.log(`[ML Worker] Initializing for ${payload.assetName} with ${payload.data.length} records`);
     assetName = payload.assetName;
     trainingData = payload.data || [];
 
@@ -99,12 +99,12 @@ function handlePredict(payload, id) {
 
     const { currentSituation, timeframe, threshold, maxDataCount } = payload;
 
-    // 🔍 デバッグ: payloadの内容を詳細に確認
-    console.log(`[ML Worker Debug] Received payload keys:`, Object.keys(payload));
-    console.log(`[ML Worker Debug] maxDataCount value: ${maxDataCount}, type: ${typeof maxDataCount}`);
+    // 🔍 デバッグ: payloadの内容を詳細に確認（本番ではコメントアウト）
+    // console.log(`[ML Worker Debug] Received payload keys:`, Object.keys(payload));
+    // console.log(`[ML Worker Debug] maxDataCount value: ${maxDataCount}, type: ${typeof maxDataCount}`);
 
-    const dataRangeText = maxDataCount ? `直近${maxDataCount}件` : '全期間';
-    console.log(`[ML Worker] Predicting for ${timeframe}s (threshold: ${threshold}%, データ範囲: ${dataRangeText})`);
+    // const dataRangeText = maxDataCount ? `直近${maxDataCount}件` : '全期間';
+    // console.log(`[ML Worker] Predicting for ${timeframe}s (threshold: ${threshold}%, データ範囲: ${dataRangeText})`);
 
     const result = patternMatcher.predict(
         currentSituation,

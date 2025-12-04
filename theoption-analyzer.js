@@ -555,9 +555,9 @@ function initializeAnalyzer() {
       }
 
       try {
-        // 🔍 デバッグ: currentDataLimitの値と型を確認
-        console.log(`[TheOption Analyzer Debug] currentDataLimit value: ${currentDataLimit}, type: ${typeof currentDataLimit}`);
-        console.log(`[TheOption Analyzer] 🔄 設定変更により予測を再実行 (閾値: ${currentSimilarityThreshold}%, データ: ${currentDataLimit || '全期間'})`);
+        // デバッグ: currentDataLimitの値と型を確認（DEBUG_MODEでオーバーライドされる）
+        // console.log(`[TheOption Analyzer Debug] currentDataLimit value: ${currentDataLimit}, type: ${typeof currentDataLimit}`);
+        // console.log(`[TheOption Analyzer] 🔄 設定変更により予測を再実行 (閾値: ${currentSimilarityThreshold}%, データ: ${currentDataLimit || '全期間'})`);
 
         // 新しい設定で予測を再実行
         const newPrediction = await mlSystem.predictWithThreshold(
@@ -833,13 +833,13 @@ function initializeAnalyzer() {
                   enhancedThreshold,
                   currentDataLimit
                 );
-                console.log('[SES Debug] 低閾値予測結果:', enhancedPrediction);
+                // console.log('[SES Debug] 低閾値予測結果:', enhancedPrediction);
               } catch (e) {
                 // データ不足時は警告レベルのログのみ（エラーではない）
-                console.log('[SES Debug] 低閾値予測スキップ:', e?.message || 'データ処理中');
+                // console.log('[SES Debug] 低閾値予測スキップ:', e?.message || 'データ処理中');
               }
             } else {
-              console.log(`[SES Debug] 低閾値予測スキップ: データ不足 (${dataCountWithResults}/50件)`);
+              // console.log(`[SES Debug] 低閾値予測スキップ: データ不足 (${dataCountWithResults}/50件)`);
             }
 
             // 全時間枠の予測を収集
@@ -881,16 +881,8 @@ function initializeAnalyzer() {
             const matchedPatterns = enhancedPrediction?.topPatterns ||
                                    currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [];
 
-            // 🔍 デバッグ: 入力データを確認
-            console.log('[SES Debug] 📊 入力データ:', {
-              hasSituation: !!currentResult.currentSituation,
-              predictionsCount: Object.keys(allPredictions).length,
-              predictions: allPredictions,
-              matchedPatternsCount: matchedPatterns.length,
-              primaryTimeframe: currentTimeframe,
-              baseThreshold: currentSimilarityThreshold,
-              enhancedThreshold: enhancedThreshold
-            });
+            // デバッグ: 入力データを確認（本番ではオーバーライドされる）
+            // console.log('[SES Debug] 📊 入力データ:', { hasSituation: !!currentResult.currentSituation, predictionsCount: Object.keys(allPredictions).length });
 
             // シグナル強化を実行
             enhancedSignal = signalEnhancer.enhance({
@@ -901,24 +893,8 @@ function initializeAnalyzer() {
               baseThreshold: currentSimilarityThreshold
             });
 
-            // 🔍 デバッグ: 出力結果を確認
-            console.log('[SES Debug] 📤 出力結果:', {
-              enhanced: enhancedSignal?.enhanced,
-              signalType: enhancedSignal?.signal?.type,
-              signalDirection: enhancedSignal?.signal?.direction,
-              starLevel: enhancedSignal?.signal?.starLevel,
-              sources: enhancedSignal?.signal?.source,
-              consensus: enhancedSignal?.analysis?.consensus?.hasConsensus,
-              cluster: enhancedSignal?.analysis?.cluster?.cluster,
-              volatilityLevel: enhancedSignal?.analysis?.volatility?.level,
-              effectiveThreshold: enhancedSignal?.analysis?.effectiveThreshold
-            });
-
-            if (enhancedSignal && enhancedSignal.enhanced) {
-              console.log(`[TheOption Analyzer] 🚀 強化シグナル検出: type=${enhancedSignal.signal.type}, dir=${enhancedSignal.signal.direction}, ★${enhancedSignal.signal.starLevel}`);
-            } else {
-              console.log('[SES Debug] ⏭️ 強化シグナルなし（標準判定へ）');
-            }
+            // デバッグ: 出力結果を確認（本番ではオーバーライドされる）
+            // console.log('[SES Debug] 📤 出力結果:', { enhanced: enhancedSignal?.enhanced, signalType: enhancedSignal?.signal?.type });
           } catch (error) {
             console.error('[TheOption Analyzer] シグナル強化エラー:', error);
           }
@@ -1407,19 +1383,15 @@ function initializeAnalyzer() {
         }
 
         if (message.type === 'SETTING_CHANGED') {
-          // 設定変更を適用
-          // 🔍 デバッグ: 受け取った値の詳細を出力
-          console.log(`[TheOption Analyzer Debug] SETTING_CHANGED received: key=${message.key}, value=${message.value}, type=${typeof message.value}`);
-          console.log('[TheOption Analyzer] 設定変更:', message.key, '=', message.value);
+          // 設定変更を適用（DEBUG_MODEでオーバーライドされる）
+          // console.log(`[TheOption Analyzer] 設定変更: key=${message.key}, value=${message.value}`);
 
           if (message.key === 'similarityThreshold') {
             currentSimilarityThreshold = message.value;
             // ML予測を再実行
             rerunMLPrediction();
           } else if (message.key === 'dataLimit') {
-            console.log(`[TheOption Analyzer Debug] Before update: currentDataLimit=${currentDataLimit}`);
             currentDataLimit = message.value;
-            console.log(`[TheOption Analyzer Debug] After update: currentDataLimit=${currentDataLimit}`);
             // ML予測を再実行
             rerunMLPrediction();
           }

@@ -28,8 +28,8 @@ class PatternMatchingSystem {
         const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
 
         // 🔍 デバッグ: maxDataCountの値を確認
-        console.log(`[ML Debug] findSimilarPatterns called: maxDataCount=${maxDataCount}, type=${typeof maxDataCount}`);
-        console.log(`[ML Debug] trainingData.length=${this.trainingData.length}`);
+        pmsLog(`[ML Debug] findSimilarPatterns called: maxDataCount=${maxDataCount}, type=${typeof maxDataCount}`);
+        pmsLog(`[ML Debug] trainingData.length=${this.trainingData.length}`);
 
         // maxDataCountが文字列"all"の場合はnullとして扱う
         const effectiveMaxDataCount = (maxDataCount === 'all' || maxDataCount === null || maxDataCount === undefined) ? null : Number(maxDataCount);
@@ -40,13 +40,13 @@ class PatternMatchingSystem {
             const targetDataWithResults = targetData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
 
             // 🔍 デバッグ: フィルタリング結果を確認
-            console.log(`[ML Debug] データ範囲フィルタ適用: 全${totalDataCount}件 → 直近${effectiveMaxDataCount}件 → 実際のtargetData=${targetData.length}件 → 結果あり${targetDataWithResults}件`);
+            pmsLog(`[ML Debug] データ範囲フィルタ適用: 全${totalDataCount}件 → 直近${effectiveMaxDataCount}件 → 実際のtargetData=${targetData.length}件 → 結果あり${targetDataWithResults}件`);
 
             pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
             pmsLog(`[ML] 📊 データ範囲: 直近${effectiveMaxDataCount}件指定 → 実際の検索対象=${targetDataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
         } else {
             // 🔍 デバッグ: 全期間使用を確認
-            console.log(`[ML Debug] データ範囲フィルタなし（全期間）: 全${totalDataCount}件 → 結果あり${dataWithResults}件`);
+            pmsLog(`[ML Debug] データ範囲フィルタなし（全期間）: 全${totalDataCount}件 → 結果あり${dataWithResults}件`);
 
             pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
             pmsLog(`[ML] 📊 データ範囲: 全期間使用 → 検索対象=${dataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
@@ -114,7 +114,7 @@ class PatternMatchingSystem {
         const result = similarPatterns.slice(0, maxPatterns);
 
         // 🔍 デバッグ: マッチパターン数を確認
-        console.log(`[ML Debug] マッチパターン結果: 閾値${minSimilarity}%通過=${similarPatterns.length}件 → 上限${maxPatterns}件適用後=${result.length}件`);
+        pmsLog(`[ML Debug] マッチパターン結果: 閾値${minSimilarity}%通過=${similarPatterns.length}件 → 上限${maxPatterns}件適用後=${result.length}件`);
         pmsLog(`[ML] ✅ 返却するパターン数: ${result.length}件 (閾値${minSimilarity}%通過、上限${maxPatterns}件)`);
 
         // 詳細スコア内訳を出力（閾値通過した上位5件のみ）

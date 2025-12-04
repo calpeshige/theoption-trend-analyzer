@@ -859,13 +859,8 @@ function updateAISignalCard(ai) {
   const enhanced = latestEnhancedSignal;
   const hasEnhancedSignal = enhanced && enhanced.enhanced && enhanced.signal && enhanced.signal.type !== 'NONE';
 
-  // 🔍 デバッグログ
-  console.log('[SidePanel SES Debug] 📊 AI判定入力:', {
-    upRate, downRate, drawRate, diff,
-    hasEnhanced: hasEnhancedSignal,
-    enhancedType: enhanced?.signal?.type,
-    enhancedDir: enhanced?.signal?.direction
-  });
+  // デバッグログ（本番では無効）
+  // console.log('[SidePanel SES Debug] 📊 AI判定入力:', { upRate, downRate, drawRate, diff, hasEnhanced: hasEnhancedSignal });
 
   if (drawRate > 30) {
     // 同値率が30%超え → 見送り
@@ -901,7 +896,7 @@ function updateAISignalCard(ai) {
       label = '見送り';
       confidence = '';
     }
-    console.log('[SidePanel SES Debug] ✅ 強化シグナル適用:', { type: sig.type, dir: sig.direction, star: starLevel, label, dataSignal });
+    // console.log('[SidePanel SES Debug] ✅ 強化シグナル適用:', { type: sig.type, dir: sig.direction, star: starLevel, label, dataSignal });
   } else if (diff >= 20) {
     // 20pt以上の差がある → 傾向表示（★1-2）
     const starLevel = diff >= 30 ? 2 : 1;
@@ -921,8 +916,8 @@ function updateAISignalCard(ai) {
     confidence = '';
   }
 
-  // 🔍 最終判定結果ログ
-  console.log('[SidePanel SES Debug] 📤 最終判定:', { dataSignal, label, confidence });
+  // 最終判定結果ログ（本番では無効）
+  // console.log('[SidePanel SES Debug] 📤 最終判定:', { dataSignal, label, confidence });
 
   // シグナル変更時のアニメーション
   const prevSignal = iconEl.getAttribute('data-signal');

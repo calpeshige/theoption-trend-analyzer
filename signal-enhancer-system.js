@@ -15,7 +15,7 @@ if (typeof window.DEBUG_MODE === 'undefined') {
   window.DEBUG_MODE = false;
 }
 // シグナル強化システム専用ログ（動作確認用に常に出力）
-const SES_DEBUG = true;  // 動作確認後はfalseに変更
+const SES_DEBUG = false;  // 本番環境ではfalse
 const sesLog = SES_DEBUG ? console.log.bind(console) : () => {};
 
 // ========================================

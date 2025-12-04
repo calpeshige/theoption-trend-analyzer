@@ -9,7 +9,7 @@
  */
 
 // デバッグモード
-const PSS_DEBUG = true;  // 動作確認後はfalseに変更
+const PSS_DEBUG = false;  // 本番環境ではfalse
 const pssLog = PSS_DEBUG ? console.log.bind(console) : () => {};
 
 // ========================================
