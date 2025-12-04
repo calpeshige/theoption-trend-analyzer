@@ -42,7 +42,7 @@ self.onmessage = function (e) {
         self.postMessage({
             type: 'ERROR',
             id: id,
-            error: error.message
+            payload: { error: error.message, stack: error.stack }
         });
     }
 };

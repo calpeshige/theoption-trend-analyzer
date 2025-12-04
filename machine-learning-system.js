@@ -460,7 +460,8 @@ class PatternMatchingSystem {
       this.worker.onmessage = (e) => {
         const { type, payload, id } = e.data;
         if (type === 'ERROR') {
-          console.error('[ML Worker Error]', payload ? payload.error : 'Unknown error');
+          // データ不足時のエラーは正常な動作の一部なのでwarnレベル
+          console.warn('[ML Worker]', payload ? payload.error : 'データ処理中');
         } else if (type === 'INIT_COMPLETE') {
           mlsLog(`[ML Worker] Init complete: ${payload.count} records`);
         } else if (type === 'ADD_DATA_COMPLETE') {

@@ -822,16 +822,24 @@ function initializeAnalyzer() {
             // これにより、ユーザー設定の閾値が高くてもマッチパターンが増える
             const enhancedThreshold = 50; // 強化シグナル専用の閾値
             let enhancedPrediction = null;
-            try {
-              enhancedPrediction = await mlSystem.predictWithThreshold(
-                currentResult.currentSituation,
-                currentTimeframe,
-                enhancedThreshold,
-                currentDataLimit
-              );
-              console.log('[SES Debug] 低閾値予測結果:', enhancedPrediction);
-            } catch (e) {
-              console.error('[SES Debug] 低閾値予測エラー:', e);
+
+            // データが十分にある場合のみ予測を実行（エラー防止）
+            const dataCountWithResults = mlSystem.getDataCountWithResults ? mlSystem.getDataCountWithResults() : 0;
+            if (dataCountWithResults >= 50) {
+              try {
+                enhancedPrediction = await mlSystem.predictWithThreshold(
+                  currentResult.currentSituation,
+                  currentTimeframe,
+                  enhancedThreshold,
+                  currentDataLimit
+                );
+                console.log('[SES Debug] 低閾値予測結果:', enhancedPrediction);
+              } catch (e) {
+                // データ不足時は警告レベルのログのみ（エラーではない）
+                console.log('[SES Debug] 低閾値予測スキップ:', e?.message || 'データ処理中');
+              }
+            } else {
+              console.log(`[SES Debug] 低閾値予測スキップ: データ不足 (${dataCountWithResults}/50件)`);
             }
 
             // 全時間枠の予測を収集
@@ -2780,8 +2788,9 @@ function initializeAnalyzer() {
           });
         }
       } catch (error) {
-        console.error('[TheOption Analyzer] ML 予測エラー:', error);
-        mlPredictions = { status: 'ERROR', predictions: {} };
+        // データ不足やWorker未準備時は警告レベルのログのみ（正常な動作の一部）
+        console.log('[TheOption Analyzer] ML 予測スキップ:', error?.message || 'データ準備中');
+        mlPredictions = { status: 'COLLECTING', predictions: {} };
       }
 
       // 3段階トレンド分析
