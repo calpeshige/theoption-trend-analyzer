@@ -517,11 +517,11 @@
     <div id="tab-history" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>発行履歴（ローカル）</h2>
-          <button class="btn-small btn-secondary" onclick="clearHistory()">履歴をクリア</button>
+          <h2>全ライセンス一覧（Firestore）</h2>
+          <button class="btn-small btn-success" onclick="loadHistoryFromFirestore()">🔄 更新</button>
         </div>
         <div id="history">
-          <p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>
+          <p style="color: #a0aec0; text-align: center;">読み込みボタンをクリックしてください</p>
         </div>
       </div>
     </div>
@@ -564,13 +564,11 @@
 
     const LICENSE_COLLECTION = 'licenses';
 
-    // 発行履歴（ローカルストレージに保存）
-    let licenseHistory = JSON.parse(localStorage.getItem('licenseHistory') || '[]');
-    let currentLicenseKey = null; // 現在選択中のライセンスキー
+    // 現在選択中のライセンスキー
+    let currentLicenseKey = null;
 
     // ページ読み込み時
     window.onload = function() {
-      displayHistory();
       // デフォルトの有効期限を1年後に設定
       const oneYearLater = new Date();
       oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
@@ -660,23 +658,6 @@
 
         const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
         showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}`);
-
-        // 履歴に追加
-        licenseHistory.unshift({
-          key: licenseKey,
-          userName: userName,
-          maxDevices: maxDevices,
-          hasExpiry: hasExpiry,
-          expiryDate: hasExpiry ? expiryDate : null,
-          createdAt: new Date().toISOString()
-        });
-
-        if (licenseHistory.length > 50) {
-          licenseHistory = licenseHistory.slice(0, 50);
-        }
-
-        localStorage.setItem('licenseHistory', JSON.stringify(licenseHistory));
-        displayHistory();
 
         document.getElementById('userName').value = '';
         generateLicenseKey();
@@ -779,7 +760,8 @@
         const fields = doc.fields || {};
         const userName = fields.userName?.stringValue || '-';
         const maxDevices = parseInt(fields.maxDevices?.integerValue || '1');
-        const devices = fields.devices?.arrayValue?.values || [];
+        const devicesArr = fields.devices?.arrayValue;
+        const devices = (devicesArr && devicesArr.values) ? devicesArr.values : [];
         const isActive = fields.active?.booleanValue ?? true;
         const expiryDate = fields.expiryDate?.timestampValue;
 
@@ -811,6 +793,12 @@
       resultsEl.innerHTML = html;
     }
 
+    // ヘルパー関数: devicesを安全に取得
+    function getDevicesArray(fields) {
+      const devicesArr = fields.devices?.arrayValue;
+      return (devicesArr && devicesArr.values) ? devicesArr.values : [];
+    }
+
     // ライセンス詳細を表示
     async function showLicenseDetail(licenseKey) {
       currentLicenseKey = licenseKey;
@@ -831,7 +819,7 @@
 
         const userName = fields.userName?.stringValue || '-';
         const maxDevices = parseInt(fields.maxDevices?.integerValue || '1');
-        const devices = fields.devices?.arrayValue?.values || [];
+        const devices = getDevicesArray(fields);
         const isActive = fields.active?.booleanValue ?? true;
         const expiryDate = fields.expiryDate?.timestampValue;
         const createdAt = fields.createdAt?.timestampValue;
@@ -920,7 +908,7 @@
 
         const getResponse = await fetch(getUrl);
         const doc = await getResponse.json();
-        const currentDevices = doc.fields?.devices?.arrayValue?.values || [];
+        const currentDevices = getDevicesArray(doc.fields || {});
 
         // 指定デバイスを除外
         const updatedDevices = currentDevices.filter(d => d.stringValue !== deviceId);
@@ -1030,51 +1018,90 @@
       }, 10000);
     }
 
-    // 履歴を表示
-    function displayHistory() {
+    // Firestoreから全ライセンスを取得して履歴として表示
+    async function loadHistoryFromFirestore() {
       const historyEl = document.getElementById('history');
+      historyEl.innerHTML = '<div class="loading">読み込み中</div>';
 
-      if (licenseHistory.length === 0) {
-        historyEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>';
-        return;
-      }
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}&pageSize=100`;
 
-      let html = `
-        <table class="license-table">
-          <thead>
-            <tr>
-              <th>ライセンスキー</th>
-              <th>購入者</th>
-              <th>デバイス数</th>
-              <th>有効期限</th>
-              <th>発行日</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      licenseHistory.forEach(item => {
-        html += `
-          <tr>
-            <td><span class="license-key" onclick="showLicenseDetail('${item.key}')">${item.key}</span></td>
-            <td>${item.userName}</td>
-            <td>${item.maxDevices}台</td>
-            <td>${item.hasExpiry ? item.expiryDate : '無期限'}</td>
-            <td>${new Date(item.createdAt).toLocaleDateString('ja-JP')}</td>
-          </tr>
+        const data = await response.json();
+        const documents = data.documents || [];
+
+        if (documents.length === 0) {
+          historyEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">ライセンスが見つかりません</p>';
+          return;
+        }
+
+        // createdAtでソート（新しい順）
+        documents.sort((a, b) => {
+          const dateA = a.fields?.createdAt?.timestampValue ? new Date(a.fields.createdAt.timestampValue) : new Date(0);
+          const dateB = b.fields?.createdAt?.timestampValue ? new Date(b.fields.createdAt.timestampValue) : new Date(0);
+          return dateB - dateA;
+        });
+
+        let html = `
+          <p style="color: #48bb78; margin-bottom: 16px;">全 ${documents.length} 件のライセンスを表示中</p>
+          <table class="license-table">
+            <thead>
+              <tr>
+                <th>ライセンスキー</th>
+                <th>購入者</th>
+                <th>デバイス</th>
+                <th>状態</th>
+                <th>有効期限</th>
+                <th>発行日</th>
+              </tr>
+            </thead>
+            <tbody>
         `;
-      });
 
-      html += '</tbody></table>';
-      historyEl.innerHTML = html;
-    }
+        documents.forEach(doc => {
+          const licenseKey = doc.name.split('/').pop();
+          const fields = doc.fields || {};
+          const userName = fields.userName?.stringValue || '-';
+          const maxDevices = parseInt(fields.maxDevices?.integerValue || '1');
+          const devices = getDevicesArray(fields);
+          const isActive = fields.active?.booleanValue ?? true;
+          const expiryDate = fields.expiryDate?.timestampValue;
+          const createdAt = fields.createdAt?.timestampValue;
 
-    // 履歴をクリア
-    function clearHistory() {
-      if (!confirm('発行履歴をすべてクリアしますか？\n（Firestoreのデータには影響しません）')) return;
-      licenseHistory = [];
-      localStorage.removeItem('licenseHistory');
-      displayHistory();
+          let statusClass = 'status-active';
+          let statusText = '有効';
+
+          if (!isActive) {
+            statusClass = 'status-inactive';
+            statusText = '無効';
+          } else if (expiryDate && new Date(expiryDate) < new Date()) {
+            statusClass = 'status-expired';
+            statusText = '期限切れ';
+          }
+
+          const expiryText = expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限';
+          const createdText = createdAt ? new Date(createdAt).toLocaleDateString('ja-JP') : '-';
+
+          html += `
+            <tr>
+              <td><span class="license-key" onclick="showLicenseDetail('${licenseKey}')">${licenseKey}</span></td>
+              <td>${userName}</td>
+              <td>${devices.length}/${maxDevices}</td>
+              <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+              <td>${expiryText}</td>
+              <td>${createdText}</td>
+            </tr>
+          `;
+        });
+
+        html += '</tbody></table>';
+        historyEl.innerHTML = html;
+
+      } catch (error) {
+        historyEl.innerHTML = `<p style="color: #f56565; text-align: center;">エラー: ${error.message}</p>`;
+      }
     }
 
     // Enterキーで検索
