@@ -13,6 +13,17 @@ if (typeof window.DEBUG_MODE === 'undefined') {
   window.DEBUG_MODE = false; // true=デバッグ表示, false=本番（ログなし）
 }
 
+// 重要な運用ログ用の関数（DEBUG_MODEに関係なく常に表示）
+// データ収集状況など、ユーザーが確認したい情報を出力
+const originalConsoleLog = console.log.bind(console);
+const originalConsoleWarn = console.warn.bind(console);
+window.mlLog = function(...args) {
+  originalConsoleLog('[ML]', ...args);
+};
+window.mlWarn = function(...args) {
+  originalConsoleWarn('[ML]', ...args);
+};
+
 if (!window.DEBUG_MODE) {
   console.log = () => { };
   console.warn = () => { };
@@ -421,6 +432,15 @@ function initializeAnalyzer() {
       300: null
     };
 
+    // 時間枠ごとの層別化結果キャッシュ（STATUS_UPDATEでも使用するため）
+    let cachedStratificationResults = {
+      15: null,
+      30: null,
+      60: null,
+      180: null,
+      300: null
+    };
+
     // 時間枠ごとの最終分析時刻
     let lastAnalysisTimes = {
       15: 0,
@@ -621,7 +641,9 @@ function initializeAnalyzer() {
         Object.keys(TIMEFRAME_CONFIGS).forEach(tf => {
           const result = timeframeResults[tf];
           if (result && result.multiDim) {
-            const signals = getCurrentTimeframeSignal(result.multiDim, result.ml);
+            // キャッシュされた層別化結果を使用（前回の分析から）
+            const cachedStratification = cachedStratificationResults[tf];
+            const signals = getCurrentTimeframeSignal(result.multiDim, result.ml, cachedStratification);
 
             // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
             const multiDim = result.multiDim;
@@ -996,6 +1018,33 @@ function initializeAnalyzer() {
           }
         }
 
+        // === 層別化結果を使ってAIシグナルを再判定 ===
+        // UIに表示される層別化後の値と、シグナル判定の値を一致させる
+        if (stratificationResult && stratificationResult.hasEnoughData && timeframesData[currentTimeframe]) {
+          const currentResult = timeframeResults[currentTimeframe];
+          if (currentResult && currentResult.multiDim && currentResult.ml) {
+            // 層別化結果を渡してシグナルを再判定
+            const updatedSignals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, stratificationResult);
+
+            // timeframesDataのAI部分を更新
+            timeframesData[currentTimeframe].ai = {
+              ...timeframesData[currentTimeframe].ai,
+              signal: updatedSignals.ai.signal,
+              direction: updatedSignals.ai.direction,
+              available: updatedSignals.ai.available,
+              upRate: updatedSignals.ai.upRate,
+              downRate: updatedSignals.ai.downRate
+            };
+
+            window.mlLog?.(`[層別化適用] シグナル更新: ${updatedSignals.ai.signal}, available=${updatedSignals.ai.available}`);
+          }
+        }
+
+        // 層別化結果をキャッシュに保存（STATUS_UPDATEで使用するため）
+        if (stratificationResult) {
+          cachedStratificationResults[currentTimeframe] = stratificationResult;
+        }
+
         const data = {
           asset: currentAsset,
           dataCount: priceHistory.length,
@@ -1090,7 +1139,9 @@ function initializeAnalyzer() {
           // 通常時は timeframeResults から取得
           const currentResult = timeframeResults[currentTimeframe];
           if (currentResult && currentResult.multiDim) {
-            const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml);
+            // キャッシュされた層別化結果を使用（sendAnalysisToSidePanelで計算済み）
+            const cachedStratification = cachedStratificationResults[currentTimeframe];
+            const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, cachedStratification);
             // signals.technical.signal は 'HIGH', 'LOW', 'NEUTRAL' など
             // signals.ai.available が true なら signals.ai.signal が 'HIGH', 'LOW' など
             currentSignal = {
@@ -1222,7 +1273,9 @@ function initializeAnalyzer() {
           Object.keys(TIMEFRAME_CONFIGS).forEach(tf => {
             const result = timeframeResults[tf];
             if (result && result.multiDim) {
-              const signals = getCurrentTimeframeSignal(result.multiDim, result.ml);
+              // キャッシュされた層別化結果を使用
+              const cachedStratification = cachedStratificationResults[tf];
+              const signals = getCurrentTimeframeSignal(result.multiDim, result.ml, cachedStratification);
               const multiDim = result.multiDim;
 
               // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
@@ -2309,9 +2362,61 @@ function initializeAnalyzer() {
               // 現在のシグナルを確認
               const currentResult = timeframeResults[currentTimeframe];
               if (currentResult && currentResult.multiDim) {
-                const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml);
+                // キャッシュされた層別化結果を使用
+                const cachedStratification = cachedStratificationResults[currentTimeframe];
+                const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, cachedStratification);
                 const techSignal = signals.technical ? signals.technical.signal : null;
-                const aiSignal = signals.ai && signals.ai.available ? signals.ai.signal : null;
+                let aiSignal = signals.ai && signals.ai.available ? signals.ai.signal : null;
+                let aiStarLevel = null;
+
+                // === 強化シグナルのチェック（エントリー時も適用） ===
+                if (signalEnhancer && currentResult.currentSituation &&
+                    (!signals.ai.available || aiSignal === 'NEUTRAL' ||
+                     aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW')) {
+                  try {
+                    // 全時間枠の予測を収集
+                    const allPredictions = {};
+                    Object.keys(timeframeResults).forEach(tf => {
+                      const tfResult = timeframeResults[tf];
+                      if (tfResult && tfResult.ml && tfResult.ml.predictions) {
+                        const mlPred = tfResult.ml.predictions[`${tf}s`];
+                        if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
+                          allPredictions[tf] = {
+                            prediction: mlPred.prediction,
+                            upRate: mlPred.upRate || 0,
+                            downRate: mlPred.downRate || 0,
+                            similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
+                            sampleSize: mlPred.sampleSize || 0,
+                            isInsufficient: mlPred.prediction === 'INSUFFICIENT_DATA'
+                          };
+                        }
+                      }
+                    });
+
+                    // シグナル強化を実行
+                    const enhanced = signalEnhancer.enhance({
+                      situation: currentResult.currentSituation,
+                      predictions: allPredictions,
+                      matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
+                      primaryTimeframe: currentTimeframe,
+                      baseThreshold: currentSimilarityThreshold
+                    });
+
+                    // 強化シグナルがあり、TRENDでない場合は適用
+                    if (enhanced && enhanced.enhanced && enhanced.signal.type !== 'TREND') {
+                      const enhDir = enhanced.signal.direction;
+                      if (enhDir === 'HIGH') {
+                        aiSignal = 'ENHANCED_HIGH';
+                        aiStarLevel = enhanced.signal.starLevel;
+                      } else if (enhDir === 'LOW') {
+                        aiSignal = 'ENHANCED_LOW';
+                        aiStarLevel = enhanced.signal.starLevel;
+                      }
+                    }
+                  } catch (error) {
+                    // エラーは無視
+                  }
+                }
 
                 // HIGH/LOWシグナルがある場合のみ取引状態を開始（STRONG_HIGH/STRONG_LOW、TREND_HIGH/TREND_LOW、ENHANCED_HIGH/ENHANCED_LOWも含む）
                 const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
@@ -2329,7 +2434,8 @@ function initializeAnalyzer() {
                     tech: techSignal,
                     techConfidence: signals.technical ? signals.technical.confidence : null,
                     ai: aiSignal,
-                    aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null
+                    aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
+                    aiStarLevel: aiStarLevel
                   };
                   console.log(`[TheOption Analyzer] 🎯 取引開始: ${currentTimeframe}秒判定 (シグナル: tech=${techSignal}, ai=${aiSignal})`);
                   // エントリータイミング（0秒）でアラート音を再生（2回目）
@@ -2368,6 +2474,8 @@ function initializeAnalyzer() {
             const dateTime = new Date();
             const timeStr = `${dateTime.getHours()}:${String(dateTime.getMinutes()).padStart(2, '0')}:${String(dateTime.getSeconds()).padStart(2, '0')}`;
             const secondsUntilEntry = getSecondsUntilNextTiming(currentTimeframe);
+            // 重要な運用ログ: 分析実行タイミングを常に表示
+            window.mlLog?.(`⏰ 分析実行: ${timeStr} (${TIMEFRAME_CONFIGS[currentTimeframe].label}) - エントリーまで${secondsUntilEntry}秒`);
             console.log(`[TheOption Analyzer] ⏰ 分析実行: ${timeStr} (${TIMEFRAME_CONFIGS[currentTimeframe].label}) - エントリーまで${secondsUntilEntry}秒`);
 
             performAnalysis(price, { timeframe: currentTimeframe });
@@ -2501,6 +2609,37 @@ function initializeAnalyzer() {
 
         timestamp: Date.now()
       };
+
+      // ========================================
+      // 学習データ収集（15秒ごとに実行）
+      // ========================================
+      // 分析実行時だけでなく、15秒ごとに継続的にデータを収集
+      try {
+        mlSystem.startCollecting({ currentPrice }, {
+          multiDim: multiDimResult,
+          pricePattern15s: pricePattern15s,
+          pricePattern30s: pricePattern30s,
+          pricePattern60s: pricePattern60s,
+          pricePattern180s: pricePattern180s,
+          pricePattern300s: pricePattern300s,
+          techTimeSeries15s: techTimeSeries15s,
+          techTimeSeries30s: techTimeSeries30s,
+          techTimeSeries60s: techTimeSeries60s,
+          techTimeSeries180s: techTimeSeries180s,
+          techTimeSeries300s: techTimeSeries300s,
+          priceSegments15s: priceSegments15s,
+          priceSegments30s: priceSegments30s,
+          priceSegments60s: priceSegments60s,
+          priceSegments180s: priceSegments180s,
+          priceSegments300s: priceSegments300s
+        });
+        // 重要な運用ログはmlLogを使用（DEBUG_MODEに関係なく表示）
+        // mlSystem.dataSystem.trainingData が正しいパス
+        const trainingCount = mlSystem.dataSystem?.trainingData?.length || '不明';
+        window.mlLog('📊 15秒ごとの学習データ収集完了 - 総データ数:', trainingCount);
+      } catch (error) {
+        console.error('[TheOption Analyzer] 学習データ収集エラー:', error);
+      }
 
       console.log('[TheOption Analyzer] ✅ MLデータ収集完了（全判定時間のデータを1回だけ計算）');
     }
@@ -2701,8 +2840,10 @@ function initializeAnalyzer() {
         dayOfWeek: new Date().getDay()
       };
 
-      // データ収集（タブ切り替え時はスキップ）
-      if (!isTabSwitch) {
+      // データ収集は collectMLData() で15秒ごとに実行されるため、ここでは行わない
+      // （重複収集を防止するため）
+      // タブ切り替え時やキャッシュがない場合のみ、フォールバックとして収集
+      if (!isTabSwitch && !cachedMLData) {
         try {
           // 価格パターン + テクニカル時系列 + 詳細セグメント情報を含めてMLシステムに渡す
           mlSystem.startCollecting({ currentPrice }, {
@@ -2723,12 +2864,14 @@ function initializeAnalyzer() {
             priceSegments180s: priceSegments180s,
             priceSegments300s: priceSegments300s
           });
-          console.log('[TheOption Analyzer] ML データ収集開始（価格パターン + テクニカル時系列 + 詳細セグメント含む）');
+          console.log('[TheOption Analyzer] ML データ収集（フォールバック: キャッシュなし）');
         } catch (error) {
           console.error('[TheOption Analyzer] ML データ収集エラー:', error);
         }
-      } else {
+      } else if (isTabSwitch) {
         console.log('[TheOption Analyzer] ⏭️ タブ切り替えのため、MLデータ収集をスキップ');
+      } else {
+        console.log('[TheOption Analyzer] ⏭️ collectMLData()で収集済み、重複収集をスキップ');
       }
 
       // 🔬 診断: 最新データのセグメント情報を確認
@@ -2852,7 +2995,7 @@ function initializeAnalyzer() {
       // オーバーレイ削除のため、この関数は何もしない
     }
 
-    function getCurrentTimeframeSignal(multiDim, ml) {
+    function getCurrentTimeframeSignal(multiDim, ml, stratification = null) {
       // テクニカル分析の結果
       const techSignal = multiDim.signal;
       const techConf = multiDim.confidence;
@@ -2880,66 +3023,91 @@ function initializeAnalyzer() {
         mlDataTotal: ml.dataCount || 0
       };
 
-      // デバッグ: シグナル判定の詳細ログ
+      // デバッグ: シグナル判定の詳細ログ（重要な運用ログ）
       const timeframeKey = `${currentTimeframe}s`;
       const mlPred = ml.predictions?.[timeframeKey];
-      console.log(`[シグナル判定] ml.status=${ml.status}, predictions[${timeframeKey}]=${mlPred ? '存在' : 'なし'}, upRate=${mlPred?.upRate}, downRate=${mlPred?.downRate}`);
 
-      // upRate/downRateがあればシグナル判定を実行（statusに関係なく）
-      if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
-        const upRate = mlPred.upRate || 0;
-        const downRate = mlPred.downRate || 0;
-        const drawRate = 100 - upRate - downRate;
-        const diff = Math.abs(upRate - downRate);
+      // 層別化結果がある場合はその値を優先的に使用
+      let upRate, downRate;
+      let useStratification = false;
 
-        // === AI予測シグナル判定ロジック ===
-        // 優先度: 1.同値率チェック → 2.60%シグナル → 3.20pt差傾向 → 4.見送り
-        let aiSignal = mlPred.prediction || 'NEUTRAL';
-        let aiDirection = '見送り';
-
-        if (drawRate > 30) {
-          // 同値率が30%超え → 見送り
-          aiSignal = 'NEUTRAL';
-          aiDirection = '見送り';
-        } else if (upRate >= 60) {
-          // 上昇60%以上 → HIGHシグナル
-          aiSignal = 'HIGH';
-          aiDirection = 'HIGH';
-        } else if (downRate >= 60) {
-          // 下降60%以上 → LOWシグナル
-          aiSignal = 'LOW';
-          aiDirection = 'LOW';
-        } else if (diff >= 20) {
-          // 20pt以上の差がある → 傾向表示
-          if (upRate > downRate) {
-            aiSignal = 'TREND_HIGH';
-            aiDirection = '上昇傾向';
-          } else {
-            aiSignal = 'TREND_LOW';
-            aiDirection = '下降傾向';
-          }
-        } else {
-          // それ以外 → 見送り
-          aiSignal = 'NEUTRAL';
-          aiDirection = '見送り';
-        }
-
-        ai = {
-          available: aiSignal !== 'NEUTRAL' && aiSignal !== 'INSUFFICIENT_DATA',
-          signal: aiSignal,
-          confidence: mlPred.confidence,
-          direction: aiDirection,
-          timeframe: TIMEFRAME_CONFIGS[currentTimeframe].label,
-          mlDataCount: ml.dataCountWithResults || ml.dataCount || 0,
-          mlDataTotal: ml.dataCount || 0,
-          upRate: upRate,
-          downRate: downRate,
-          diff: diff
-        };
-
-        // デバッグ: シグナル判定結果
-        console.log(`[シグナル判定] UP=${upRate}%, DOWN=${downRate}%, 同値率=${drawRate}%, 差=${diff}pt → aiSignal=${aiSignal}, available=${ai.available}`);
+      if (stratification && stratification.hasEnoughData) {
+        // 層別化後の値を使用（UIに表示される値と一致させる）
+        upRate = stratification.upRate || 0;
+        downRate = stratification.downRate || 0;
+        useStratification = true;
+        window.mlLog?.(`[シグナル判定] 層別化後の値を使用: UP=${upRate}%, DOWN=${downRate}%`);
+      } else if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
+        // 層別化なしの場合は元の予測値を使用
+        upRate = mlPred.upRate || 0;
+        downRate = mlPred.downRate || 0;
+      } else {
+        // 予測データなし
+        window.mlLog?.(`[シグナル判定] ml.status=${ml.status}, predictions[${timeframeKey}]=${mlPred ? '存在' : 'なし'}, upRate=undefined, downRate=undefined`);
+        return { technical, ai };
       }
+
+      // DEBUG_MODEに関係なく表示
+      window.mlLog?.(`[シグナル判定] ml.status=${ml.status}, 使用値=${useStratification ? '層別化後' : '元の予測'}, upRate=${upRate}, downRate=${downRate}`);
+
+      const drawRate = 100 - upRate - downRate;
+      const diff = Math.abs(upRate - downRate);
+
+      // === AI予測シグナル判定ロジック ===
+      // 優先度: 1.同値率チェック → 2.60%シグナル → 3.20pt差傾向 → 4.見送り
+      let aiSignal = mlPred?.prediction || 'NEUTRAL';
+      let aiDirection = '見送り';
+
+      if (drawRate > 30) {
+        // 同値率が30%超え → 見送り
+        aiSignal = 'NEUTRAL';
+        aiDirection = '見送り';
+      } else if (upRate >= 60) {
+        // 上昇60%以上 → HIGHシグナル
+        aiSignal = 'HIGH';
+        aiDirection = 'HIGH';
+      } else if (downRate >= 60) {
+        // 下降60%以上 → LOWシグナル
+        aiSignal = 'LOW';
+        aiDirection = 'LOW';
+      } else if (diff >= 20) {
+        // 20pt以上の差がある → 傾向表示
+        if (upRate > downRate) {
+          aiSignal = 'TREND_HIGH';
+          aiDirection = '上昇傾向';
+        } else {
+          aiSignal = 'TREND_LOW';
+          aiDirection = '下降傾向';
+        }
+      } else {
+        // それ以外 → 見送り
+        aiSignal = 'NEUTRAL';
+        aiDirection = '見送り';
+      }
+
+      // 星レベル計算用の信頼度: シグナル方向に応じてupRateまたはdownRateを使用
+      let confidenceForStars = mlPred?.confidence || 0;
+      if (aiSignal === 'HIGH' || aiSignal === 'TREND_HIGH') {
+        confidenceForStars = upRate;
+      } else if (aiSignal === 'LOW' || aiSignal === 'TREND_LOW') {
+        confidenceForStars = downRate;
+      }
+
+      ai = {
+        available: aiSignal !== 'NEUTRAL' && aiSignal !== 'INSUFFICIENT_DATA',
+        signal: aiSignal,
+        confidence: confidenceForStars,  // 星レベル計算用（upRate/downRate）
+        direction: aiDirection,
+        timeframe: TIMEFRAME_CONFIGS[currentTimeframe].label,
+        mlDataCount: ml.dataCountWithResults || ml.dataCount || 0,
+        mlDataTotal: ml.dataCount || 0,
+        upRate: upRate,
+        downRate: downRate,
+        diff: diff
+      };
+
+      // デバッグ: シグナル判定結果（重要な運用ログ）
+      window.mlLog?.(`[シグナル判定結果] UP=${upRate}%, DOWN=${downRate}%, 同値率=${drawRate.toFixed(1)}%, 差=${diff.toFixed(1)}pt → aiSignal=${aiSignal}, available=${ai.available}`);
 
       return { technical, ai };
     }
@@ -4132,31 +4300,38 @@ function initializeAnalyzer() {
     // JSONエクスポート・インポート機能
     // ========================================
 
-    function exportDataAsJSON() {
-      console.log('[JSON Export] エクスポート開始...');
+    async function exportDataAsJSON() {
+      try {
+        // IndexedDBからデータを取得
+        const dbManager = new DBManager();
+        await dbManager.init();
 
-      chrome.storage.local.get(null, (allData) => {
-        // theoption_ml_で始まるキーのみ抽出
-        const mlData = {};
-        let totalRecords = 0;
-        let currencyPairs = 0;
+        // 全レコードを取得
+        const allRecords = await dbManager.getAllRecords();
 
-        Object.keys(allData).forEach(key => {
-          if (key.startsWith('theoption_ml_')) {
-            mlData[key] = allData[key];
-            if (Array.isArray(allData[key])) {
-              totalRecords += allData[key].length;
-              currencyPairs++;
-            }
-          }
-        });
-
-        if (totalRecords === 0) {
+        if (allRecords.length === 0) {
           alert('エクスポート可能な学習データがありません');
           return;
         }
 
-        console.log(`[JSON Export] ${currencyPairs}通貨ペア, ${totalRecords}件のデータをエクスポート`);
+        // 通貨ペア別にグループ化
+        const mlData = {};
+
+        allRecords.forEach(record => {
+          // assetNameを取得（スラッシュ形式: EUR/USD）
+          const assetName = record.assetName || 'UNKNOWN';
+          // ストレージキー形式に変換（アンダースコア形式: theoption_ml_EUR_USD）
+          const storageKey = `theoption_ml_${assetName.replace(/\//g, '_')}`;
+
+          if (!mlData[storageKey]) {
+            mlData[storageKey] = [];
+          }
+
+          mlData[storageKey].push(record);
+        });
+
+        const currencyPairs = Object.keys(mlData).length;
+        const totalRecords = allRecords.length;
 
         // JSON形式で生成
         const json = JSON.stringify(mlData, null, 2);
@@ -4178,11 +4353,12 @@ function initializeAnalyzer() {
 
         URL.revokeObjectURL(url);
 
-        console.log(`[JSON Export] ✅ エクスポート完了: ${filename}`);
-
         // 通知
         showDownloadNotification(`完全バックアップ (${currencyPairs}通貨ペア, ${totalRecords}件)`);
-      });
+      } catch (error) {
+        console.error('[JSON Export] エラー:', error);
+        alert('❌ エクスポートに失敗しました\n\n' + error.message);
+      }
     }
 
     function importDataFromJSON() {

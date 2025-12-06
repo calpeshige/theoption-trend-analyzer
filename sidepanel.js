@@ -83,12 +83,54 @@ function listenForStorageChanges() {
     if (areaName !== 'local') return;
 
     if (changes.sidepanel_asset?.newValue) {
-      document.getElementById('asset-name-display').textContent = changes.sidepanel_asset.newValue;
+      const newAsset = changes.sidepanel_asset.newValue;
+      document.getElementById('asset-name-display').textContent = newAsset;
+
+      // 通貨ペア変更時: highestMLDataCountをリセットして新しい通貨ペアのデータを即座に読み込む
+      highestMLDataCount = 0;
+      loadMLDataCountForAsset(newAsset);
     }
     if (changes.sidepanel_dataCount?.newValue !== undefined) {
       document.getElementById('asset-data-count').textContent = `${changes.sidepanel_dataCount.newValue}件`;
     }
   });
+}
+
+// 通貨ペア変更時にストレージからデータ件数を即座に読み込む
+async function loadMLDataCountForAsset(assetName) {
+  try {
+    const storageKey = `theoption_ml_${assetName.replace('/', '_')}`;
+    const result = await chrome.storage.local.get(storageKey);
+    const data = result[storageKey];
+    const count = Array.isArray(data) ? data.length : 0;
+
+    // highestMLDataCountを更新
+    highestMLDataCount = count;
+
+    // UI更新
+    const dataCountEl = document.getElementById('ml-data-count');
+    const countBadge = document.getElementById('ml-count-badge');
+    const progressBar = document.getElementById('ml-progress-bar');
+    const countText = count.toLocaleString();
+
+    if (dataCountEl) dataCountEl.textContent = countText;
+    if (countBadge) countBadge.textContent = `${countText}件`;
+    if (progressBar) {
+      const progressPercent = Math.min(100, (count / 50000) * 100);
+      progressBar.style.width = `${progressPercent}%`;
+    }
+
+    // 学習レベルも更新
+    const learningLevelEl = document.getElementById('ml-learning-level');
+    if (learningLevelEl) {
+      const learningLevel = Math.min(100, Math.round((count / 50000) * 100));
+      learningLevelEl.textContent = learningLevel;
+    }
+
+    debugLog(`[SidePanel] 通貨ペア変更: ${assetName} → ${count}件読み込み`);
+  } catch (error) {
+    console.error('[SidePanel] ML data load error:', error);
+  }
 }
 
 // 設定読み込み
@@ -214,6 +256,11 @@ function setupEventListeners() {
       changeDataLimit(limit);
     });
   });
+
+  // 通貨ペア別データ状況モーダル
+  document.getElementById('ml-detail-btn').addEventListener('click', openAssetDataModal);
+  document.getElementById('close-asset-data').addEventListener('click', closeAssetDataModal);
+  document.getElementById('asset-data-overlay').addEventListener('click', closeAssetDataModal);
 }
 
 // 設定パネル開閉
@@ -236,6 +283,140 @@ function openDownload() {
 function closeDownload() {
   document.getElementById('download-overlay').classList.remove('active');
   document.getElementById('download-sheet').classList.remove('active');
+}
+
+// 通貨ペア別データモーダル
+function openAssetDataModal() {
+  document.getElementById('asset-data-overlay').classList.add('active');
+  document.getElementById('asset-data-sheet').classList.add('active');
+  loadAssetDataList();
+}
+
+function closeAssetDataModal() {
+  document.getElementById('asset-data-overlay').classList.remove('active');
+  document.getElementById('asset-data-sheet').classList.remove('active');
+}
+
+// 通貨ペア別データを読み込み
+async function loadAssetDataList() {
+  const contentEl = document.getElementById('asset-data-content');
+  contentEl.innerHTML = '<div class="asset-data-loading"><span>読み込み中...</span></div>';
+
+  try {
+    // ストレージから全てのキーを取得
+    const allData = await chrome.storage.local.get(null);
+
+    // ML学習データのキーを抽出（theoption_ml_通貨ペア名 の形式）
+    const assetDataMap = {};
+    let totalCount = 0;
+
+    for (const key of Object.keys(allData)) {
+      if (key.startsWith('theoption_ml_')) {
+        // theoption_ml_EUR_USD → EUR/USD に変換
+        const rawAssetName = key.replace('theoption_ml_', '');
+        const assetName = rawAssetName.replace('_', '/');
+        const data = allData[key];
+        const count = Array.isArray(data) ? data.length : 0;
+        assetDataMap[assetName] = count;
+        totalCount += count;
+      }
+    }
+
+    // 現在の通貨ペアを取得
+    const currentAsset = document.getElementById('asset-name-display').textContent || '';
+
+    // 現在の通貨ペアはリアルタイム値（AI学習状況カードの値）を使用
+    // ストレージは定期保存のため、メモリ上の最新値より古い場合がある
+    const currentAssetRealtimeCount = highestMLDataCount || 0;
+    if (currentAsset && currentAssetRealtimeCount > 0) {
+      const oldCount = assetDataMap[currentAsset] || 0;
+      if (currentAssetRealtimeCount > oldCount) {
+        // 差分を総数に反映
+        totalCount = totalCount - oldCount + currentAssetRealtimeCount;
+        assetDataMap[currentAsset] = currentAssetRealtimeCount;
+      }
+    }
+
+    // データがない場合
+    if (Object.keys(assetDataMap).length === 0) {
+      contentEl.innerHTML = `
+        <div class="asset-data-empty">
+          <span class="asset-data-empty-icon">📭</span>
+          <span>まだデータがありません</span>
+          <span style="font-size: 12px;">TheOptionでトレードすると自動的に収集されます</span>
+        </div>
+      `;
+      return;
+    }
+
+    // 件数でソート（降順）
+    const sortedAssets = Object.entries(assetDataMap)
+      .sort((a, b) => b[1] - a[1]);
+
+    // 最大件数（プログレスバー計算用）
+    const maxCount = Math.max(...Object.values(assetDataMap), 1);
+
+    // HTMLを構築
+    let html = `
+      <div class="asset-data-summary">
+        <div class="asset-data-summary-item">
+          <span class="asset-data-summary-value">${sortedAssets.length}</span>
+          <span class="asset-data-summary-label">通貨ペア</span>
+        </div>
+        <div class="asset-data-summary-item">
+          <span class="asset-data-summary-value">${totalCount.toLocaleString()}</span>
+          <span class="asset-data-summary-label">総データ数</span>
+        </div>
+      </div>
+      <div class="asset-data-list">
+    `;
+
+    for (const [assetName, count] of sortedAssets) {
+      const isCurrent = assetName === currentAsset;
+      const percent = Math.round((count / 50000) * 100);
+      const barWidth = Math.min(100, (count / maxCount) * 100);
+
+      // 通貨ペアのアイコンを決定
+      let icon = '💱';
+      if (assetName.includes('BTC') || assetName.includes('ETH')) {
+        icon = '₿';
+      } else if (assetName.includes('JPY')) {
+        icon = '¥';
+      } else if (assetName.includes('USD')) {
+        icon = '$';
+      } else if (assetName.includes('EUR')) {
+        icon = '€';
+      } else if (assetName.includes('GBP')) {
+        icon = '£';
+      }
+
+      html += `
+        <div class="asset-data-item ${isCurrent ? 'current' : ''}">
+          <div class="asset-data-icon">${icon}</div>
+          <div class="asset-data-info">
+            <span class="asset-data-name">${assetName}${isCurrent ? ' (現在)' : ''}</span>
+            <span class="asset-data-count">${count.toLocaleString()}件</span>
+          </div>
+          <div class="asset-data-bar-container">
+            <div class="asset-data-bar" style="width: ${barWidth}%"></div>
+          </div>
+          <span class="asset-data-percent">${percent}%</span>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+    contentEl.innerHTML = html;
+
+  } catch (error) {
+    console.error('[SidePanel] 通貨ペア別データ取得エラー:', error);
+    contentEl.innerHTML = `
+      <div class="asset-data-empty">
+        <span class="asset-data-empty-icon">⚠️</span>
+        <span>データの取得に失敗しました</span>
+      </div>
+    `;
+  }
 }
 
 // ダウンロードリクエスト
@@ -561,12 +742,13 @@ function updateRealtimeStatus(data) {
     const totalForRing = isTrading ? tradingDuration : lastCountdownTotal;
     const currentForRing = isTrading ? tradingRemaining : countdown;
 
-    // シグナルがあるかどうかを判定（HIGH/LOW + 傾向表示）
+    // シグナルがあるかどうかを判定（HIGH/LOW + 傾向表示 + 統合シグナル）
     const hasSignal = signal && (
       signal.tech === 'HIGH' || signal.tech === 'LOW' ||
       signal.tech === 'STRONG_HIGH' || signal.tech === 'STRONG_LOW' ||
       signal.ai === 'HIGH' || signal.ai === 'LOW' ||
-      signal.ai === 'TREND_HIGH' || signal.ai === 'TREND_LOW'
+      signal.ai === 'TREND_HIGH' || signal.ai === 'TREND_LOW' ||
+      signal.ai === 'ENHANCED_HIGH' || signal.ai === 'ENHANCED_LOW'
     );
 
     // アラート音はtheoption-analyzer.jsで再生するため、ここでは再生しない

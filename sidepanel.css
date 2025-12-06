@@ -1245,6 +1245,165 @@ body {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* 通貨ペア別データ状況ボタン */
+.ml-detail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% - 24px);
+  margin: 8px 12px 12px;
+  padding: 10px 16px;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ml-detail-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-primary);
+}
+
+.ml-detail-btn:active {
+  transform: scale(0.98);
+}
+
+/* 通貨ペア別データ一覧 */
+.asset-data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.asset-data-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--md-sys-color-surface-container);
+  border-radius: 12px;
+  gap: 12px;
+}
+
+.asset-data-item.current {
+  background: var(--md-sys-color-primary-container);
+  border: 1px solid var(--md-sys-color-primary);
+}
+
+.asset-data-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--md-sys-color-surface-container-high);
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.asset-data-item.current .asset-data-icon {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.asset-data-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.asset-data-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.asset-data-count {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.asset-data-bar-container {
+  width: 80px;
+  height: 6px;
+  background: var(--md-sys-color-surface-container-highest);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.asset-data-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--md-sys-color-primary), var(--md-sys-color-tertiary));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.asset-data-percent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  min-width: 36px;
+  text-align: right;
+}
+
+.asset-data-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.asset-data-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+  gap: 8px;
+}
+
+.asset-data-empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.asset-data-summary {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.asset-data-summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.asset-data-summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--md-sys-color-primary);
+}
+
+.asset-data-summary-label {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 /* ================================================
    Quick Settings - Centered
    ================================================ */

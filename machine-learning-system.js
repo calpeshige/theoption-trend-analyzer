@@ -312,11 +312,13 @@ class DataCollectionSystem {
 
     // フィルター
     if (!this.hasMarketMovement(situation)) {
+      console.log(`[ML] ⏭️ データスキップ: 市場変動なし (総データ: ${this.trainingData.length}件)`);
       return null;
     }
 
     // メモリキャッシュに追加
     this.trainingData.push(situation);
+    console.log(`[ML] ✅ データ追加: 総データ ${this.trainingData.length}件 (価格: ${situation.price})`);
 
     // DB保存（非同期）
     this.saveToStorage(situation);

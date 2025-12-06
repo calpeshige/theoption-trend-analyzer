@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theoption Trading System ユーザーマニュアル</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+      line-height: 1.8;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      color: #333;
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 28px;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 22px;
+      color: #1e40af;
+      border-left: 4px solid #2563eb;
+      padding-left: 12px;
+      margin-top: 40px;
+    }
+    h3 {
+      font-size: 18px;
+      color: #1e3a8a;
+      margin-top: 30px;
+    }
+    h4 {
+      font-size: 16px;
+      color: #374151;
+      margin-top: 20px;
+    }
+    p {
+      margin: 12px 0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 16px 0;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #f3f4f6;
+      font-weight: 600;
+    }
+    tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
+    ul, ol {
+      margin: 12px 0;
+      padding-left: 24px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    code {
+      background-color: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: "SF Mono", "Monaco", "Inconsolata", monospace;
+      font-size: 13px;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 30px 0;
+    }
+    strong {
+      color: #1f2937;
+    }
+    .version {
+      color: #6b7280;
+      font-size: 16px;
+    }
+    .toc {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px 30px;
+      margin: 20px 0;
+    }
+    .toc ol {
+      margin: 0;
+    }
+    .toc a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    .toc a:hover {
+      text-decoration: underline;
+    }
+    .note {
+      background-color: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 4px 4px 0;
+    }
+    .warning {
+      background-color: #fee2e2;
+      border-left: 4px solid #ef4444;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 4px 4px 0;
+    }
+    em {
+      font-style: normal;
+      color: #6b7280;
+    }
+    @media print {
+      body {
+        max-width: none;
+        padding: 20px;
+      }
+      h2 {
+        page-break-before: auto;
+      }
+      table, pre, blockquote {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Theoption Trading System ユーザーマニュアル</h1>
+
+<p class="version"><strong>バージョン: 5.1.2</strong></p>
+
+<p>TheOptionのトレーディングプラットフォーム専用のChrome拡張機能です。高度なテクニカル分析とAI機械学習を組み合わせて、超短期取引（15秒〜5分）の予測支援を行います。</p>
+
+<hr>
+
+<div class="toc">
+<h2 style="margin-top: 0; border: none; padding: 0;">目次</h2>
+<ol>
+  <li><a href="#install">インストール方法</a></li>
+  <li><a href="#basic">基本的な使い方</a></li>
+  <li><a href="#ui">画面構成と各部の説明</a></li>
+  <li><a href="#signal">シグナルの見方</a></li>
+  <li><a href="#entry">エントリー方法</a></li>
+  <li><a href="#settings">設定項目</a></li>
+  <li><a href="#data">データ管理</a></li>
+  <li><a href="#faq">よくある質問</a></li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="install">インストール方法</h2>
+
+<h3>手順</h3>
+
+<ol>
+  <li>配布されたZIPファイル（<code>Theoption_Trading_System_v5.1.2.zip</code>）を解凍します</li>
+  <li>Chromeブラウザで <code>chrome://extensions/</code> を開きます</li>
+  <li>右上の「デベロッパーモード」をオンにします</li>
+  <li>「パッケージ化されていない拡張機能を読み込む」をクリックします</li>
+  <li>解凍したフォルダを選択します</li>
+  <li>拡張機能が追加されたら完了です</li>
+</ol>
+
+<h3>初回起動</h3>
+
+<ol>
+  <li>TheOptionのトレーディング画面（https://jp.theoption.com/trading）を開きます</li>
+  <li>Chrome右上の拡張機能アイコンをクリック</li>
+  <li>サイドパネルが開き、分析が自動的に開始されます</li>
+</ol>
+
+<hr>
+
+<h2 id="basic">基本的な使い方</h2>
+
+<h3>システムの仕組み</h3>
+
+<p>本システムは2つの分析エンジンを搭載しています：</p>
+
+<ol>
+  <li><strong>テクニカル分析</strong>: RSI、MACD、ストキャスティクス等の指標を使用したリアルタイム分析</li>
+  <li><strong>AI予測</strong>: 過去の価格パターンを学習し、類似パターンから将来の動きを予測</li>
+</ol>
+
+<h3>分析の流れ</h3>
+
+<ol>
+  <li>TheOptionでチャートを表示すると、自動的に価格データを収集開始</li>
+  <li>テクニカル指標を計算し、相場状況を判定</li>
+  <li>AI予測システムが学習データを蓄積（最初は50件以上必要）</li>
+  <li>十分なデータが集まると、シグナルを表示</li>
+</ol>
+
+<hr>
+
+<h2 id="ui">画面構成と各部の説明</h2>
+
+<h3>トップバー</h3>
+
+<table>
+  <tr><th>要素</th><th>説明</th></tr>
+  <tr><td><strong>接続インジケーター</strong></td><td>緑色の点灯で正常接続を示します</td></tr>
+  <tr><td><strong>データ件数</strong></td><td>現在収集されている価格データの件数</td></tr>
+  <tr><td><strong>通貨ペア名</strong></td><td>現在分析中の通貨ペア（例: EUR/USD）</td></tr>
+  <tr><td><strong>カウントダウン</strong></td><td>次の分析更新までの秒数を表示</td></tr>
+  <tr><td><strong>ダウンロードボタン</strong></td><td>データのエクスポート機能</td></tr>
+  <tr><td><strong>設定ボタン</strong></td><td>各種設定画面を開く</td></tr>
+</table>
+
+<h3>時間枠セレクター</h3>
+
+<p>取引する時間枠を選択します。選択した時間枠に応じて分析結果が変わります。</p>
+
+<ul>
+  <li><strong>15秒</strong>: 最短の取引時間</li>
+  <li><strong>30秒</strong>: 短期取引</li>
+  <li><strong>60秒</strong>: 標準的な短期取引</li>
+  <li><strong>3分</strong>: 中期取引</li>
+  <li><strong>5分</strong>: やや長めの取引</li>
+</ul>
+
+<h3>メインシグナルカード</h3>
+
+<h4>テクニカル分析カード（左）</h4>
+
+<p>テクニカル指標に基づく分析結果を表示します。</p>
+
+<table>
+  <tr><th>表示</th><th>意味</th></tr>
+  <tr><td><strong>HIGH</strong></td><td>上昇シグナル（緑色）</td></tr>
+  <tr><td><strong>LOW</strong></td><td>下降シグナル（赤色）</td></tr>
+  <tr><td><strong>見送り</strong></td><td>エントリー非推奨（黄色）</td></tr>
+  <tr><td><strong>データ収集中</strong></td><td>分析中</td></tr>
+</table>
+
+<h4>AI予測カード（右）</h4>
+
+<p>機械学習による予測結果を表示します。</p>
+
+<table>
+  <tr><th>表示</th><th>意味</th></tr>
+  <tr><td><strong>HIGH</strong></td><td>上昇予測（60%以上）（緑色）</td></tr>
+  <tr><td><strong>LOW</strong></td><td>下降予測（60%以上）（赤色）</td></tr>
+  <tr><td><strong>統合↑/↓</strong></td><td>複数時間枠で一致した予測</td></tr>
+  <tr><td><strong>好条件↑/↓</strong></td><td>高勝率パターン検出</td></tr>
+  <tr><td><strong>高ボラ↑/↓</strong></td><td>ボラティリティ適応シグナル</td></tr>
+  <tr><td><strong>上昇傾向/下降傾向</strong></td><td>20pt以上の差がある傾向</td></tr>
+  <tr><td><strong>見送り</strong></td><td>エントリー非推奨</td></tr>
+  <tr><td><strong>学習中</strong></td><td>データ収集中（50件未満）</td></tr>
+  <tr><td><strong>データ不足</strong></td><td>予測に必要なデータが不足</td></tr>
+</table>
+
+<h4>星評価（★）の意味</h4>
+
+<p>シグナルの信頼度を5段階で表示します。</p>
+
+<table>
+  <tr><th>星の数</th><th>信頼度</th></tr>
+  <tr><td>★★★★★</td><td>非常に高い</td></tr>
+  <tr><td>★★★★☆</td><td>高い</td></tr>
+  <tr><td>★★★☆☆</td><td>中程度</td></tr>
+  <tr><td>★★☆☆☆</td><td>やや低い</td></tr>
+  <tr><td>★☆☆☆☆</td><td>最低ライン</td></tr>
+</table>
+
+<h3>相場状況カード</h3>
+
+<p>テクニカル分析の詳細を表示します。</p>
+
+<ul>
+  <li><strong>トレンド強度ゲージ</strong>: 現在のトレンドの強さを可視化</li>
+  <li><strong>ボラティリティ</strong>: 価格変動の激しさ（高/中/低）</li>
+  <li><strong>グレード判定</strong>: A〜Cで相場のトレード適性を評価</li>
+</ul>
+
+<h3>AI予測詳細カード</h3>
+
+<p>AI予測の詳細情報を表示します。</p>
+
+<ul>
+  <li><strong>上昇/下降確率バー</strong>: 予測確率を視覚的に表示</li>
+  <li><strong>層別化インサイト</strong>: 相場コンテキストやボラティリティによる補正情報</li>
+  <li><strong>基本情報</strong>: マッチパターン数、類似度などの詳細</li>
+</ul>
+
+<h3>AI学習状況カード</h3>
+
+<p>機械学習システムの状態を表示します。</p>
+
+<ul>
+  <li><strong>収集データ</strong>: 現在蓄積されているデータ件数（最大50,000件）</li>
+  <li><strong>学習レベル</strong>: AIの学習進捗（%表示）</li>
+  <li><strong>プログレスバー</strong>: 視覚的な学習進捗</li>
+</ul>
+
+<h3>クイック設定</h3>
+
+<h4>類似度閾値</h4>
+
+<p>AI予測で使用するパターンマッチングの類似度の最低値を設定します。</p>
+
+<table>
+  <tr><th>設定値</th><th>説明</th></tr>
+  <tr><td><strong>50%</strong></td><td>多くのパターンを使用（シグナル多め、精度やや低め）</td></tr>
+  <tr><td><strong>70%</strong></td><td>バランス型（推奨）</td></tr>
+  <tr><td><strong>80%</strong></td><td>高類似度のみ使用（シグナル少なめ、精度高め）</td></tr>
+  <tr><td><strong>90%</strong></td><td>非常に高類似度のみ（シグナル極少、精度最高）</td></tr>
+</table>
+
+<h4>データ範囲</h4>
+
+<p>AI予測で参照する学習データの範囲を設定します。</p>
+
+<table>
+  <tr><th>設定値</th><th>説明</th></tr>
+  <tr><td><strong>500</strong></td><td>直近500件のデータを使用</td></tr>
+  <tr><td><strong>1K</strong></td><td>直近1,000件のデータを使用</td></tr>
+  <tr><td><strong>2K</strong></td><td>直近2,000件のデータを使用</td></tr>
+  <tr><td><strong>全期間</strong></td><td>蓄積した全データを使用（推奨）</td></tr>
+</table>
+
+<hr>
+
+<h2 id="signal">シグナルの見方</h2>
+
+<h3>シグナル発出の条件</h3>
+
+<h4>AI予測シグナル</h4>
+
+<ol>
+  <li><strong>HIGHシグナル</strong>: 上昇確率が60%以上</li>
+  <li><strong>LOWシグナル</strong>: 下降確率が60%以上</li>
+  <li><strong>強化シグナル</strong>: 複数の条件を満たした高信頼度シグナル
+    <ul>
+      <li>統合シグナル: 複数の時間枠で同じ方向を予測</li>
+      <li>好条件シグナル: 過去の高勝率パターンと一致</li>
+      <li>高ボラシグナル: ボラティリティが高く、明確な方向性あり</li>
+    </ul>
+  </li>
+  <li><strong>傾向シグナル</strong>: 上昇/下降の差が20pt以上</li>
+</ol>
+
+<h4>見送り条件</h4>
+
+<p>以下の場合は「見送り」となります：</p>
+
+<ul>
+  <li>同値率（引き分け率）が30%を超える場合</li>
+  <li>上昇/下降の差が20pt未満の場合</li>
+  <li>学習データが50件未満の場合</li>
+</ul>
+
+<h3>テクニカル分析シグナル</h3>
+
+<p>テクニカル指標（RSI、MACD、ストキャスティクス等）の総合判定により、HIGH/LOW/見送りを表示します。</p>
+
+<hr>
+
+<h2 id="entry">エントリー方法</h2>
+
+<h3>推奨エントリー手順</h3>
+
+<ol>
+  <li><strong>両方のシグナルを確認</strong>
+    <ul>
+      <li>テクニカル分析とAI予測の両方が同じ方向（HIGH同士またはLOW同士）の場合が最も信頼性が高い</li>
+    </ul>
+  </li>
+  <li><strong>星評価を確認</strong>
+    <ul>
+      <li>★3つ以上（70%以上）を推奨</li>
+      <li>★5つ（90%以上）は特に信頼度が高い</li>
+    </ul>
+  </li>
+  <li><strong>相場状況を確認</strong>
+    <ul>
+      <li>グレードがAまたはBの時が適切</li>
+      <li>ボラティリティが「高」の場合は値動きが大きい</li>
+    </ul>
+  </li>
+  <li><strong>エントリータイミング</strong>
+    <ul>
+      <li>カウントダウンを見て、取引時間内にエントリー</li>
+      <li>シグナルが表示されている間にエントリー</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>エントリー時の注意点</h3>
+
+<ul>
+  <li><strong>両シグナル一致が基本</strong>: テクニカルとAIが同じ方向の時のみエントリー</li>
+  <li><strong>見送りは従う</strong>: 「見送り」の場合はエントリーを控える</li>
+  <li><strong>データ不足時は待つ</strong>: 「学習中」「データ不足」の場合は十分なデータが集まるまで待つ</li>
+  <li><strong>無理なエントリーをしない</strong>: 自信がない場合は見送る</li>
+</ul>
+
+<h3>資金管理</h3>
+
+<ul>
+  <li>1回のエントリー金額は資金の2-5%程度を推奨</li>
+  <li>連敗時はエントリー金額を減らす</li>
+  <li>1日の損失上限を設定する</li>
+</ul>
+
+<hr>
+
+<h2 id="settings">設定項目</h2>
+
+<p>設定ボタン（歯車アイコン）から各種設定を変更できます。</p>
+
+<h3>アラート音</h3>
+
+<table>
+  <tr><th>設定</th><th>説明</th></tr>
+  <tr><td><strong>オン/オフ</strong></td><td>シグナル発生時の通知音を有効/無効</td></tr>
+  <tr><td><strong>音量</strong></td><td>小/中/大から選択</td></tr>
+  <tr><td><strong>アラート音の種類</strong></td><td>10種類のサウンドから選択（試聴可能）</td></tr>
+</table>
+
+<h3>フォントサイズ</h3>
+
+<p>画面全体のフォントサイズを調整できます。</p>
+
+<table>
+  <tr><th>設定</th><th>説明</th></tr>
+  <tr><td><strong>小</strong></td><td>コンパクトな表示</td></tr>
+  <tr><td><strong>中</strong></td><td>標準サイズ（推奨）</td></tr>
+  <tr><td><strong>大</strong></td><td>大きめの表示</td></tr>
+</table>
+
+<hr>
+
+<h2 id="data">データ管理</h2>
+
+<p>ダウンロードボタンからデータの管理ができます。</p>
+
+<h3>CSVダウンロード</h3>
+
+<table>
+  <tr><th>項目</th><th>内容</th></tr>
+  <tr><td><strong>AI学習データ</strong></td><td>機械学習に使用しているトレーニングデータ</td></tr>
+  <tr><td><strong>予測履歴</strong></td><td>AI予測の履歴データ</td></tr>
+  <tr><td><strong>トレンド分析</strong></td><td>トレンド分析の履歴データ</td></tr>
+</table>
+
+<h3>バックアップ</h3>
+
+<table>
+  <tr><th>項目</th><th>説明</th></tr>
+  <tr><td><strong>JSONエクスポート</strong></td><td>全データの完全バックアップ（PCの移行時などに使用）</td></tr>
+  <tr><td><strong>JSONインポート</strong></td><td>バックアップデータを復元</td></tr>
+</table>
+
+<hr>
+
+<h2 id="faq">よくある質問</h2>
+
+<h3>Q: シグナルが表示されません</h3>
+
+<p><strong>A:</strong> 以下を確認してください：</p>
+<ol>
+  <li>TheOptionのトレーディング画面を開いていますか？</li>
+  <li>接続インジケーターが緑色になっていますか？</li>
+  <li>AI学習状況で「学習中」と表示されている場合は、100件以上のデータが集まるまでお待ちください</li>
+</ol>
+
+<h3>Q: 「データ不足」と表示されます</h3>
+
+<p><strong>A:</strong> AI予測には最低50件のデータが必要です。TheOptionでチャートを表示し続けることでデータが自動的に蓄積されます。</p>
+
+<h3>Q: 通貨ペアを変更したらデータはどうなりますか？</h3>
+
+<p><strong>A:</strong> 各通貨ペアごとに学習データが個別に保存されます。別の通貨ペアに切り替えると、その通貨ペア用のデータが使用されます。</p>
+
+<h3>Q: データは保存されますか？</h3>
+
+<p><strong>A:</strong> はい、ブラウザのストレージに自動保存されます。ブラウザを閉じても、拡張機能を削除しない限りデータは保持されます。</p>
+
+<h3>Q: 予測精度はどのくらいですか？</h3>
+
+<p><strong>A:</strong> 学習データ量や相場状況により変動しますが、適切な条件（両シグナル一致、★3以上）でエントリーすることで精度を高めることができます。</p>
+
+<h3>Q: 仮想通貨ペアと法定通貨ペアで動作は違いますか？</h3>
+
+<p><strong>A:</strong> はい、システムは通貨ペアの種類を自動判別し、それぞれに最適化された設定を適用します：</p>
+<ul>
+  <li><strong>仮想通貨ペア</strong>（BTC/JPY, BTC/USD, ETH/JPY, ETH/USD）: ボラティリティが高いため、より厳格なシグナル閾値を使用</li>
+  <li><strong>法定通貨ペア</strong>（EUR/USD, GBP/USD等）: 標準的な閾値を使用</li>
+</ul>
+
+<hr>
+
+<h2>サポート</h2>
+
+<p>問題が発生した場合やご質問がある場合は、購入元にお問い合わせください。</p>
+
+<hr>
+
+<p><em>本ツールは投資助言を行うものではありません。また、利益を保証するものでもありません。投資は自己責任で行ってください。</em></p>
+
+</body>
+</html>
