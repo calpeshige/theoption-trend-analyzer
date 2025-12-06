@@ -822,7 +822,8 @@
         const devices = getDevicesArray(fields);
         const isActive = fields.active?.booleanValue ?? true;
         const expiryDate = fields.expiryDate?.timestampValue;
-        const createdAt = fields.createdAt?.timestampValue;
+        // Firestoreメタデータのタイムスタンプを使用
+        const createdAt = doc.createTime;
 
         let statusText = '有効';
         let statusClass = 'status-active';
@@ -1037,10 +1038,10 @@
           return;
         }
 
-        // createdAtでソート（新しい順）
+        // createTime（Firestoreメタデータ）でソート（新しい順）
         documents.sort((a, b) => {
-          const dateA = a.fields?.createdAt?.timestampValue ? new Date(a.fields.createdAt.timestampValue) : new Date(0);
-          const dateB = b.fields?.createdAt?.timestampValue ? new Date(b.fields.createdAt.timestampValue) : new Date(0);
+          const dateA = a.createTime ? new Date(a.createTime) : new Date(0);
+          const dateB = b.createTime ? new Date(b.createTime) : new Date(0);
           return dateB - dateA;
         });
 
@@ -1068,7 +1069,8 @@
           const devices = getDevicesArray(fields);
           const isActive = fields.active?.booleanValue ?? true;
           const expiryDate = fields.expiryDate?.timestampValue;
-          const createdAt = fields.createdAt?.timestampValue;
+          // Firestoreメタデータのタイムスタンプを使用
+          const createdAt = doc.createTime;
 
           let statusClass = 'status-active';
           let statusText = '有効';
