@@ -1492,6 +1492,70 @@ function initializeAnalyzer() {
           }
         }
 
+        // 通貨ペア別データ一覧を取得（IndexedDBから）
+        if (message.type === 'REQUEST_ASSET_DATA_LIST') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+
+              // 全レコードを取得
+              const allRecords = await dbManager.getAllRecords();
+
+              // 無効なassetName（default, UNKNOWN, 空など）を自動削除
+              const invalidAssetNames = ['default', 'UNKNOWN', ''];
+              const recordsToDelete = allRecords.filter(record =>
+                !record.assetName || invalidAssetNames.includes(record.assetName)
+              );
+
+              if (recordsToDelete.length > 0) {
+                console.log(`[TheOption Analyzer] 無効なassetNameのデータを削除: ${recordsToDelete.length}件`);
+                const transaction = dbManager.db.transaction([dbManager.storeName], 'readwrite');
+                const store = transaction.objectStore(dbManager.storeName);
+
+                for (const record of recordsToDelete) {
+                  store.delete(record.timestamp);
+                }
+
+                await new Promise((resolve, reject) => {
+                  transaction.oncomplete = resolve;
+                  transaction.onerror = () => reject(transaction.error);
+                });
+
+                console.log(`[TheOption Analyzer] 削除完了: ${recordsToDelete.length}件`);
+              }
+
+              // 有効なレコードのみカウント
+              const validRecords = allRecords.filter(record =>
+                record.assetName && !invalidAssetNames.includes(record.assetName)
+              );
+
+              // 通貨ペア別にカウント
+              const assetDataMap = {};
+              validRecords.forEach(record => {
+                const assetName = record.assetName;
+                if (!assetDataMap[assetName]) {
+                  assetDataMap[assetName] = 0;
+                }
+                assetDataMap[assetName]++;
+              });
+
+              // 現在の通貨ペア情報
+              const currentAssetName = currentAsset || '';
+
+              sendResponse({
+                assetDataMap: assetDataMap,
+                totalCount: validRecords.length,
+                currentAsset: currentAssetName
+              });
+            } catch (error) {
+              console.error('[TheOption Analyzer] IndexedDBエラー:', error);
+              sendResponse({ error: error.message });
+            }
+          })();
+          return true; // 非同期レスポンス
+        }
+
         return true; // 非同期レスポンス
       });
     }

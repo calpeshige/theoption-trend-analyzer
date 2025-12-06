@@ -20,7 +20,7 @@
     }
 
     .container {
-      max-width: 800px;
+      max-width: 1000px;
       margin: 0 auto;
     }
 
@@ -35,6 +35,33 @@
       margin-bottom: 40px;
     }
 
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      background: #2d3748;
+      border: none;
+      border-radius: 8px 8px 0 0;
+      color: #a0aec0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: #4a5568;
+      color: #ffffff;
+    }
+
+    .tab:hover:not(.active) {
+      background: #3d4a5c;
+    }
+
     .card {
       background: #2d3748;
       border-radius: 16px;
@@ -43,8 +70,25 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
 
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .card-header h2 {
+      font-size: 20px;
+    }
+
     .form-group {
       margin-bottom: 20px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
     }
 
     label {
@@ -86,13 +130,12 @@
     }
 
     button {
-      width: 100%;
-      padding: 14px;
+      padding: 12px 24px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #ffffff;
       border: none;
       border-radius: 8px;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s;
@@ -113,9 +156,26 @@
       transform: none;
     }
 
-    .generate-btn {
+    .btn-full {
+      width: 100%;
+      padding: 14px;
+    }
+
+    .btn-success {
       background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-      margin-bottom: 12px;
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+    }
+
+    .btn-secondary {
+      background: #4a5568;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
     }
 
     .result {
@@ -156,94 +216,347 @@
       margin-top: 8px;
     }
 
-    .history {
-      max-height: 400px;
+    /* 検索セクション */
+    .search-box {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .search-box input {
+      flex: 1;
+    }
+
+    /* ライセンス一覧テーブル */
+    .license-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .license-table th,
+    .license-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #4a5568;
+    }
+
+    .license-table th {
+      background: #1a202c;
+      color: #a0aec0;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .license-table tr:hover {
+      background: rgba(102, 126, 234, 0.1);
+    }
+
+    .license-key {
+      font-family: 'Courier New', monospace;
+      color: #667eea;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .license-key:hover {
+      text-decoration: underline;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-active {
+      background: rgba(72, 187, 120, 0.2);
+      color: #48bb78;
+    }
+
+    .status-inactive {
+      background: rgba(245, 101, 101, 0.2);
+      color: #f56565;
+    }
+
+    .status-expired {
+      background: rgba(237, 137, 54, 0.2);
+      color: #ed8936;
+    }
+
+    /* ライセンス詳細モーダル */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: #2d3748;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
       overflow-y: auto;
     }
 
-    .history-item {
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .modal-header h3 {
+      font-size: 20px;
+      color: #667eea;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #a0aec0;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .modal-close:hover {
+      color: #ffffff;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #4a5568;
+    }
+
+    .detail-label {
+      color: #a0aec0;
+    }
+
+    .detail-value {
+      font-weight: 600;
+    }
+
+    /* デバイス一覧 */
+    .device-list {
+      margin-top: 20px;
+    }
+
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       padding: 12px;
       background: #1a202c;
       border-radius: 8px;
       margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
     }
 
-    .history-key {
+    .device-id {
       font-family: 'Courier New', monospace;
-      color: #667eea;
-      font-weight: 600;
-    }
-
-    .history-user {
       color: #cbd5e0;
       font-size: 14px;
     }
 
-    .history-expiry {
+    .no-devices {
+      text-align: center;
       color: #718096;
-      font-size: 12px;
-      margin-top: 4px;
+      padding: 20px;
+    }
+
+    /* ローディング */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #a0aec0;
+    }
+
+    .loading::after {
+      content: '';
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+
+    /* タブコンテンツ */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* アクションボタン群 */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .action-buttons button {
+      flex: 1;
+    }
+
+    /* 確認ダイアログ */
+    .confirm-dialog {
+      text-align: center;
+    }
+
+    .confirm-dialog p {
+      margin-bottom: 24px;
+      color: #cbd5e0;
+    }
+
+    .confirm-dialog .license-key-display {
+      color: #f56565;
+    }
+
+    .confirm-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🔑 ライセンス管理ツール（開発者用）</h1>
-    <p class="subtitle">Theoption Trading System - 完全自動発行システム（開発者用）</p>
+    <p class="subtitle">Theoption Trading System - ライセンス管理システム</p>
 
-    <!-- ライセンス発行フォーム -->
-    <div class="card">
-      <h2 style="margin-bottom: 20px;">新規ライセンス発行</h2>
-
-      <div class="form-group">
-        <label>ライセンスキー</label>
-        <input type="text" id="licenseKey" placeholder="THEO-XXXX-XXXX-XXXX" readonly>
-        <p class="info-text">「ランダム生成」ボタンでライセンスキーを自動生成できます</p>
-      </div>
-
-      <button class="generate-btn" onclick="generateLicenseKey()">🎲 ランダム生成</button>
-
-      <div class="form-group">
-        <label>購入者名</label>
-        <input type="text" id="userName" placeholder="例: 山田太郎">
-      </div>
-
-      <div class="form-group">
-        <label>最大デバイス数</label>
-        <input type="number" id="maxDevices" value="1" min="1" max="10">
-      </div>
-
-      <div class="form-group">
-        <div class="checkbox-group">
-          <input type="checkbox" id="hasExpiry" onchange="toggleExpiryDate()">
-          <label style="margin: 0;">有効期限を設定する</label>
-        </div>
-      </div>
-
-      <div class="form-group" id="expiryGroup" style="display: none;">
-        <label>有効期限</label>
-        <input type="date" id="expiryDate">
-      </div>
-
-      <button onclick="createLicense()">✅ ライセンスを発行（Firestoreに自動登録）</button>
-
-      <div class="result" id="result"></div>
+    <!-- タブ -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('create')">新規発行</button>
+      <button class="tab" onclick="switchTab('search')">検索・管理</button>
+      <button class="tab" onclick="switchTab('history')">発行履歴</button>
     </div>
 
-    <!-- 発行履歴 -->
-    <div class="card">
-      <h2 style="margin-bottom: 20px;">発行履歴</h2>
-      <div class="history" id="history">
-        <p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>
+    <!-- 新規発行タブ -->
+    <div id="tab-create" class="tab-content active">
+      <div class="card">
+        <h2 style="margin-bottom: 20px;">新規ライセンス発行</h2>
+
+        <div class="form-group">
+          <label>ライセンスキー</label>
+          <input type="text" id="licenseKey" placeholder="THEO-XXXX-XXXX-XXXX" readonly>
+          <p class="info-text">「ランダム生成」ボタンでライセンスキーを自動生成できます</p>
+        </div>
+
+        <button class="btn-success" style="margin-bottom: 20px;" onclick="generateLicenseKey()">🎲 ランダム生成</button>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>購入者名</label>
+            <input type="text" id="userName" placeholder="例: 山田太郎">
+          </div>
+          <div class="form-group">
+            <label>最大デバイス数</label>
+            <input type="number" id="maxDevices" value="1" min="1" max="10">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="hasExpiry" onchange="toggleExpiryDate()">
+            <label style="margin: 0;">有効期限を設定する</label>
+          </div>
+        </div>
+
+        <div class="form-group" id="expiryGroup" style="display: none;">
+          <label>有効期限</label>
+          <input type="date" id="expiryDate">
+        </div>
+
+        <button class="btn-full" onclick="createLicense()">✅ ライセンスを発行（Firestoreに自動登録）</button>
+
+        <div class="result" id="result"></div>
+      </div>
+    </div>
+
+    <!-- 検索・管理タブ -->
+    <div id="tab-search" class="tab-content">
+      <div class="card">
+        <h2 style="margin-bottom: 20px;">ライセンス検索</h2>
+
+        <div class="search-box">
+          <input type="text" id="searchQuery" placeholder="ライセンスキーまたは購入者名で検索...">
+          <button onclick="searchLicenses()">🔍 検索</button>
+          <button class="btn-secondary" onclick="loadAllLicenses()">📋 全件表示</button>
+        </div>
+
+        <div id="searchResults">
+          <p style="color: #a0aec0; text-align: center;">検索するか「全件表示」をクリックしてください</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 発行履歴タブ -->
+    <div id="tab-history" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>発行履歴（ローカル）</h2>
+          <button class="btn-small btn-secondary" onclick="clearHistory()">履歴をクリア</button>
+        </div>
+        <div id="history">
+          <p style="color: #a0aec0; text-align: center;">まだライセンスが発行されていません</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ライセンス詳細モーダル -->
+  <div class="modal-overlay" id="licenseModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>📋 ライセンス詳細</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div id="modalContent">
+        <!-- 動的に生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 削除確認モーダル -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <div class="confirm-dialog">
+        <h3 style="color: #f56565; margin-bottom: 16px;">⚠️ ライセンス削除の確認</h3>
+        <p>以下のライセンスを完全に削除しますか？<br>この操作は取り消せません。</p>
+        <div class="license-key-display" id="deleteTargetKey"></div>
+        <div class="confirm-buttons">
+          <button class="btn-secondary" onclick="closeDeleteModal()">キャンセル</button>
+          <button class="btn-danger" onclick="confirmDelete()">削除する</button>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
-    // Firebase設定（license-manager.jsと同じ）
+    // Firebase設定
     const FIREBASE_CONFIG = {
       projectId: 'theoption-license',
       apiKey: 'AIzaSyCuPbyOoP3-ILBBNLzx70ox2grmgjhknEQ'
@@ -253,16 +566,27 @@
 
     // 発行履歴（ローカルストレージに保存）
     let licenseHistory = JSON.parse(localStorage.getItem('licenseHistory') || '[]');
+    let currentLicenseKey = null; // 現在選択中のライセンスキー
 
     // ページ読み込み時
     window.onload = function() {
       displayHistory();
-
       // デフォルトの有効期限を1年後に設定
       const oneYearLater = new Date();
       oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
       document.getElementById('expiryDate').value = oneYearLater.toISOString().split('T')[0];
     };
+
+    // タブ切り替え
+    function switchTab(tabName) {
+      // タブボタンの状態を更新
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      event.target.classList.add('active');
+
+      // タブコンテンツの表示を切り替え
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
 
     // ランダムなライセンスキーを生成
     function generateLicenseKey() {
@@ -287,7 +611,7 @@
       document.getElementById('expiryGroup').style.display = hasExpiry ? 'block' : 'none';
     }
 
-    // ライセンスを作成（Firestore REST APIで自動登録）
+    // ライセンスを作成
     async function createLicense() {
       const licenseKey = document.getElementById('licenseKey').value.trim();
       const userName = document.getElementById('userName').value.trim();
@@ -295,7 +619,6 @@
       const hasExpiry = document.getElementById('hasExpiry').checked;
       const expiryDate = document.getElementById('expiryDate').value;
 
-      // バリデーション
       if (!licenseKey) {
         showResult('error', 'ライセンスキーを生成してください');
         return;
@@ -306,38 +629,27 @@
         return;
       }
 
-      if (maxDevices < 1) {
-        showResult('error', '最大デバイス数は1以上にしてください');
-        return;
-      }
-
-      // ボタンを無効化
       const btn = event.target;
       btn.disabled = true;
       btn.textContent = '発行中...';
 
       try {
-        // Firestoreドキュメントのフィールド構造
         const fields = {
           active: { booleanValue: true },
           userName: { stringValue: userName },
-          maxDevices: { integerValue: maxDevices.toString() }
+          maxDevices: { integerValue: maxDevices.toString() },
+          createdAt: { timestampValue: new Date().toISOString() }
         };
 
-        // 有効期限がある場合のみ追加
         if (hasExpiry && expiryDate) {
-          const expiryTimestamp = new Date(expiryDate).toISOString();
-          fields.expiryDate = { timestampValue: expiryTimestamp };
+          fields.expiryDate = { timestampValue: new Date(expiryDate).toISOString() };
         }
 
-        // Firestore REST APIでドキュメント作成
         const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?documentId=${licenseKey}&key=${FIREBASE_CONFIG.apiKey}`;
 
         const response = await fetch(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fields })
         });
 
@@ -346,9 +658,8 @@
           throw new Error(errorData.error?.message || `HTTP ${response.status}`);
         }
 
-        // 成功
         const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
-        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}\n\nFirestoreへの登録も完了しました。\nこのライセンスキーを購入者に送信してください。`);
+        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}`);
 
         // 履歴に追加
         licenseHistory.unshift({
@@ -360,25 +671,351 @@
           createdAt: new Date().toISOString()
         });
 
-        // 最大20件まで保存
-        if (licenseHistory.length > 20) {
-          licenseHistory = licenseHistory.slice(0, 20);
+        if (licenseHistory.length > 50) {
+          licenseHistory = licenseHistory.slice(0, 50);
         }
 
         localStorage.setItem('licenseHistory', JSON.stringify(licenseHistory));
         displayHistory();
 
-        // フォームをリセット
         document.getElementById('userName').value = '';
         generateLicenseKey();
 
       } catch (error) {
-        console.error('[Admin] エラー:', error);
-        showResult('error', `❌ エラー: ${error.message}\n\nFirestoreへの接続に失敗しました。\nインターネット接続とFirebase設定を確認してください。`);
+        showResult('error', `❌ エラー: ${error.message}`);
       } finally {
         btn.disabled = false;
         btn.textContent = '✅ ライセンスを発行（Firestoreに自動登録）';
       }
+    }
+
+    // 全ライセンスを読み込み
+    async function loadAllLicenses() {
+      const resultsEl = document.getElementById('searchResults');
+      resultsEl.innerHTML = '<div class="loading">読み込み中</div>';
+
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const documents = data.documents || [];
+
+        if (documents.length === 0) {
+          resultsEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">ライセンスが見つかりません</p>';
+          return;
+        }
+
+        displayLicenseTable(documents);
+
+      } catch (error) {
+        resultsEl.innerHTML = `<p style="color: #f56565; text-align: center;">エラー: ${error.message}</p>`;
+      }
+    }
+
+    // ライセンス検索
+    async function searchLicenses() {
+      const query = document.getElementById('searchQuery').value.trim();
+      if (!query) {
+        loadAllLicenses();
+        return;
+      }
+
+      const resultsEl = document.getElementById('searchResults');
+      resultsEl.innerHTML = '<div class="loading">検索中</div>';
+
+      try {
+        // まず全件取得してフィルタリング（Firestore REST APIの制限）
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const documents = data.documents || [];
+
+        // フィルタリング
+        const filtered = documents.filter(doc => {
+          const name = doc.name.split('/').pop();
+          const userName = doc.fields?.userName?.stringValue || '';
+          return name.toLowerCase().includes(query.toLowerCase()) ||
+                 userName.toLowerCase().includes(query.toLowerCase());
+        });
+
+        if (filtered.length === 0) {
+          resultsEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">該当するライセンスが見つかりません</p>';
+          return;
+        }
+
+        displayLicenseTable(filtered);
+
+      } catch (error) {
+        resultsEl.innerHTML = `<p style="color: #f56565; text-align: center;">エラー: ${error.message}</p>`;
+      }
+    }
+
+    // ライセンステーブルを表示
+    function displayLicenseTable(documents) {
+      const resultsEl = document.getElementById('searchResults');
+
+      let html = `
+        <table class="license-table">
+          <thead>
+            <tr>
+              <th>ライセンスキー</th>
+              <th>購入者</th>
+              <th>デバイス</th>
+              <th>状態</th>
+              <th>有効期限</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      documents.forEach(doc => {
+        const licenseKey = doc.name.split('/').pop();
+        const fields = doc.fields || {};
+        const userName = fields.userName?.stringValue || '-';
+        const maxDevices = parseInt(fields.maxDevices?.integerValue || '1');
+        const devices = fields.devices?.arrayValue?.values || [];
+        const isActive = fields.active?.booleanValue ?? true;
+        const expiryDate = fields.expiryDate?.timestampValue;
+
+        let statusClass = 'status-active';
+        let statusText = '有効';
+
+        if (!isActive) {
+          statusClass = 'status-inactive';
+          statusText = '無効';
+        } else if (expiryDate && new Date(expiryDate) < new Date()) {
+          statusClass = 'status-expired';
+          statusText = '期限切れ';
+        }
+
+        const expiryText = expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限';
+
+        html += `
+          <tr>
+            <td><span class="license-key" onclick="showLicenseDetail('${licenseKey}')">${licenseKey}</span></td>
+            <td>${userName}</td>
+            <td>${devices.length}/${maxDevices}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td>${expiryText}</td>
+          </tr>
+        `;
+      });
+
+      html += '</tbody></table>';
+      resultsEl.innerHTML = html;
+    }
+
+    // ライセンス詳細を表示
+    async function showLicenseDetail(licenseKey) {
+      currentLicenseKey = licenseKey;
+      const modal = document.getElementById('licenseModal');
+      const content = document.getElementById('modalContent');
+
+      content.innerHTML = '<div class="loading">読み込み中</div>';
+      modal.classList.add('active');
+
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const doc = await response.json();
+        const fields = doc.fields || {};
+
+        const userName = fields.userName?.stringValue || '-';
+        const maxDevices = parseInt(fields.maxDevices?.integerValue || '1');
+        const devices = fields.devices?.arrayValue?.values || [];
+        const isActive = fields.active?.booleanValue ?? true;
+        const expiryDate = fields.expiryDate?.timestampValue;
+        const createdAt = fields.createdAt?.timestampValue;
+
+        let statusText = '有効';
+        let statusClass = 'status-active';
+        if (!isActive) {
+          statusText = '無効';
+          statusClass = 'status-inactive';
+        } else if (expiryDate && new Date(expiryDate) < new Date()) {
+          statusText = '期限切れ';
+          statusClass = 'status-expired';
+        }
+
+        let html = `
+          <div class="license-key-display" style="color: #667eea;">${licenseKey}</div>
+
+          <div class="detail-row">
+            <span class="detail-label">購入者名</span>
+            <span class="detail-value">${userName}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">状態</span>
+            <span class="detail-value"><span class="status-badge ${statusClass}">${statusText}</span></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">最大デバイス数</span>
+            <span class="detail-value">${maxDevices}台</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">登録済みデバイス</span>
+            <span class="detail-value">${devices.length}台</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">有効期限</span>
+            <span class="detail-value">${expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">発行日</span>
+            <span class="detail-value">${createdAt ? new Date(createdAt).toLocaleDateString('ja-JP') : '-'}</span>
+          </div>
+
+          <div class="device-list">
+            <h4 style="margin-bottom: 12px;">📱 登録デバイス一覧</h4>
+        `;
+
+        if (devices.length === 0) {
+          html += '<div class="no-devices">登録されたデバイスはありません</div>';
+        } else {
+          devices.forEach((device, index) => {
+            const deviceId = device.stringValue;
+            html += `
+              <div class="device-item">
+                <span class="device-id">${deviceId}</span>
+                <button class="btn-small btn-danger" onclick="removeDevice('${licenseKey}', '${deviceId}')">解除</button>
+              </div>
+            `;
+          });
+        }
+
+        html += '</div>';
+
+        html += `
+          <div class="action-buttons">
+            <button class="btn-secondary" onclick="toggleLicenseStatus('${licenseKey}', ${!isActive})">
+              ${isActive ? '🚫 無効化' : '✅ 有効化'}
+            </button>
+            <button class="btn-danger" onclick="showDeleteConfirm('${licenseKey}')">🗑️ 削除</button>
+          </div>
+        `;
+
+        content.innerHTML = html;
+
+      } catch (error) {
+        content.innerHTML = `<p style="color: #f56565;">エラー: ${error.message}</p>`;
+      }
+    }
+
+    // デバイスを解除
+    async function removeDevice(licenseKey, deviceId) {
+      if (!confirm(`デバイス「${deviceId}」の登録を解除しますか？`)) return;
+
+      try {
+        // 現在のデバイスリストを取得
+        const getUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?key=${FIREBASE_CONFIG.apiKey}`;
+
+        const getResponse = await fetch(getUrl);
+        const doc = await getResponse.json();
+        const currentDevices = doc.fields?.devices?.arrayValue?.values || [];
+
+        // 指定デバイスを除外
+        const updatedDevices = currentDevices.filter(d => d.stringValue !== deviceId);
+
+        // 更新
+        const updateUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?updateMask.fieldPaths=devices&key=${FIREBASE_CONFIG.apiKey}`;
+
+        const updateResponse = await fetch(updateUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              devices: {
+                arrayValue: {
+                  values: updatedDevices
+                }
+              }
+            }
+          })
+        });
+
+        if (!updateResponse.ok) throw new Error(`HTTP ${updateResponse.status}`);
+
+        alert('デバイスの登録を解除しました');
+        showLicenseDetail(licenseKey); // 詳細を再読み込み
+
+      } catch (error) {
+        alert(`エラー: ${error.message}`);
+      }
+    }
+
+    // ライセンス状態を切り替え
+    async function toggleLicenseStatus(licenseKey, newStatus) {
+      const action = newStatus ? '有効化' : '無効化';
+      if (!confirm(`ライセンスを${action}しますか？`)) return;
+
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?updateMask.fieldPaths=active&key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              active: { booleanValue: newStatus }
+            }
+          })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        alert(`ライセンスを${action}しました`);
+        showLicenseDetail(licenseKey);
+
+      } catch (error) {
+        alert(`エラー: ${error.message}`);
+      }
+    }
+
+    // 削除確認を表示
+    function showDeleteConfirm(licenseKey) {
+      currentLicenseKey = licenseKey;
+      document.getElementById('deleteTargetKey').textContent = licenseKey;
+      document.getElementById('licenseModal').classList.remove('active');
+      document.getElementById('deleteModal').classList.add('active');
+    }
+
+    // 削除を実行
+    async function confirmDelete() {
+      if (!currentLicenseKey) return;
+
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${currentLicenseKey}?key=${FIREBASE_CONFIG.apiKey}`;
+
+        const response = await fetch(url, { method: 'DELETE' });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        alert('ライセンスを削除しました');
+        closeDeleteModal();
+        loadAllLicenses(); // 一覧を更新
+
+      } catch (error) {
+        alert(`エラー: ${error.message}`);
+      }
+    }
+
+    // モーダルを閉じる
+    function closeModal() {
+      document.getElementById('licenseModal').classList.remove('active');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('active');
+      currentLicenseKey = null;
     }
 
     // 結果を表示
@@ -388,7 +1025,6 @@
       resultEl.style.display = 'block';
       resultEl.textContent = message;
 
-      // 10秒後に非表示
       setTimeout(() => {
         resultEl.style.display = 'none';
       }, 10000);
@@ -403,25 +1039,50 @@
         return;
       }
 
-      historyEl.innerHTML = licenseHistory.map(item => {
-        const expiryText = item.hasExpiry
-          ? `<div class="history-expiry">有効期限: ${item.expiryDate}</div>`
-          : `<div class="history-expiry">有効期限: 無期限</div>`;
+      let html = `
+        <table class="license-table">
+          <thead>
+            <tr>
+              <th>ライセンスキー</th>
+              <th>購入者</th>
+              <th>デバイス数</th>
+              <th>有効期限</th>
+              <th>発行日</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
 
-        return `
-          <div class="history-item">
-            <div>
-              <div class="history-key">${item.key}</div>
-              <div class="history-user">${item.userName} (${item.maxDevices}台)</div>
-              ${expiryText}
-            </div>
-            <div style="text-align: right; font-size: 12px; color: #718096;">
-              ${new Date(item.createdAt).toLocaleDateString('ja-JP')}
-            </div>
-          </div>
+      licenseHistory.forEach(item => {
+        html += `
+          <tr>
+            <td><span class="license-key" onclick="showLicenseDetail('${item.key}')">${item.key}</span></td>
+            <td>${item.userName}</td>
+            <td>${item.maxDevices}台</td>
+            <td>${item.hasExpiry ? item.expiryDate : '無期限'}</td>
+            <td>${new Date(item.createdAt).toLocaleDateString('ja-JP')}</td>
+          </tr>
         `;
-      }).join('');
+      });
+
+      html += '</tbody></table>';
+      historyEl.innerHTML = html;
     }
+
+    // 履歴をクリア
+    function clearHistory() {
+      if (!confirm('発行履歴をすべてクリアしますか？\n（Firestoreのデータには影響しません）')) return;
+      licenseHistory = [];
+      localStorage.removeItem('licenseHistory');
+      displayHistory();
+    }
+
+    // Enterキーで検索
+    document.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && e.target.id === 'searchQuery') {
+        searchLicenses();
+      }
+    });
   </script>
 </body>
 </html>

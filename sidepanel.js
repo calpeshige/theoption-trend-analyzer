@@ -297,45 +297,30 @@ function closeAssetDataModal() {
   document.getElementById('asset-data-sheet').classList.remove('active');
 }
 
-// 通貨ペア別データを読み込み
+// 通貨ペア別データを読み込み（IndexedDBから取得）
 async function loadAssetDataList() {
   const contentEl = document.getElementById('asset-data-content');
   contentEl.innerHTML = '<div class="asset-data-loading"><span>読み込み中...</span></div>';
 
   try {
-    // ストレージから全てのキーを取得
-    const allData = await chrome.storage.local.get(null);
+    // コンテンツスクリプト経由でIndexedDBからデータを取得
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: 'GET_ASSET_DATA_LIST' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
 
-    // ML学習データのキーを抽出（theoption_ml_通貨ペア名 の形式）
-    const assetDataMap = {};
-    let totalCount = 0;
-
-    for (const key of Object.keys(allData)) {
-      if (key.startsWith('theoption_ml_')) {
-        // theoption_ml_EUR_USD → EUR/USD に変換
-        const rawAssetName = key.replace('theoption_ml_', '');
-        const assetName = rawAssetName.replace('_', '/');
-        const data = allData[key];
-        const count = Array.isArray(data) ? data.length : 0;
-        assetDataMap[assetName] = count;
-        totalCount += count;
-      }
+    if (response?.error) {
+      throw new Error(response.error);
     }
 
-    // 現在の通貨ペアを取得
-    const currentAsset = document.getElementById('asset-name-display').textContent || '';
-
-    // 現在の通貨ペアはリアルタイム値（AI学習状況カードの値）を使用
-    // ストレージは定期保存のため、メモリ上の最新値より古い場合がある
-    const currentAssetRealtimeCount = highestMLDataCount || 0;
-    if (currentAsset && currentAssetRealtimeCount > 0) {
-      const oldCount = assetDataMap[currentAsset] || 0;
-      if (currentAssetRealtimeCount > oldCount) {
-        // 差分を総数に反映
-        totalCount = totalCount - oldCount + currentAssetRealtimeCount;
-        assetDataMap[currentAsset] = currentAssetRealtimeCount;
-      }
-    }
+    const assetDataMap = response?.assetDataMap || {};
+    const totalCount = response?.totalCount || 0;
+    const currentAsset = response?.currentAsset || '';
 
     // データがない場合
     if (Object.keys(assetDataMap).length === 0) {

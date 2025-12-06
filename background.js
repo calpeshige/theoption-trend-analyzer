@@ -120,6 +120,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
 
+  // 通貨ペア別データ一覧を取得（IndexedDBから）
+  if (message.type === 'GET_ASSET_DATA_LIST') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_ASSET_DATA_LIST' })
+          .then(response => {
+            sendResponse(response);
+          })
+          .catch(() => {
+            sendResponse({ error: 'Content script not available' });
+          });
+      } else {
+        sendResponse({ error: 'No active tab' });
+      }
+    });
+    return true; // 非同期レスポンスを使用
+  }
+
   // GET_ANALYSIS_DATA以外は同期処理なのでreturn falseまたは省略
   // return trueはGET_ANALYSIS_DATAの処理内で既に返している
 });
