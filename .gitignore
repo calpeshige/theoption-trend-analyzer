@@ -26,3 +26,8 @@ backups/
 create_release.sh
 theoption_trend_release/
 TheOption_Trend_Analyzer_v*.zip
+Theoption_Trading_System_v*.zip
+.vercel
+
+# Landing page (separate repository)
+landing_page/

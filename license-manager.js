@@ -17,6 +17,9 @@
   const LICENSE_COLLECTION = 'licenses';  // Firestoreコレクション名
   const RECHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24時間ごとに再検証
   const DEVICE_ID_KEY = 'deviceId';  // デバイスID保存キー
+  const LICENSE_KEY_KEY = 'licenseKey';  // ライセンスキー保存キー
+  const LICENSE_INFO_KEY = 'licenseInfo';  // ライセンス情報保存キー
+  const LICENSE_CHECK_TIME_KEY = 'licenseCheckTime';  // 検証時刻保存キー
 
   // グローバル変数
   window.licenseManager = {
@@ -56,17 +59,34 @@
   }
 
   // デバイスIDを取得（なければ生成して保存）
+  // sync優先、localにフォールバック
   async function getOrCreateDeviceId() {
     return new Promise((resolve) => {
-      chrome.storage.local.get([DEVICE_ID_KEY], (result) => {
-        if (result[DEVICE_ID_KEY]) {
-          console.log('[License] 既存のデバイスID:', result[DEVICE_ID_KEY]);
-          resolve(result[DEVICE_ID_KEY]);
+      // まずsyncストレージを確認
+      chrome.storage.sync.get([DEVICE_ID_KEY], (syncResult) => {
+        if (syncResult[DEVICE_ID_KEY]) {
+          console.log('[License] sync既存のデバイスID:', syncResult[DEVICE_ID_KEY]);
+          // localにもコピーしておく（フォールバック用）
+          chrome.storage.local.set({ [DEVICE_ID_KEY]: syncResult[DEVICE_ID_KEY] });
+          resolve(syncResult[DEVICE_ID_KEY]);
         } else {
-          const newDeviceId = generateDeviceId();
-          console.log('[License] 新規デバイスID生成:', newDeviceId);
-          chrome.storage.local.set({ [DEVICE_ID_KEY]: newDeviceId }, () => {
-            resolve(newDeviceId);
+          // syncにない場合、localを確認
+          chrome.storage.local.get([DEVICE_ID_KEY], (localResult) => {
+            if (localResult[DEVICE_ID_KEY]) {
+              console.log('[License] local既存のデバイスID:', localResult[DEVICE_ID_KEY]);
+              // syncにもコピー
+              chrome.storage.sync.set({ [DEVICE_ID_KEY]: localResult[DEVICE_ID_KEY] });
+              resolve(localResult[DEVICE_ID_KEY]);
+            } else {
+              // どちらにもない場合、新規生成
+              const newDeviceId = generateDeviceId();
+              console.log('[License] 新規デバイスID生成:', newDeviceId);
+              // 両方に保存
+              chrome.storage.sync.set({ [DEVICE_ID_KEY]: newDeviceId });
+              chrome.storage.local.set({ [DEVICE_ID_KEY]: newDeviceId }, () => {
+                resolve(newDeviceId);
+              });
+            }
           });
         }
       });
@@ -230,40 +250,91 @@
   }
 
   // ========================================
-  // ローカルストレージからライセンスキーを取得
+  // ストレージからライセンスキーを取得（sync優先、localフォールバック）
   // ========================================
   async function getSavedLicenseKey() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['licenseKey', 'licenseCheckTime'], (result) => {
-        resolve({
-          licenseKey: result.licenseKey || null,
-          lastCheckTime: result.licenseCheckTime || 0
-        });
+      // まずsyncストレージを確認
+      chrome.storage.sync.get([LICENSE_KEY_KEY, LICENSE_CHECK_TIME_KEY], (syncResult) => {
+        if (syncResult[LICENSE_KEY_KEY]) {
+          console.log('[License] syncからライセンスキーを取得');
+          // localにもコピー
+          chrome.storage.local.set({
+            [LICENSE_KEY_KEY]: syncResult[LICENSE_KEY_KEY],
+            [LICENSE_CHECK_TIME_KEY]: syncResult[LICENSE_CHECK_TIME_KEY] || 0
+          });
+          resolve({
+            licenseKey: syncResult[LICENSE_KEY_KEY],
+            lastCheckTime: syncResult[LICENSE_CHECK_TIME_KEY] || 0
+          });
+        } else {
+          // syncにない場合、localを確認
+          chrome.storage.local.get([LICENSE_KEY_KEY, LICENSE_CHECK_TIME_KEY, 'licenseKey', 'licenseCheckTime'], (localResult) => {
+            // 新旧両方のキー名をサポート（既存ユーザー対応）
+            const licenseKey = localResult[LICENSE_KEY_KEY] || localResult.licenseKey || null;
+            const lastCheckTime = localResult[LICENSE_CHECK_TIME_KEY] || localResult.licenseCheckTime || 0;
+
+            if (licenseKey) {
+              console.log('[License] localからライセンスキーを取得');
+              // syncにコピー
+              chrome.storage.sync.set({
+                [LICENSE_KEY_KEY]: licenseKey,
+                [LICENSE_CHECK_TIME_KEY]: lastCheckTime
+              });
+            }
+            resolve({
+              licenseKey: licenseKey,
+              lastCheckTime: lastCheckTime
+            });
+          });
+        }
       });
     });
   }
 
   // ========================================
-  // ライセンスキーを保存
+  // ライセンスキーを保存（syncとlocalの両方に保存）
   // ========================================
   async function saveLicenseKey(licenseKey, licenseInfo) {
+    const checkTime = Date.now();
     return new Promise((resolve) => {
+      // syncストレージに保存（Googleアカウントで同期）
+      chrome.storage.sync.set({
+        [LICENSE_KEY_KEY]: licenseKey,
+        [LICENSE_INFO_KEY]: licenseInfo,
+        [LICENSE_CHECK_TIME_KEY]: checkTime
+      });
+
+      // localストレージにも保存（フォールバック用）
       chrome.storage.local.set({
+        [LICENSE_KEY_KEY]: licenseKey,
+        [LICENSE_INFO_KEY]: licenseInfo,
+        [LICENSE_CHECK_TIME_KEY]: checkTime,
+        // 旧キー名も保持（互換性のため）
         licenseKey: licenseKey,
         licenseInfo: licenseInfo,
-        licenseCheckTime: Date.now()
+        licenseCheckTime: checkTime
       }, () => {
+        console.log('[License] ライセンスキーをsync/localに保存完了');
         resolve();
       });
     });
   }
 
   // ========================================
-  // ライセンスキーをクリア
+  // ライセンスキーをクリア（syncとlocalの両方からクリア）
   // ========================================
   async function clearLicenseKey() {
     return new Promise((resolve) => {
-      chrome.storage.local.remove(['licenseKey', 'licenseInfo', 'licenseCheckTime'], () => {
+      // syncストレージからクリア
+      chrome.storage.sync.remove([LICENSE_KEY_KEY, LICENSE_INFO_KEY, LICENSE_CHECK_TIME_KEY]);
+
+      // localストレージからクリア（新旧両方のキー名）
+      chrome.storage.local.remove([
+        LICENSE_KEY_KEY, LICENSE_INFO_KEY, LICENSE_CHECK_TIME_KEY,
+        'licenseKey', 'licenseInfo', 'licenseCheckTime'
+      ], () => {
+        console.log('[License] ライセンスキーをsync/localからクリア完了');
         resolve();
       });
     });
@@ -478,7 +549,16 @@
       // デバイスIDを取得して、未登録の場合のみ完全な検証を行う
       const deviceId = await getOrCreateDeviceId();
       const licenseInfo = await new Promise(resolve => {
-        chrome.storage.local.get(['licenseInfo'], result => resolve(result.licenseInfo));
+        // sync優先でlicenseInfoを取得
+        chrome.storage.sync.get([LICENSE_INFO_KEY], (syncResult) => {
+          if (syncResult[LICENSE_INFO_KEY]) {
+            resolve(syncResult[LICENSE_INFO_KEY]);
+          } else {
+            chrome.storage.local.get([LICENSE_INFO_KEY, 'licenseInfo'], (localResult) => {
+              resolve(localResult[LICENSE_INFO_KEY] || localResult.licenseInfo);
+            });
+          }
+        });
       });
 
       // デバイス登録状況を確認するため、一度Firestoreをチェック
