@@ -442,8 +442,9 @@ function selectTimeframe(timeframe) {
 
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: timeframe });
 
-  // 時間枠切替時は次のSTATUS_UPDATEで自動的にシグナルカードが更新される
-  // resetSignalCardsToWaiting()は呼ばない（チカチカ防止）
+  // 時間枠切替時はシグナルカードを「準備中」にリセット
+  // 実際のシグナル表示は次のSTATUS_UPDATEで適切なタイミング（prepTime以内）に更新される
+  resetSignalCardsToWaiting();
 
   // 詳細カードを更新
   if (latestAnalysisData) {
@@ -601,21 +602,18 @@ function updateSignalCardsFromStatus(signal) {
 
   if (techIconEl && techLabelEl && techConfidenceEl) {
     let dataSignal = 'wait';
-    let label = '分析中';  // NEUTRALは「分析中」（見送りではない）
+    let label = '見送り';
     let confidence = '';
 
     if (signal.tech === 'HIGH' || signal.tech === 'STRONG_HIGH') {
       dataSignal = 'high';
       label = 'HIGH';
+      // 星表示に変更（50%以上でシグナル発出、80%+→★5, 70-79%→★4, 60-69%→★3, 50-59%→★2）
       confidence = signal.techConfidence ? getStarRating(getConfidenceStarLevel(signal.techConfidence)) : '';
     } else if (signal.tech === 'LOW' || signal.tech === 'STRONG_LOW') {
       dataSignal = 'low';
       label = 'LOW';
       confidence = signal.techConfidence ? getStarRating(getConfidenceStarLevel(signal.techConfidence)) : '';
-    } else if (signal.tech === 'NEUTRAL') {
-      dataSignal = 'wait';
-      label = '見送り';  // 明確にNEUTRALの場合のみ「見送り」
-      confidence = '';
     }
 
     techIconEl.setAttribute('data-signal', dataSignal);
@@ -632,7 +630,7 @@ function updateSignalCardsFromStatus(signal) {
 
   if (aiIconEl && aiLabelEl && aiConfidenceEl) {
     let dataSignal = 'wait';
-    let label = '学習中';  // デフォルトは「学習中」
+    let label = '学習中';
     let confidence = '';
 
     if (signal.ai === 'HIGH') {
@@ -652,6 +650,7 @@ function updateSignalCardsFromStatus(signal) {
       label = '下降傾向';
       confidence = signal.aiDiff ? getStarRating(signal.aiDiff >= 30 ? 2 : 1) : getStarRating(1);
     } else if (signal.ai === 'ENHANCED_HIGH') {
+      // 強化シグナル（複数時間枠合意/高勝率クラスタ/ボラティリティ適応）
       dataSignal = 'enhanced-high';
       label = '統合HIGH';
       confidence = signal.aiStarLevel ? getStarRating(signal.aiStarLevel) : getStarRating(2);
@@ -659,13 +658,12 @@ function updateSignalCardsFromStatus(signal) {
       dataSignal = 'enhanced-low';
       label = '統合LOW';
       confidence = signal.aiStarLevel ? getStarRating(signal.aiStarLevel) : getStarRating(2);
-    } else if (signal.ai === 'NEUTRAL' || signal.ai === 'INSUFFICIENT_DATA') {
-      // 明確にNEUTRALまたはデータ不足の場合
+    } else if (signal.ai) {
+      // AIシグナルがあるが HIGH/LOW/TREND/ENHANCED 以外の場合
       dataSignal = 'wait';
       label = '見送り';
       confidence = '';
     }
-    // signal.aiがnullやundefinedの場合は「学習中」のまま
 
     aiIconEl.setAttribute('data-signal', dataSignal);
     aiLabelEl.textContent = label;
@@ -774,24 +772,12 @@ function updateRealtimeStatus(data) {
         countdownContainer.classList.add('phase-analyzing');
       }
       if (countdownLabel) countdownLabel.textContent = '分析中';
-      // 分析中でもシグナルがある場合は表示を維持（チカチカ防止）
-      // シグナルがある場合は常に表示、ない場合は「見送り」を表示
-      if (signal) {
-        updateSignalCardsFromStatus(signal);
-      }
+      // 分析中はシグナルカードを「準備中」にリセット
+      resetSignalCardsToWaiting();
     }
 
     // プログレスリング更新
     updateProgressRing(currentForRing, totalForRing);
-  }
-
-  // 相場状況カードを更新（latestAnalysisDataから）
-  // STATUS_UPDATEには詳細データがないので、キャッシュされた分析データを使用
-  if (latestAnalysisData && latestAnalysisData.timeframes) {
-    const timeframeData = latestAnalysisData.timeframes[currentTimeframe];
-    if (timeframeData && timeframeData.technical) {
-      updateTechnicalCard(timeframeData.technical);
-    }
   }
 
   // ML統計
