@@ -301,6 +301,102 @@ class DBManager {
     }
 
     /**
+     * ストリーミングエクスポート（メモリ効率の良い大量データエクスポート）
+     * カーソルで少しずつ読み込み、Blobパーツとして蓄積
+     * @param {string} assetName - 通貨ペア名（nullで全データ）
+     * @param {function} onProgress - 進捗コールバック (current, total) => void
+     * @returns {Blob} JSONデータのBlob
+     */
+    async streamExport(assetName = null, onProgress = null) {
+        if (!this.db) await this.init();
+
+        // まず件数を取得
+        const totalCount = await this.getCount(assetName);
+        if (totalCount === 0) {
+            return null;
+        }
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+
+            let request;
+            if (assetName) {
+                const index = store.index('assetName');
+                request = index.openCursor(IDBKeyRange.only(assetName));
+            } else {
+                request = store.openCursor();
+            }
+
+            // ストレージキー形式に変換
+            const storageKey = assetName
+                ? `theoption_ml_${assetName.replace(/\//g, '_')}`
+                : null;
+
+            const blobParts = [];
+            let recordCount = 0;
+            let isFirst = true;
+            const BATCH_SIZE = 500; // 500件ごとにBlobパーツを作成
+            let currentBatch = [];
+
+            // JSON開始
+            if (assetName) {
+                blobParts.push(`{\n  "${storageKey}": [\n`);
+            } else {
+                // 全データの場合は通貨ペア別にグループ化が必要
+                // この場合は従来の方式を使用（全データは選択不可にする）
+            }
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+
+                if (cursor) {
+                    const record = cursor.value;
+
+                    // レコードをJSON文字列に変換
+                    const jsonStr = JSON.stringify(record);
+                    const prefix = isFirst ? '    ' : ',\n    ';
+                    currentBatch.push(prefix + jsonStr);
+                    isFirst = false;
+                    recordCount++;
+
+                    // バッチサイズに達したらBlobパーツに追加
+                    if (currentBatch.length >= BATCH_SIZE) {
+                        blobParts.push(currentBatch.join(''));
+                        currentBatch = [];
+
+                        // 進捗通知
+                        if (onProgress) {
+                            onProgress(recordCount, totalCount);
+                        }
+                    }
+
+                    cursor.continue();
+                } else {
+                    // カーソル終了 - 残りのバッチを追加
+                    if (currentBatch.length > 0) {
+                        blobParts.push(currentBatch.join(''));
+                    }
+
+                    // JSON終了
+                    blobParts.push('\n  ]\n}');
+
+                    // Blobを作成
+                    const blob = new Blob(blobParts, { type: 'application/json' });
+
+                    console.log(`[DB] Stream export completed: ${recordCount} records, ${blob.size} bytes`);
+                    resolve({ blob, recordCount });
+                }
+            };
+
+            request.onerror = (event) => {
+                console.error('[DB] Stream export error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
      * データベースを削除（デバッグ用）
      */
     async deleteDatabase() {

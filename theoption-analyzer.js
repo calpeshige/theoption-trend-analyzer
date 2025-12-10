@@ -4541,79 +4541,41 @@ function initializeAnalyzer() {
       });
     }
 
-    // 実際のエクスポート処理
+    // 実際のエクスポート処理（ストリーミング方式 - メモリ効率が良い）
     async function performExport(assetName, assetList) {
       try {
-        const dbManager = new DBManager();
-        await dbManager.init();
-
-        let records;
-        let filename;
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-
-        if (assetName) {
-          // 特定の通貨ペアのみ
-          records = await dbManager.getAllRecords(assetName);
-          const safeAssetName = assetName.replace(/\//g, '_');
-          filename = `theoption_${safeAssetName}_${timestamp}.json`;
-        } else {
-          // 全データ
-          records = await dbManager.getAllRecords();
-          filename = `theoption_backup_${timestamp}.json`;
-        }
-
-        if (records.length === 0) {
-          alert(`${assetName || '全体'}のデータがありません`);
+        if (!assetName) {
+          alert('通貨ペアを選択してください');
           return;
         }
 
-        // 通貨ペア別にグループ化
-        const mlData = {};
-        records.forEach(record => {
-          const asset = record.assetName || 'UNKNOWN';
-          const storageKey = `theoption_ml_${asset.replace(/\//g, '_')}`;
-          if (!mlData[storageKey]) {
-            mlData[storageKey] = [];
-          }
-          mlData[storageKey].push(record);
+        const dbManager = new DBManager();
+        await dbManager.init();
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const safeAssetName = assetName.replace(/\//g, '_');
+        const filename = `theoption_${safeAssetName}_${timestamp}.json`;
+
+        // 進捗表示を作成
+        const progressId = 'export-progress-' + Date.now();
+        showExportProgress(progressId, assetName);
+
+        // ストリーミングエクスポート（カーソルで少しずつ読み込む）
+        const result = await dbManager.streamExport(assetName, (current, total) => {
+          updateExportProgress(progressId, current, total);
         });
 
-        // チャンク分割でJSON生成
-        const chunks = [];
-        chunks.push('{\n');
+        // 進捗表示を削除
+        hideExportProgress(progressId);
 
-        const keys = Object.keys(mlData);
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i];
-          const keyRecords = mlData[key];
-
-          chunks.push(`  "${key}": [\n`);
-
-          const CHUNK_SIZE = 1000;
-          for (let j = 0; j < keyRecords.length; j += CHUNK_SIZE) {
-            const recordChunk = keyRecords.slice(j, j + CHUNK_SIZE);
-            const recordStrings = recordChunk.map(r => '    ' + JSON.stringify(r));
-            chunks.push(recordStrings.join(',\n'));
-            if (j + CHUNK_SIZE < keyRecords.length) {
-              chunks.push(',\n');
-            }
-          }
-
-          chunks.push('\n  ]');
-          if (i < keys.length - 1) {
-            chunks.push(',\n');
-          } else {
-            chunks.push('\n');
-          }
+        if (!result || !result.blob) {
+          alert(`${assetName}のデータがありません`);
+          return;
         }
-
-        chunks.push('}');
-
-        const blob = new Blob(chunks, { type: 'application/json' });
 
         // ダウンロード
         const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(result.blob);
 
         link.setAttribute('href', url);
         link.setAttribute('download', filename);
@@ -4626,15 +4588,68 @@ function initializeAnalyzer() {
         URL.revokeObjectURL(url);
 
         // 通知
-        const msg = assetName
-          ? `${assetName} (${records.length.toLocaleString()}件)`
-          : `完全バックアップ (${keys.length}通貨ペア, ${records.length.toLocaleString()}件)`;
-        showDownloadNotification(msg);
+        showDownloadNotification(`${assetName} (${result.recordCount.toLocaleString()}件)`);
 
       } catch (error) {
         console.error('[JSON Export] エラー:', error);
-        throw error;
+        alert(`❌ エクスポートに失敗しました\n\n${error.message}`);
       }
+    }
+
+    // エクスポート進捗表示
+    function showExportProgress(id, assetName) {
+      const html = `
+        <div id="${id}" style="
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #1a1a2e;
+          border-radius: 12px;
+          padding: 16px 20px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          z-index: 999999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          color: #fff;
+          min-width: 250px;
+        ">
+          <div style="margin-bottom: 8px; font-size: 14px; color: #a0aec0;">
+            📦 ${assetName} をエクスポート中...
+          </div>
+          <div style="
+            background: #2d3748;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+          ">
+            <div id="${id}-bar" style="
+              background: linear-gradient(90deg, #667eea, #764ba2);
+              height: 100%;
+              width: 0%;
+              transition: width 0.2s;
+            "></div>
+          </div>
+          <div id="${id}-text" style="
+            margin-top: 6px;
+            font-size: 12px;
+            color: #718096;
+            text-align: right;
+          ">0%</div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    function updateExportProgress(id, current, total) {
+      const percent = Math.round((current / total) * 100);
+      const bar = document.getElementById(`${id}-bar`);
+      const text = document.getElementById(`${id}-text`);
+      if (bar) bar.style.width = `${percent}%`;
+      if (text) text.textContent = `${current.toLocaleString()} / ${total.toLocaleString()} (${percent}%)`;
+    }
+
+    function hideExportProgress(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
     }
 
     function importDataFromJSON() {
