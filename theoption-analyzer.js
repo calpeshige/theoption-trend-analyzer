@@ -4655,10 +4655,11 @@ function initializeAnalyzer() {
     function importDataFromJSON() {
       console.log('[JSON Import] インポート開始...');
 
-      // ファイル入力要素を動的に作成
+      // ファイル入力要素を動的に作成（複数ファイル選択可能）
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
       fileInput.accept = '.json';
+      fileInput.multiple = true; // 複数ファイル選択を有効化
       fileInput.style.display = 'none';
       document.body.appendChild(fileInput);
       fileInput.click();
@@ -4666,12 +4667,89 @@ function initializeAnalyzer() {
       fileInput.onchange = async (e) => {
         // 使用後に要素を削除
         document.body.removeChild(fileInput);
-        const file = e.target.files[0];
-        if (!file) {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) {
           console.log('[JSON Import] ファイルが選択されませんでした');
           return;
         }
 
+        // 現在のデータ件数を取得
+        const dbManager = new DBManager();
+        await dbManager.init();
+        const currentCount = await dbManager.getRecordCount();
+
+        // 確認ダイアログ
+        let confirmMessage = `📦 データをインポートします\n\n`;
+        confirmMessage += `選択ファイル数: ${files.length}件\n`;
+        files.forEach(f => {
+          confirmMessage += `  - ${f.name}\n`;
+        });
+        if (currentCount > 0) {
+          confirmMessage += `\n現在のデータ: ${currentCount.toLocaleString()}件\n`;
+          confirmMessage += `→ 重複データは自動的にスキップされます`;
+        }
+        confirmMessage += `\n\nインポートを実行しますか？`;
+
+        if (!confirm(confirmMessage)) {
+          console.log('[JSON Import] キャンセルされました');
+          return;
+        }
+
+        // 進捗表示
+        const progressId = 'import-progress-' + Date.now();
+        showImportProgress(progressId, files.length);
+
+        // 各ファイルを順番に処理
+        let totalImported = 0;
+        let totalErrors = 0;
+        let processedFiles = 0;
+
+        for (const file of files) {
+          try {
+            updateImportProgress(progressId, processedFiles + 1, files.length, file.name);
+
+            const result = await processImportFile(file, dbManager);
+            totalImported += result.imported;
+            totalErrors += result.errors;
+            processedFiles++;
+
+          } catch (error) {
+            console.error(`[JSON Import] ファイル処理エラー: ${file.name}`, error);
+            totalErrors++;
+            processedFiles++;
+          }
+        }
+
+        // 進捗表示を削除
+        hideImportProgress(progressId);
+
+        // 最終的なデータ件数を取得
+        const finalCount = await dbManager.getRecordCount();
+
+        console.log(`[JSON Import] ✅ 全ファイルインポート完了: 処理=${totalImported}, エラー=${totalErrors}, 最終件数=${finalCount}`);
+
+        // 結果通知
+        let resultMessage = `✅ インポート完了\n\n`;
+        resultMessage += `処理ファイル数: ${processedFiles}件\n`;
+        resultMessage += `処理したレコード: ${totalImported.toLocaleString()}件\n`;
+        resultMessage += `現在の総データ数: ${finalCount.toLocaleString()}件\n`;
+        if (totalErrors > 0) {
+          resultMessage += `エラー: ${totalErrors}件\n`;
+        }
+        resultMessage += `\nページをリロードします。`;
+
+        alert(resultMessage);
+
+        // ページリロード
+        setTimeout(() => {
+          location.reload();
+        }, 1000);
+      };
+    }
+
+    // 単一ファイルの処理
+    async function processImportFile(file, dbManager) {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
         reader.onload = async (event) => {
@@ -4681,90 +4759,109 @@ function initializeAnalyzer() {
             // データ検証
             const validation = validateImportData(data);
             if (!validation.valid) {
-              alert(`❌ データ検証エラー\n\n${validation.error}`);
-              console.error('[JSON Import] 検証エラー:', validation.error);
+              console.error(`[JSON Import] 検証エラー (${file.name}):`, validation.error);
+              resolve({ imported: 0, errors: 1 });
               return;
             }
 
-            // 現在のデータ件数を取得
-            const dbManager = new DBManager();
-            await dbManager.init();
-            const currentCount = await dbManager.getRecordCount();
-
-            // シンプルな確認ダイアログ
-            let confirmMessage = `📦 データをインポートします\n\n`;
-            confirmMessage += `ファイル: ${file.name}\n`;
-            confirmMessage += `通貨ペア数: ${validation.currencyPairs}\n`;
-            confirmMessage += `レコード数: ${validation.totalRecords.toLocaleString()}件\n`;
-            if (currentCount > 0) {
-              confirmMessage += `\n現在のデータ: ${currentCount.toLocaleString()}件\n`;
-              confirmMessage += `→ 重複データは自動的にスキップされます`;
-            }
-            confirmMessage += `\n\nインポートを実行しますか？`;
-
-            if (!confirm(confirmMessage)) {
-              console.log('[JSON Import] キャンセルされました');
-              return;
-            }
-
-            // プログレス表示用
             let importedCount = 0;
             let errorCount = 0;
 
-            // IndexedDBにデータを保存（saveRecordでput=upsert動作）
-            console.log('[JSON Import] インポート開始...');
-
             for (const key of Object.keys(data)) {
               const records = data[key];
-              // キー名から通貨ペア名を抽出 (theoption_ml_EUR_USD → EUR/USD)
               const assetName = key.replace('theoption_ml_', '').replace(/_/g, '/');
 
               for (const record of records) {
                 try {
-                  // assetNameを設定（エクスポート時に含まれていない場合）
                   if (!record.assetName) {
                     record.assetName = assetName;
                   }
-
-                  // saveRecord (put) を使用：同じtimestampなら上書き、なければ追加
                   await dbManager.saveRecord(record);
                   importedCount++;
                 } catch (err) {
                   errorCount++;
-                  console.warn('[JSON Import] レコード追加エラー:', err);
                 }
               }
             }
 
-            // 最終的なデータ件数を取得
-            const finalCount = await dbManager.getRecordCount();
-
-            console.log(`[JSON Import] ✅ インポート完了: 処理=${importedCount}, エラー=${errorCount}, 最終件数=${finalCount}`);
-
-            // 結果通知
-            let resultMessage = `✅ インポート完了\n\n`;
-            resultMessage += `処理したレコード: ${importedCount.toLocaleString()}件\n`;
-            resultMessage += `現在の総データ数: ${finalCount.toLocaleString()}件\n`;
-            if (errorCount > 0) {
-              resultMessage += `エラー: ${errorCount}件\n`;
-            }
-            resultMessage += `\nページをリロードします。`;
-
-            alert(resultMessage);
-
-            // ページリロード
-            setTimeout(() => {
-              location.reload();
-            }, 1000);
+            console.log(`[JSON Import] ${file.name}: ${importedCount}件インポート`);
+            resolve({ imported: importedCount, errors: errorCount });
 
           } catch (error) {
-            console.error('[JSON Import] ファイル読み込みエラー:', error);
-            alert('❌ ファイルの読み込みに失敗しました\n\nJSON形式が正しいか確認してください。\n\n' + error.message);
+            console.error(`[JSON Import] パースエラー (${file.name}):`, error);
+            reject(error);
           }
         };
 
+        reader.onerror = () => reject(reader.error);
         reader.readAsText(file);
-      };
+      });
+    }
+
+    // インポート進捗表示
+    function showImportProgress(id, totalFiles) {
+      const html = `
+        <div id="${id}" style="
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #1a1a2e;
+          border-radius: 12px;
+          padding: 16px 20px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          z-index: 999999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          color: #fff;
+          min-width: 280px;
+        ">
+          <div style="margin-bottom: 8px; font-size: 14px; color: #a0aec0;">
+            📥 インポート中...
+          </div>
+          <div id="${id}-file" style="
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #718096;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          "></div>
+          <div style="
+            background: #2d3748;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+          ">
+            <div id="${id}-bar" style="
+              background: linear-gradient(90deg, #48bb78, #38a169);
+              height: 100%;
+              width: 0%;
+              transition: width 0.3s;
+            "></div>
+          </div>
+          <div id="${id}-text" style="
+            margin-top: 6px;
+            font-size: 12px;
+            color: #718096;
+            text-align: right;
+          ">0 / ${totalFiles} ファイル</div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    function updateImportProgress(id, current, total, filename) {
+      const percent = Math.round((current / total) * 100);
+      const bar = document.getElementById(`${id}-bar`);
+      const text = document.getElementById(`${id}-text`);
+      const fileEl = document.getElementById(`${id}-file`);
+      if (bar) bar.style.width = `${percent}%`;
+      if (text) text.textContent = `${current} / ${total} ファイル`;
+      if (fileEl) fileEl.textContent = `処理中: ${filename}`;
+    }
+
+    function hideImportProgress(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
     }
 
     function validateImportData(data) {
