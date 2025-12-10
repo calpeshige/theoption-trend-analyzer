@@ -4403,7 +4403,8 @@ function initializeAnalyzer() {
         const totalRecords = assetList.reduce((sum, a) => sum + a.count, 0);
 
         // 大量データの場合は通貨ペア選択ダイアログを表示
-        const LARGE_DATA_THRESHOLD = 50000;
+        // メモリ制限を考慮して20,000件以上で分割エクスポートを推奨
+        const LARGE_DATA_THRESHOLD = 20000;
         if (totalRecords > LARGE_DATA_THRESHOLD) {
           showExportSelectionDialog(assetList, totalRecords);
           return;
