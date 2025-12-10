@@ -3498,7 +3498,20 @@ function initializeAnalyzer() {
     function calculateComprehensiveTrendStrength(multiDim, priceHistory, timeframeSec = 60, candleHistory = null, asset = null) {
       // multiDimがnullの場合はデフォルト値を返す
       if (!multiDim) {
-        return { strength: 0, level: 'WEAK', volatilityLevel: 'NORMAL' };
+        return {
+          total: 0,
+          breakdown: {
+            adx: 0, macd: 0, atr: 0, agreement: 0, direction: 0,
+            rsi: 0, momentum: 0, williamsR: 0, cci: 0, priceAction: 0
+          },
+          config: {
+            timeframe: timeframeSec,
+            threshold: 50,
+            dynamicThreshold: 50,
+            volatilityLevel: 'NORMAL',
+            hasNewIndicators: false
+          }
+        };
       }
 
       const config = TIMEFRAME_ANALYSIS_CONFIG[timeframeSec] || TIMEFRAME_ANALYSIS_CONFIG[60];

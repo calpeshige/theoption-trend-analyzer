@@ -772,8 +772,11 @@ function updateRealtimeStatus(data) {
         countdownContainer.classList.add('phase-analyzing');
       }
       if (countdownLabel) countdownLabel.textContent = '分析中';
-      // 分析中はシグナルカードを「準備中」にリセット
-      resetSignalCardsToWaiting();
+      // 分析中でもシグナルがある場合は表示を維持（チカチカ防止）
+      // シグナルがある場合は常に表示、ない場合は「見送り」を表示
+      if (signal) {
+        updateSignalCardsFromStatus(signal);
+      }
     }
 
     // プログレスリング更新
