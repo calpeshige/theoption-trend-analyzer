@@ -4391,86 +4391,236 @@ function initializeAnalyzer() {
         const dbManager = new DBManager();
         await dbManager.init();
 
-        // 全レコードを取得
-        const allRecords = await dbManager.getAllRecords();
+        // 通貨ペア一覧と件数を取得
+        const assetList = await dbManager.getAssetList();
 
-        if (allRecords.length === 0) {
+        if (assetList.length === 0) {
           alert('エクスポート可能な学習データがありません');
+          return;
+        }
+
+        // 総データ件数を計算
+        const totalRecords = assetList.reduce((sum, a) => sum + a.count, 0);
+
+        // 大量データの場合は通貨ペア選択ダイアログを表示
+        const LARGE_DATA_THRESHOLD = 50000;
+        if (totalRecords > LARGE_DATA_THRESHOLD) {
+          showExportSelectionDialog(assetList, totalRecords);
+          return;
+        }
+
+        // 通常のエクスポート（全データ）
+        await performExport(null, assetList);
+
+      } catch (error) {
+        console.error('[JSON Export] エラー:', error);
+        let errorMessage = error.message;
+        if (error.message.includes('Invalid string length') || error.message.includes('out of memory')) {
+          errorMessage = 'データ量が大きすぎます。\n\n通貨ペア別にエクスポートしてください。';
+        }
+        alert('❌ エクスポートに失敗しました\n\n' + errorMessage);
+      }
+    }
+
+    // 通貨ペア選択ダイアログを表示
+    function showExportSelectionDialog(assetList, totalRecords) {
+      // 既存のダイアログがあれば削除
+      const existingDialog = document.getElementById('export-selection-dialog');
+      if (existingDialog) existingDialog.remove();
+
+      const dialogHTML = `
+        <div id="export-selection-dialog" style="
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        ">
+          <div style="
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            color: #ffffff;
+          ">
+            <h2 style="margin: 0 0 8px 0; font-size: 20px; color: #667eea;">
+              📦 JSONエクスポート
+            </h2>
+            <p style="margin: 0 0 16px 0; color: #f6ad55; font-size: 14px;">
+              ⚠️ データ量が多いため（${totalRecords.toLocaleString()}件）、通貨ペア別にエクスポートしてください
+            </p>
+
+            <div style="margin-bottom: 16px;">
+              <p style="margin: 0 0 8px 0; color: #a0aec0; font-size: 13px;">
+                エクスポートする通貨ペアを選択：
+              </p>
+              <div id="asset-checkboxes" style="
+                max-height: 250px;
+                overflow-y: auto;
+                background: #2d3748;
+                border-radius: 8px;
+                padding: 12px;
+              ">
+                ${assetList.map(a => `
+                  <label style="
+                    display: flex;
+                    align-items: center;
+                    padding: 8px;
+                    margin-bottom: 4px;
+                    background: #1a1a2e;
+                    border-radius: 6px;
+                    cursor: pointer;
+                  ">
+                    <input type="checkbox" name="export-asset" value="${a.assetName}" style="
+                      margin-right: 10px;
+                      width: 18px;
+                      height: 18px;
+                    ">
+                    <span style="flex: 1; color: #e2e8f0;">${a.assetName}</span>
+                    <span style="color: #a0aec0; font-size: 12px;">${a.count.toLocaleString()}件</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 12px;">
+              <button id="export-selected-btn" style="
+                flex: 1;
+                padding: 12px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+              ">選択した通貨ペアをエクスポート</button>
+              <button id="export-cancel-btn" style="
+                padding: 12px 20px;
+                background: #4a5568;
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                cursor: pointer;
+              ">キャンセル</button>
+            </div>
+
+            <p style="margin: 12px 0 0 0; color: #718096; font-size: 11px; text-align: center;">
+              ※ 複数選択可能です。インポート時に統合されます。
+            </p>
+          </div>
+        </div>
+      `;
+
+      document.body.insertAdjacentHTML('beforeend', dialogHTML);
+
+      // イベントリスナー
+      document.getElementById('export-cancel-btn').addEventListener('click', () => {
+        document.getElementById('export-selection-dialog').remove();
+      });
+
+      document.getElementById('export-selected-btn').addEventListener('click', async () => {
+        const checkboxes = document.querySelectorAll('input[name="export-asset"]:checked');
+        const selectedAssets = Array.from(checkboxes).map(cb => cb.value);
+
+        if (selectedAssets.length === 0) {
+          alert('通貨ペアを選択してください');
+          return;
+        }
+
+        document.getElementById('export-selection-dialog').remove();
+
+        // 選択された通貨ペアでエクスポート
+        for (const assetName of selectedAssets) {
+          await performExport(assetName, assetList);
+        }
+      });
+    }
+
+    // 実際のエクスポート処理
+    async function performExport(assetName, assetList) {
+      try {
+        const dbManager = new DBManager();
+        await dbManager.init();
+
+        let records;
+        let filename;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+
+        if (assetName) {
+          // 特定の通貨ペアのみ
+          records = await dbManager.getAllRecords(assetName);
+          const safeAssetName = assetName.replace(/\//g, '_');
+          filename = `theoption_${safeAssetName}_${timestamp}.json`;
+        } else {
+          // 全データ
+          records = await dbManager.getAllRecords();
+          filename = `theoption_backup_${timestamp}.json`;
+        }
+
+        if (records.length === 0) {
+          alert(`${assetName || '全体'}のデータがありません`);
           return;
         }
 
         // 通貨ペア別にグループ化
         const mlData = {};
-
-        allRecords.forEach(record => {
-          // assetNameを取得（スラッシュ形式: EUR/USD）
-          const assetName = record.assetName || 'UNKNOWN';
-          // ストレージキー形式に変換（アンダースコア形式: theoption_ml_EUR_USD）
-          const storageKey = `theoption_ml_${assetName.replace(/\//g, '_')}`;
-
+        records.forEach(record => {
+          const asset = record.assetName || 'UNKNOWN';
+          const storageKey = `theoption_ml_${asset.replace(/\//g, '_')}`;
           if (!mlData[storageKey]) {
             mlData[storageKey] = [];
           }
-
           mlData[storageKey].push(record);
         });
 
-        const currencyPairs = Object.keys(mlData).length;
-        const totalRecords = allRecords.length;
+        // チャンク分割でJSON生成
+        const chunks = [];
+        chunks.push('{\n');
 
-        // データ量が多い場合はストリーミング形式でJSON生成
-        // 50,000件以上の場合、JSON.stringifyで「Invalid string length」エラーが発生する可能性がある
-        const MAX_RECORDS_FOR_DIRECT_STRINGIFY = 30000;
+        const keys = Object.keys(mlData);
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          const keyRecords = mlData[key];
 
-        let blob;
-        if (totalRecords > MAX_RECORDS_FOR_DIRECT_STRINGIFY) {
-          console.log(`[JSON Export] 大量データ(${totalRecords}件)のため、チャンク分割でエクスポート`);
+          chunks.push(`  "${key}": [\n`);
 
-          // チャンク分割でJSON生成（メモリ効率を改善）
-          const chunks = [];
-          chunks.push('{\n');
-
-          const keys = Object.keys(mlData);
-          for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            const records = mlData[key];
-
-            // キー名を追加
-            chunks.push(`  "${key}": [\n`);
-
-            // レコードを小さなチャンクに分割
-            const CHUNK_SIZE = 1000;
-            for (let j = 0; j < records.length; j += CHUNK_SIZE) {
-              const recordChunk = records.slice(j, j + CHUNK_SIZE);
-              const recordStrings = recordChunk.map(r => '    ' + JSON.stringify(r));
-              chunks.push(recordStrings.join(',\n'));
-              if (j + CHUNK_SIZE < records.length) {
-                chunks.push(',\n');
-              }
-            }
-
-            chunks.push('\n  ]');
-            if (i < keys.length - 1) {
+          const CHUNK_SIZE = 1000;
+          for (let j = 0; j < keyRecords.length; j += CHUNK_SIZE) {
+            const recordChunk = keyRecords.slice(j, j + CHUNK_SIZE);
+            const recordStrings = recordChunk.map(r => '    ' + JSON.stringify(r));
+            chunks.push(recordStrings.join(',\n'));
+            if (j + CHUNK_SIZE < keyRecords.length) {
               chunks.push(',\n');
-            } else {
-              chunks.push('\n');
             }
           }
 
-          chunks.push('}');
-
-          blob = new Blob(chunks, { type: 'application/json' });
-        } else {
-          // 通常のJSON.stringify
-          const json = JSON.stringify(mlData, null, 2);
-          blob = new Blob([json], { type: 'application/json' });
+          chunks.push('\n  ]');
+          if (i < keys.length - 1) {
+            chunks.push(',\n');
+          } else {
+            chunks.push('\n');
+          }
         }
+
+        chunks.push('}');
+
+        const blob = new Blob(chunks, { type: 'application/json' });
 
         // ダウンロード
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const filename = `theoption_backup_${timestamp}.json`;
 
         link.setAttribute('href', url);
         link.setAttribute('download', filename);
@@ -4483,17 +4633,14 @@ function initializeAnalyzer() {
         URL.revokeObjectURL(url);
 
         // 通知
-        showDownloadNotification(`完全バックアップ (${currencyPairs}通貨ペア, ${totalRecords}件)`);
+        const msg = assetName
+          ? `${assetName} (${records.length.toLocaleString()}件)`
+          : `完全バックアップ (${keys.length}通貨ペア, ${records.length.toLocaleString()}件)`;
+        showDownloadNotification(msg);
+
       } catch (error) {
         console.error('[JSON Export] エラー:', error);
-
-        // エラーの種類に応じたメッセージ
-        let errorMessage = error.message;
-        if (error.message.includes('Invalid string length') || error.message.includes('out of memory')) {
-          errorMessage = 'データ量が大きすぎます。\n\nCSVダウンロードで通貨ペア別にエクスポートしてください。';
-        }
-
-        alert('❌ エクスポートに失敗しました\n\n' + errorMessage);
+        throw error;
       }
     }
 

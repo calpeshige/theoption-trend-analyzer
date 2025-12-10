@@ -263,6 +263,44 @@ class DBManager {
     }
 
     /**
+     * 登録されている通貨ペア一覧を取得
+     * @returns {Array} 通貨ペア名の配列（件数付き）
+     */
+    async getAssetList() {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const index = store.index('assetName');
+            const request = index.openCursor(null, 'nextunique');
+
+            const assets = [];
+
+            request.onsuccess = async (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    assets.push(cursor.value.assetName);
+                    cursor.continue();
+                } else {
+                    // 各通貨ペアの件数を取得
+                    const result = [];
+                    for (const assetName of assets) {
+                        const count = await this.getCount(assetName);
+                        result.push({ assetName, count });
+                    }
+                    resolve(result);
+                }
+            };
+
+            request.onerror = (event) => {
+                console.error('[DB] Get asset list error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
      * データベースを削除（デバッグ用）
      */
     async deleteDatabase() {
