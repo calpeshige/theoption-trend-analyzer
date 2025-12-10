@@ -4402,16 +4402,8 @@ function initializeAnalyzer() {
         // 総データ件数を計算
         const totalRecords = assetList.reduce((sum, a) => sum + a.count, 0);
 
-        // 大量データの場合は通貨ペア選択ダイアログを表示
-        // メモリ制限を考慮して20,000件以上で分割エクスポートを推奨
-        const LARGE_DATA_THRESHOLD = 20000;
-        if (totalRecords > LARGE_DATA_THRESHOLD) {
-          showExportSelectionDialog(assetList, totalRecords);
-          return;
-        }
-
-        // 通常のエクスポート（全データ）
-        await performExport(null, assetList);
+        // 常に通貨ペア選択ダイアログを表示
+        showExportSelectionDialog(assetList, totalRecords);
 
       } catch (error) {
         console.error('[JSON Export] エラー:', error);
@@ -4457,8 +4449,8 @@ function initializeAnalyzer() {
             <h2 style="margin: 0 0 8px 0; font-size: 20px; color: #667eea;">
               📦 JSONエクスポート
             </h2>
-            <p style="margin: 0 0 16px 0; color: #f6ad55; font-size: 14px;">
-              ⚠️ データ量が多いため（${totalRecords.toLocaleString()}件）、通貨ペア別にエクスポートしてください
+            <p style="margin: 0 0 16px 0; color: #a0aec0; font-size: 14px;">
+              総データ数: ${totalRecords.toLocaleString()}件
             </p>
 
             <div style="margin-bottom: 16px;">
