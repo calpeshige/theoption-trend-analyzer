@@ -647,15 +647,16 @@ function initializeAnalyzer() {
 
             // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
             const multiDim = result.multiDim;
-            const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf);
+            const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, candleHistory, currentAsset);
             const totalStrength = strengthResult.total;
 
-            // 時間枠別の閾値を取得
+            // 時間枠別の閾値を取得（動的閾値を優先）
             const tfConfig = TIMEFRAME_ANALYSIS_CONFIG[tf] || TIMEFRAME_ANALYSIS_CONFIG[60];
-            const threshold = tfConfig.trendThreshold;
+            const threshold = strengthResult.config?.dynamicThreshold || tfConfig.trendThreshold;
+            const volatilityLevel = strengthResult.config?.volatilityLevel || 'NORMAL';
 
-            // スコアをスムージング（急激な変動を抑制）
-            const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default');
+            // スコアをスムージング（急激な変動を抑制）- ボラティリティ適応型
+            const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default', volatilityLevel);
 
             // トレンド方向の判定（時間枠別閾値 + スムージング適用）
             let trendDirection = '中立';
@@ -1279,15 +1280,16 @@ function initializeAnalyzer() {
               const multiDim = result.multiDim;
 
               // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
-              const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf);
+              const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, candleHistory, currentAsset);
               const totalStrength = strengthResult.total;
 
-              // 時間枠別の閾値を取得
+              // 時間枠別の閾値を取得（動的閾値を優先）
               const tfConfig = TIMEFRAME_ANALYSIS_CONFIG[tf] || TIMEFRAME_ANALYSIS_CONFIG[60];
-              const threshold = tfConfig.trendThreshold;
+              const threshold = strengthResult.config?.dynamicThreshold || tfConfig.trendThreshold;
+              const volatilityLevel = strengthResult.config?.volatilityLevel || 'NORMAL';
 
-              // スコアをスムージング（急激な変動を抑制）
-              const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default');
+              // スコアをスムージング（急激な変動を抑制）- ボラティリティ適応型
+              const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default', volatilityLevel);
 
               // トレンド方向の判定（時間枠別閾値 + スムージング適用）
               let trendDirection = '中立';
@@ -3206,28 +3208,35 @@ function initializeAnalyzer() {
     }
 
     // ========================================
-    // 時間枠別分析設定
+    // 時間枠別分析設定（v5.3.0 強化版）
     // ========================================
     const TIMEFRAME_ANALYSIS_CONFIG = {
       15: {
         name: '15秒',
-        // 分析対象期間（秒）: 15秒判定なら30-45秒の履歴を見る
         analysisWindow: 45,
-        // 判定閾値: 短い時間枠ほど大きな動きが必要
-        trendThreshold: 35,      // score > 35 で上昇/下降判定（デフォルト20）
-        // スコアのスムージング係数（0-1）: 高いほど過去の値を重視
+        trendThreshold: 35,
         smoothingFactor: 0.6,
-        // 直近価格の方向性チェック件数
         directionCheckCount: 5,
-        // 価格の一方向動き最低回数
         minDirectionalMoves: 3,
-        // 強度計算の重み調整
+        // 強度計算の重み調整（v5.3.0: 新指標追加）
         weights: {
-          adx: 0.8,       // 短期ではADXの信頼性が下がる
-          macd: 0.7,      // MACDも短期では信頼性低下
-          atr: 1.2,       // ボラティリティは重要
+          adx: 0.7,        // 短期ではADXの信頼性が下がる
+          macd: 0.6,       // MACDも短期では信頼性低下
+          atr: 1.2,        // ボラティリティは重要
           agreement: 1.0,
-          direction: 1.5  // 価格の直近動きを重視
+          direction: 1.5,  // 価格の直近動きを重視
+          rsi: 0.8,        // RSI（短期では参考程度）
+          momentum: 1.5,   // モメンタム（短期で重要）
+          williamsR: 0.8,  // Williams%R
+          cci: 0.7,        // CCI（短期では参考程度）
+          priceAction: 1.3 // 価格アクション（短期で重要）
+        },
+        // 動的閾値調整係数
+        dynamicThresholdMultiplier: {
+          highVolatility: 1.3,   // 高ボラ時は閾値を上げる
+          lowVolatility: 0.7,    // 低ボラ時は閾値を下げる
+          trend: 0.9,            // トレンド相場では閾値を下げる
+          range: 1.2             // レンジ相場では閾値を上げる
         }
       },
       30: {
@@ -3238,11 +3247,22 @@ function initializeAnalyzer() {
         directionCheckCount: 8,
         minDirectionalMoves: 5,
         weights: {
-          adx: 0.9,
-          macd: 0.8,
+          adx: 0.8,
+          macd: 0.7,
           atr: 1.1,
           agreement: 1.0,
-          direction: 1.3
+          direction: 1.3,
+          rsi: 0.9,
+          momentum: 1.4,
+          williamsR: 0.9,
+          cci: 0.8,
+          priceAction: 1.2
+        },
+        dynamicThresholdMultiplier: {
+          highVolatility: 1.25,
+          lowVolatility: 0.75,
+          trend: 0.9,
+          range: 1.15
         }
       },
       60: {
@@ -3257,7 +3277,18 @@ function initializeAnalyzer() {
           macd: 1.0,
           atr: 1.0,
           agreement: 1.0,
-          direction: 1.0
+          direction: 1.0,
+          rsi: 1.0,
+          momentum: 1.2,
+          williamsR: 1.0,
+          cci: 1.0,
+          priceAction: 1.0
+        },
+        dynamicThresholdMultiplier: {
+          highVolatility: 1.2,
+          lowVolatility: 0.8,
+          trend: 0.9,
+          range: 1.1
         }
       },
       180: {
@@ -3268,11 +3299,22 @@ function initializeAnalyzer() {
         directionCheckCount: 15,
         minDirectionalMoves: 8,
         weights: {
-          adx: 1.1,
-          macd: 1.1,
+          adx: 1.2,
+          macd: 1.2,
           atr: 0.9,
           agreement: 1.1,
-          direction: 0.8
+          direction: 0.8,
+          rsi: 1.1,
+          momentum: 1.0,
+          williamsR: 1.1,
+          cci: 1.1,
+          priceAction: 0.9
+        },
+        dynamicThresholdMultiplier: {
+          highVolatility: 1.15,
+          lowVolatility: 0.85,
+          trend: 0.85,
+          range: 1.1
         }
       },
       300: {
@@ -3283,20 +3325,67 @@ function initializeAnalyzer() {
         directionCheckCount: 20,
         minDirectionalMoves: 10,
         weights: {
-          adx: 1.2,
-          macd: 1.2,
+          adx: 1.3,
+          macd: 1.3,
           atr: 0.8,
           agreement: 1.2,
-          direction: 0.6
+          direction: 0.6,
+          rsi: 1.2,
+          momentum: 0.9,
+          williamsR: 1.2,
+          cci: 1.2,
+          priceAction: 0.8
+        },
+        dynamicThresholdMultiplier: {
+          highVolatility: 1.1,
+          lowVolatility: 0.9,
+          trend: 0.8,
+          range: 1.05
         }
       }
     };
 
+    // ========================================
+    // ボラティリティ学習インスタンス（グローバル）
+    // ========================================
+    let volatilityLearner = null;
+    try {
+      if (typeof VolatilityLearner !== 'undefined') {
+        volatilityLearner = new VolatilityLearner();
+        console.log('[Analyzer] VolatilityLearner initialized');
+      }
+    } catch (e) {
+      console.warn('[Analyzer] VolatilityLearner not available:', e);
+    }
+
+    // ========================================
+    // 新指標インスタンス（グローバル）
+    // ========================================
+    let rsiIndicator = null;
+    let momentumIndicator = null;
+    let williamsRIndicator = null;
+    let cciIndicator = null;
+    let priceActionAnalyzer = null;
+
+    try {
+      if (typeof RSIIndicator !== 'undefined') rsiIndicator = new RSIIndicator();
+      if (typeof MomentumIndicator !== 'undefined') momentumIndicator = new MomentumIndicator();
+      if (typeof WilliamsRIndicator !== 'undefined') williamsRIndicator = new WilliamsRIndicator();
+      if (typeof CCIIndicator !== 'undefined') cciIndicator = new CCIIndicator();
+      if (typeof PriceActionAnalyzer !== 'undefined') priceActionAnalyzer = new PriceActionAnalyzer();
+      console.log('[Analyzer] New indicators initialized (RSI, Momentum, WilliamsR, CCI, PriceAction)');
+    } catch (e) {
+      console.warn('[Analyzer] Some indicators not available:', e);
+    }
+
     // スムージング用の過去スコア履歴を保持
     const scoreHistory = {};
+    const volatilityHistory = {}; // ボラティリティ履歴（適応型スムージング用）
 
-    // スコアをスムージングする関数
-    function smoothScore(currentScore, timeframeSec, assetKey = 'default') {
+    // ========================================
+    // 相場環境適応型スムージング（v5.3.0 強化版）
+    // ========================================
+    function smoothScore(currentScore, timeframeSec, assetKey = 'default', volatilityLevel = 'NORMAL') {
       const config = TIMEFRAME_ANALYSIS_CONFIG[timeframeSec] || TIMEFRAME_ANALYSIS_CONFIG[60];
       const key = `${assetKey}_${timeframeSec}`;
 
@@ -3313,53 +3402,132 @@ function initializeAnalyzer() {
         scoreHistory[key].shift();
       }
 
+      // ========================================
+      // 適応型スムージング係数計算
+      // ========================================
+      let baseFactor = config.smoothingFactor;
+
+      // ボラティリティに応じた動的調整
+      // 高ボラティリティ: スムージング強化（急変動を抑制）
+      // 低ボラティリティ: スムージング弱化（感度を上げる）
+      let volatilityAdjustment = 1.0;
+      if (volatilityLevel === 'VERY_HIGH') {
+        volatilityAdjustment = 1.3; // スムージング強化
+      } else if (volatilityLevel === 'HIGH') {
+        volatilityAdjustment = 1.15;
+      } else if (volatilityLevel === 'LOW') {
+        volatilityAdjustment = 0.85; // スムージング弱化
+      } else if (volatilityLevel === 'VERY_LOW') {
+        volatilityAdjustment = 0.7;
+      }
+
+      // スコアの変化率に応じた動的調整
+      // 大きな変化時はスムージングを弱めて追従性を上げる
+      let changeRateAdjustment = 1.0;
+      if (scoreHistory[key].length >= 2) {
+        const prevScore = scoreHistory[key][scoreHistory[key].length - 2];
+        const changeRate = Math.abs(currentScore - prevScore);
+
+        if (changeRate > 30) {
+          // 大きな変化: スムージングを弱める（追従性向上）
+          changeRateAdjustment = 0.7;
+        } else if (changeRate > 20) {
+          changeRateAdjustment = 0.85;
+        } else if (changeRate < 5) {
+          // 小さな変化: スムージングを強める（ノイズ除去）
+          changeRateAdjustment = 1.15;
+        }
+      }
+
+      // 最終的なスムージング係数（0.1〜0.9の範囲に制限）
+      const adaptiveFactor = Math.max(0.1, Math.min(0.9, baseFactor * volatilityAdjustment * changeRateAdjustment));
+
       // 指数移動平均（EMA）でスムージング
-      const factor = config.smoothingFactor;
       let smoothed = scoreHistory[key][0];
       for (let i = 1; i < scoreHistory[key].length; i++) {
-        smoothed = factor * smoothed + (1 - factor) * scoreHistory[key][i];
+        smoothed = adaptiveFactor * smoothed + (1 - adaptiveFactor) * scoreHistory[key][i];
       }
 
       return smoothed;
     }
 
     // ========================================
-    // 包括的なトレンド強度計算（時間枠対応版）
+    // トレンド継続性チェック（v5.3.0 追加）
+    // ========================================
+    function checkTrendContinuity(assetKey, timeframeSec, currentDirection) {
+      const key = `${assetKey}_${timeframeSec}_direction`;
+
+      if (!volatilityHistory[key]) {
+        volatilityHistory[key] = [];
+      }
+
+      volatilityHistory[key].push(currentDirection);
+
+      // 最大10件の履歴
+      if (volatilityHistory[key].length > 10) {
+        volatilityHistory[key].shift();
+      }
+
+      // 同じ方向の連続回数をカウント
+      let consecutiveCount = 0;
+      const history = volatilityHistory[key];
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i] === currentDirection) {
+          consecutiveCount++;
+        } else {
+          break;
+        }
+      }
+
+      // 継続性スコア（最大100%）
+      const continuityScore = Math.min(100, (consecutiveCount / 5) * 100);
+
+      return {
+        consecutiveCount,
+        continuityScore,
+        isStable: consecutiveCount >= 3
+      };
+    }
+
+    // ========================================
+    // 包括的なトレンド強度計算（v5.3.0 強化版）
     // ========================================
 
-    function calculateComprehensiveTrendStrength(multiDim, priceHistory, timeframeSec = 60) {
+    function calculateComprehensiveTrendStrength(multiDim, priceHistory, timeframeSec = 60, candleHistory = null, asset = null) {
       const config = TIMEFRAME_ANALYSIS_CONFIG[timeframeSec] || TIMEFRAME_ANALYSIS_CONFIG[60];
       const weights = config.weights;
       const breakdown = multiDim.breakdown;
 
+      // 期間スケーリング係数
+      const periodScaleFactor = timeframeSec <= 15 ? 0.25 : timeframeSec <= 30 ? 0.5 : timeframeSec <= 60 ? 1.0 : timeframeSec <= 180 ? 3.0 : 5.0;
+      const scaleFactor = timeframeSec <= 15 ? 100 : timeframeSec <= 30 ? 50 : timeframeSec <= 60 ? 20 : timeframeSec <= 180 ? 5 : 1;
+
+      // ========================================
+      // 基本指標（既存）
+      // ========================================
+
       // 1. ADXスコア（0-25点）× 時間枠別重み
-      // ADX 0-100 を 0-25点にスケーリング
       const adxScore = Math.min(breakdown.adx.adx / 4, 25) * weights.adx;
 
       // 2. MACD強度スコア（0-25点）× 時間枠別重み
-      // MACD strengthは通常0-10程度なので、5倍してキャップ
       const macdStrength = Math.abs(breakdown.macd.strength);
       const macdScore = Math.min(macdStrength * 5, 25) * weights.macd;
 
       // 3. ATRスコア（ボラティリティ）（0-20点）× 時間枠別重み
-      // ATR%は通常0-5%程度なので、4倍してキャップ
-      const atrPercent = breakdown.atr.atrPercent;
+      const atrPercent = breakdown.atr.atrPercent || 0;
       const atrScore = Math.min(atrPercent * 4, 20) * weights.atr;
 
       // 4. 指標の一致度スコア（0-20点）× 時間枠別重み
-      // 全ての主要指標が同じ方向を示しているか
       const mainSignal = multiDim.signal;
       const indicators = [
         breakdown.macd.signal,
         breakdown.roc.signal,
         breakdown.stochastic.signal
       ];
-
       const agreement = indicators.filter(s => s === mainSignal).length;
       const agreementScore = (agreement / indicators.length) * 20 * weights.agreement;
 
       // 5. 価格の方向性スコア（0-10点）× 時間枠別重み
-      // 時間枠に応じた件数で直近価格をチェック
       let directionScore = 0;
       const checkCount = config.directionCheckCount;
       const minMoves = config.minDirectionalMoves;
@@ -3368,32 +3536,152 @@ function initializeAnalyzer() {
         const recentPrices = priceHistory.slice(-checkCount);
         const increases = recentPrices.filter((p, i) => i > 0 && p > recentPrices[i - 1]).length;
         const decreases = recentPrices.filter((p, i) => i > 0 && p < recentPrices[i - 1]).length;
-
-        // 時間枠に応じた最低回数以上動いていたら加点
         const maxDirectional = Math.max(increases, decreases);
         if (maxDirectional >= minMoves) {
           directionScore = Math.min((maxDirectional / (checkCount - 1)) * 10, 10) * weights.direction;
         }
       }
 
-      // 総合強度（0-100点に正規化）
-      // 重み付け後の最大スコアを計算して正規化
-      const maxPossibleScore = 25 * weights.adx + 25 * weights.macd + 20 * weights.atr + 20 * weights.agreement + 10 * weights.direction;
-      const rawTotal = adxScore + macdScore + atrScore + agreementScore + directionScore;
-      const normalizedStrength = (rawTotal / maxPossibleScore) * 100;
+      // ========================================
+      // 新規指標（v5.3.0追加）
+      // ========================================
+
+      let rsiScore = 0;
+      let momentumScore = 0;
+      let williamsRScore = 0;
+      let cciScore = 0;
+      let priceActionScore = 0;
+
+      // RSIスコア（0-15点）
+      if (rsiIndicator && priceHistory && priceHistory.length >= 10) {
+        try {
+          const rsiResult = rsiIndicator.calculate(priceHistory, 14, periodScaleFactor);
+          // RSIの強度に応じてスコア化（中立域では低スコア）
+          const rsiDeviation = Math.abs(rsiResult.rsi - 50);
+          rsiScore = Math.min(rsiDeviation / 3.33, 15) * (weights.rsi || 1.0);
+        } catch (e) { /* ignore */ }
+      }
+
+      // モメンタムスコア（0-15点）
+      if (momentumIndicator && priceHistory && priceHistory.length >= 10) {
+        try {
+          const momResult = momentumIndicator.calculate(priceHistory, 10, scaleFactor, periodScaleFactor);
+          // モメンタムの絶対値強度
+          momentumScore = Math.min(Math.abs(momResult.strength) * 1.5, 15) * (weights.momentum || 1.0);
+        } catch (e) { /* ignore */ }
+      }
+
+      // Williams %Rスコア（0-12点）
+      if (williamsRIndicator && candleHistory && candleHistory.length >= 10) {
+        try {
+          const wrResult = williamsRIndicator.calculate(candleHistory, 14, periodScaleFactor);
+          // Williams %Rの極値からの距離
+          const wrDeviation = Math.min(Math.abs(wrResult.williamsR + 50), 50);
+          williamsRScore = (wrDeviation / 50) * 12 * (weights.williamsR || 1.0);
+        } catch (e) { /* ignore */ }
+      }
+
+      // CCIスコア（0-12点）
+      if (cciIndicator && candleHistory && candleHistory.length >= 10) {
+        try {
+          const cciResult = cciIndicator.calculate(candleHistory, 20, periodScaleFactor);
+          // CCIの絶対値（100を超えるとトレンド示唆）
+          const cciAbs = Math.abs(cciResult.cci);
+          cciScore = Math.min(cciAbs / 16.67, 12) * (weights.cci || 1.0);
+        } catch (e) { /* ignore */ }
+      }
+
+      // 価格アクションスコア（0-15点）
+      if (priceActionAnalyzer && candleHistory && priceHistory) {
+        try {
+          const paResult = priceActionAnalyzer.analyze(candleHistory, priceHistory, timeframeSec);
+          // 価格アクションの強度
+          priceActionScore = Math.min(Math.abs(paResult.strength) * 1.5, 15) * (weights.priceAction || 1.0);
+        } catch (e) { /* ignore */ }
+      }
+
+      // ========================================
+      // 総合計算
+      // ========================================
+
+      // 基本指標の最大スコア
+      const baseMaxScore = 25 * weights.adx + 25 * weights.macd + 20 * weights.atr + 20 * weights.agreement + 10 * weights.direction;
+
+      // 新規指標の最大スコア
+      const newMaxScore = 15 * (weights.rsi || 1.0) + 15 * (weights.momentum || 1.0) + 12 * (weights.williamsR || 1.0) + 12 * (weights.cci || 1.0) + 15 * (weights.priceAction || 1.0);
+
+      // 合計
+      const baseTotal = adxScore + macdScore + atrScore + agreementScore + directionScore;
+      const newTotal = rsiScore + momentumScore + williamsRScore + cciScore + priceActionScore;
+
+      // 新指標が利用可能な場合は重み付けで合計
+      const hasNewIndicators = rsiScore > 0 || momentumScore > 0 || williamsRScore > 0 || cciScore > 0 || priceActionScore > 0;
+
+      let normalizedStrength;
+      if (hasNewIndicators) {
+        // 基本60%、新規40%で合計
+        const baseNormalized = (baseTotal / baseMaxScore) * 60;
+        const newNormalized = (newTotal / newMaxScore) * 40;
+        normalizedStrength = baseNormalized + newNormalized;
+      } else {
+        // 従来通り
+        normalizedStrength = (baseTotal / baseMaxScore) * 100;
+      }
+
+      // ========================================
+      // ボラティリティ学習による動的調整
+      // ========================================
+
+      let dynamicThreshold = config.trendThreshold;
+      let volatilityLevel = 'NORMAL';
+
+      if (volatilityLearner && asset && atrPercent > 0) {
+        // ボラティリティを記録
+        volatilityLearner.recordVolatility(asset, atrPercent);
+
+        // 動的閾値を取得
+        const volLevel = volatilityLearner.getVolatilityLevel(asset, atrPercent);
+        volatilityLevel = volLevel.level;
+
+        // 閾値調整
+        const thresholdMultiplier = config.dynamicThresholdMultiplier || {};
+        if (volLevel.level === 'VERY_HIGH' || volLevel.level === 'HIGH') {
+          dynamicThreshold *= thresholdMultiplier.highVolatility || 1.2;
+        } else if (volLevel.level === 'VERY_LOW' || volLevel.level === 'LOW') {
+          dynamicThreshold *= thresholdMultiplier.lowVolatility || 0.8;
+        }
+
+        // Phase（トレンド/レンジ）による調整
+        const phase = breakdown.phase?.phase || breakdown.segmentedTrend?.dominantDirection;
+        if (phase === 'TREND' || phase === 'UP' || phase === 'DOWN') {
+          dynamicThreshold *= thresholdMultiplier.trend || 0.9;
+        } else if (phase === 'RANGE' || phase === 'NEUTRAL') {
+          dynamicThreshold *= thresholdMultiplier.range || 1.1;
+        }
+      }
 
       return {
         total: Math.round(normalizedStrength),
         breakdown: {
+          // 基本指標
           adx: Math.round(adxScore),
           macd: Math.round(macdScore),
           atr: Math.round(atrScore),
           agreement: Math.round(agreementScore),
-          direction: Math.round(directionScore)
+          direction: Math.round(directionScore),
+          // 新規指標
+          rsi: Math.round(rsiScore),
+          momentum: Math.round(momentumScore),
+          williamsR: Math.round(williamsRScore),
+          cci: Math.round(cciScore),
+          priceAction: Math.round(priceActionScore)
         },
         config: {
           timeframe: timeframeSec,
-          threshold: config.trendThreshold
+          threshold: config.trendThreshold,
+          dynamicThreshold: Math.round(dynamicThreshold),
+          volatilityLevel: volatilityLevel,
+          hasNewIndicators: hasNewIndicators
         }
       };
     }

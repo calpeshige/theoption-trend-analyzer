@@ -285,7 +285,500 @@ class ROCIndicator {
 }
 
 // ========================================
-// 6. Market Sentiment Analyzer
+// 6. RSI Indicator (相対力指数)
+// ========================================
+
+class RSIIndicator {
+  calculate(prices, period = 14, periodScaleFactor = 1) {
+    const scaledPeriod = Math.max(5, Math.round(period * periodScaleFactor));
+
+    if (prices.length < scaledPeriod + 1) {
+      return { rsi: 50, signal: 'NEUTRAL', strength: 0, zone: 'NEUTRAL' };
+    }
+
+    const recentPrices = prices.slice(-(scaledPeriod + 1));
+    let gains = 0, losses = 0;
+
+    for (let i = 1; i < recentPrices.length; i++) {
+      const change = recentPrices[i] - recentPrices[i - 1];
+      if (change > 0) gains += change;
+      else losses += Math.abs(change);
+    }
+
+    const avgGain = gains / scaledPeriod;
+    const avgLoss = losses / scaledPeriod;
+
+    let rsi = 50;
+    if (avgLoss === 0) rsi = 100;
+    else if (avgGain === 0) rsi = 0;
+    else {
+      const rs = avgGain / avgLoss;
+      rsi = 100 - (100 / (1 + rs));
+    }
+
+    // ゾーン判定
+    let zone = 'NEUTRAL';
+    let signal = 'NEUTRAL';
+    let strength = 0;
+
+    if (rsi >= 70) {
+      zone = 'OVERBOUGHT';
+      signal = 'BEARISH';
+      strength = -Math.min(10, (rsi - 70) / 3);
+    } else if (rsi <= 30) {
+      zone = 'OVERSOLD';
+      signal = 'BULLISH';
+      strength = Math.min(10, (30 - rsi) / 3);
+    } else if (rsi >= 55) {
+      zone = 'BULLISH';
+      signal = 'BULLISH';
+      strength = Math.min(5, (rsi - 50) / 4);
+    } else if (rsi <= 45) {
+      zone = 'BEARISH';
+      signal = 'BEARISH';
+      strength = -Math.min(5, (50 - rsi) / 4);
+    }
+
+    return { rsi: Math.round(rsi * 10) / 10, signal, strength, zone };
+  }
+}
+
+// ========================================
+// 7. Momentum Indicator (モメンタム)
+// ========================================
+
+class MomentumIndicator {
+  calculate(prices, period = 10, scaleFactor = 1, periodScaleFactor = 1) {
+    const scaledPeriod = Math.max(3, Math.round(period * periodScaleFactor));
+
+    if (prices.length < scaledPeriod + 1) {
+      return { momentum: 0, percentMomentum: 0, signal: 'NEUTRAL', strength: 0 };
+    }
+
+    const currentPrice = prices[prices.length - 1];
+    const pastPrice = prices[prices.length - 1 - scaledPeriod];
+
+    const momentum = currentPrice - pastPrice;
+    const percentMomentum = (momentum / pastPrice) * 100;
+
+    // 超短期用に閾値を調整
+    const strongThreshold = 0.5 / scaleFactor;
+    const weakThreshold = 0.15 / scaleFactor;
+
+    let signal = 'NEUTRAL';
+    let strength = 0;
+
+    if (percentMomentum > strongThreshold) {
+      signal = 'STRONG_UP';
+      strength = 10;
+    } else if (percentMomentum > weakThreshold) {
+      signal = 'UP';
+      strength = 5;
+    } else if (percentMomentum < -strongThreshold) {
+      signal = 'STRONG_DOWN';
+      strength = -10;
+    } else if (percentMomentum < -weakThreshold) {
+      signal = 'DOWN';
+      strength = -5;
+    }
+
+    return {
+      momentum,
+      percentMomentum: Math.round(percentMomentum * 1000) / 1000,
+      signal,
+      strength
+    };
+  }
+}
+
+// ========================================
+// 8. Williams %R Indicator
+// ========================================
+
+class WilliamsRIndicator {
+  calculate(candles, period = 14, periodScaleFactor = 1) {
+    const scaledPeriod = Math.max(5, Math.round(period * periodScaleFactor));
+
+    if (candles.length < scaledPeriod) {
+      return { williamsR: -50, signal: 'NEUTRAL', strength: 0, zone: 'NEUTRAL' };
+    }
+
+    const recentCandles = candles.slice(-scaledPeriod);
+    const currentClose = recentCandles[recentCandles.length - 1].close;
+
+    const highest = Math.max(...recentCandles.map(c => c.high));
+    const lowest = Math.min(...recentCandles.map(c => c.low));
+
+    // Williams %R: (最高値 - 終値) / (最高値 - 最安値) * -100
+    let williamsR = -50;
+    if (highest !== lowest) {
+      williamsR = ((highest - currentClose) / (highest - lowest)) * -100;
+    }
+
+    let zone = 'NEUTRAL';
+    let signal = 'NEUTRAL';
+    let strength = 0;
+
+    if (williamsR >= -20) {
+      zone = 'OVERBOUGHT';
+      signal = 'BEARISH';
+      strength = -Math.min(8, (williamsR + 20) / 2.5);
+    } else if (williamsR <= -80) {
+      zone = 'OVERSOLD';
+      signal = 'BULLISH';
+      strength = Math.min(8, (-80 - williamsR) / 2.5);
+    } else if (williamsR >= -40) {
+      signal = 'BULLISH';
+      strength = 3;
+    } else if (williamsR <= -60) {
+      signal = 'BEARISH';
+      strength = -3;
+    }
+
+    return { williamsR: Math.round(williamsR * 10) / 10, signal, strength, zone };
+  }
+}
+
+// ========================================
+// 9. CCI Indicator (商品チャネル指数)
+// ========================================
+
+class CCIIndicator {
+  calculate(candles, period = 20, periodScaleFactor = 1) {
+    const scaledPeriod = Math.max(5, Math.round(period * periodScaleFactor));
+
+    if (candles.length < scaledPeriod) {
+      return { cci: 0, signal: 'NEUTRAL', strength: 0, zone: 'NEUTRAL' };
+    }
+
+    const recentCandles = candles.slice(-scaledPeriod);
+
+    // Typical Priceの計算
+    const typicalPrices = recentCandles.map(c => (c.high + c.low + c.close) / 3);
+
+    // 平均TP
+    const sma = typicalPrices.reduce((sum, tp) => sum + tp, 0) / scaledPeriod;
+
+    // 平均偏差
+    const meanDeviation = typicalPrices.reduce((sum, tp) => sum + Math.abs(tp - sma), 0) / scaledPeriod;
+
+    // CCI計算
+    const currentTP = typicalPrices[typicalPrices.length - 1];
+    let cci = 0;
+    if (meanDeviation !== 0) {
+      cci = (currentTP - sma) / (0.015 * meanDeviation);
+    }
+
+    let zone = 'NEUTRAL';
+    let signal = 'NEUTRAL';
+    let strength = 0;
+
+    if (cci > 100) {
+      zone = 'OVERBOUGHT';
+      signal = 'BULLISH'; // CCIは100超えでもトレンド継続を示唆
+      strength = Math.min(10, (cci - 100) / 20);
+    } else if (cci < -100) {
+      zone = 'OVERSOLD';
+      signal = 'BEARISH';
+      strength = -Math.min(10, (-100 - cci) / 20);
+    } else if (cci > 0) {
+      signal = 'BULLISH';
+      strength = Math.min(5, cci / 20);
+    } else {
+      signal = 'BEARISH';
+      strength = Math.max(-5, cci / 20);
+    }
+
+    return { cci: Math.round(cci * 10) / 10, signal, strength, zone };
+  }
+}
+
+// ========================================
+// 10. Price Action Analyzer (価格アクション分析)
+// ========================================
+
+class PriceActionAnalyzer {
+  analyze(candles, prices, timeframeSeconds) {
+    if (candles.length < 5 || prices.length < 10) {
+      return {
+        pattern: 'UNKNOWN',
+        direction: 'NEUTRAL',
+        strength: 0,
+        candlePatterns: [],
+        priceStructure: 'UNKNOWN'
+      };
+    }
+
+    const recentCandles = candles.slice(-5);
+    const candlePatterns = this.detectCandlePatterns(recentCandles);
+    const priceStructure = this.analyzePriceStructure(prices, timeframeSeconds);
+    const trendContinuity = this.analyzeTrendContinuity(prices, timeframeSeconds);
+
+    // 総合判定
+    let direction = 'NEUTRAL';
+    let strength = 0;
+
+    // ローソク足パターンの強度を合計
+    const patternStrength = candlePatterns.reduce((sum, p) => sum + p.strength, 0);
+
+    // 価格構造の強度
+    const structureStrength = priceStructure.strength;
+
+    // 継続性の強度
+    const continuityStrength = trendContinuity.strength;
+
+    // 合計スコア
+    const totalStrength = patternStrength * 0.3 + structureStrength * 0.4 + continuityStrength * 0.3;
+
+    if (totalStrength > 3) {
+      direction = 'BULLISH';
+      strength = Math.min(10, totalStrength);
+    } else if (totalStrength < -3) {
+      direction = 'BEARISH';
+      strength = Math.max(-10, totalStrength);
+    }
+
+    return {
+      pattern: candlePatterns.length > 0 ? candlePatterns[0].name : 'NONE',
+      direction,
+      strength,
+      candlePatterns,
+      priceStructure: priceStructure.type,
+      trendContinuity: trendContinuity.type
+    };
+  }
+
+  detectCandlePatterns(candles) {
+    const patterns = [];
+    const last = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+
+    const bodySize = Math.abs(last.close - last.open);
+    const upperWick = last.high - Math.max(last.open, last.close);
+    const lowerWick = Math.min(last.open, last.close) - last.low;
+    const totalRange = last.high - last.low;
+
+    if (totalRange === 0) return patterns;
+
+    // 十字線（Doji）
+    if (bodySize / totalRange < 0.1) {
+      patterns.push({ name: 'DOJI', type: 'reversal', strength: 0 });
+    }
+
+    // ハンマー（底での反転シグナル）
+    if (lowerWick > bodySize * 2 && upperWick < bodySize * 0.5) {
+      patterns.push({ name: 'HAMMER', type: 'bullish', strength: 5 });
+    }
+
+    // 流れ星（天井での反転シグナル）
+    if (upperWick > bodySize * 2 && lowerWick < bodySize * 0.5) {
+      patterns.push({ name: 'SHOOTING_STAR', type: 'bearish', strength: -5 });
+    }
+
+    // 大陽線
+    if (last.close > last.open && bodySize / totalRange > 0.7) {
+      patterns.push({ name: 'BULLISH_MARUBOZU', type: 'bullish', strength: 6 });
+    }
+
+    // 大陰線
+    if (last.close < last.open && bodySize / totalRange > 0.7) {
+      patterns.push({ name: 'BEARISH_MARUBOZU', type: 'bearish', strength: -6 });
+    }
+
+    // 包み足（陽線）
+    if (prev && last.close > last.open && last.open < prev.close && last.close > prev.open) {
+      patterns.push({ name: 'BULLISH_ENGULFING', type: 'bullish', strength: 7 });
+    }
+
+    // 包み足（陰線）
+    if (prev && last.close < last.open && last.open > prev.close && last.close < prev.open) {
+      patterns.push({ name: 'BEARISH_ENGULFING', type: 'bearish', strength: -7 });
+    }
+
+    return patterns;
+  }
+
+  analyzePriceStructure(prices, timeframeSeconds) {
+    const checkCount = timeframeSeconds <= 30 ? 10 : 20;
+    const recent = prices.slice(-Math.min(checkCount, prices.length));
+
+    if (recent.length < 5) {
+      return { type: 'UNKNOWN', strength: 0 };
+    }
+
+    // 高値・安値の切り上げ/切り下げを確認
+    const highs = [];
+    const lows = [];
+    const chunkSize = Math.floor(recent.length / 3);
+
+    for (let i = 0; i < 3; i++) {
+      const chunk = recent.slice(i * chunkSize, (i + 1) * chunkSize);
+      if (chunk.length > 0) {
+        highs.push(Math.max(...chunk));
+        lows.push(Math.min(...chunk));
+      }
+    }
+
+    if (highs.length < 3) return { type: 'UNKNOWN', strength: 0 };
+
+    const highsRising = highs[2] > highs[1] && highs[1] > highs[0];
+    const lowsRising = lows[2] > lows[1] && lows[1] > lows[0];
+    const highsFalling = highs[2] < highs[1] && highs[1] < highs[0];
+    const lowsFalling = lows[2] < lows[1] && lows[1] < lows[0];
+
+    if (highsRising && lowsRising) {
+      return { type: 'UPTREND', strength: 8 };
+    } else if (highsFalling && lowsFalling) {
+      return { type: 'DOWNTREND', strength: -8 };
+    } else if (highsRising || lowsRising) {
+      return { type: 'WEAK_UPTREND', strength: 4 };
+    } else if (highsFalling || lowsFalling) {
+      return { type: 'WEAK_DOWNTREND', strength: -4 };
+    }
+
+    return { type: 'RANGE', strength: 0 };
+  }
+
+  analyzeTrendContinuity(prices, timeframeSeconds) {
+    const checkCount = timeframeSeconds <= 30 ? 8 : 15;
+    const recent = prices.slice(-Math.min(checkCount, prices.length));
+
+    if (recent.length < 4) {
+      return { type: 'UNKNOWN', strength: 0 };
+    }
+
+    let upMoves = 0, downMoves = 0;
+    for (let i = 1; i < recent.length; i++) {
+      if (recent[i] > recent[i - 1]) upMoves++;
+      else if (recent[i] < recent[i - 1]) downMoves++;
+    }
+
+    const total = recent.length - 1;
+    const upRatio = upMoves / total;
+    const downRatio = downMoves / total;
+
+    if (upRatio >= 0.7) {
+      return { type: 'STRONG_UP', strength: 8 };
+    } else if (downRatio >= 0.7) {
+      return { type: 'STRONG_DOWN', strength: -8 };
+    } else if (upRatio >= 0.55) {
+      return { type: 'UP', strength: 4 };
+    } else if (downRatio >= 0.55) {
+      return { type: 'DOWN', strength: -4 };
+    }
+
+    return { type: 'MIXED', strength: 0 };
+  }
+}
+
+// ========================================
+// 11. Volatility Learner (ボラティリティ学習)
+// ========================================
+
+class VolatilityLearner {
+  constructor() {
+    // 通貨ペア別のボラティリティ履歴
+    this.volatilityHistory = new Map();
+    this.maxHistorySize = 500; // 最大500件の履歴
+  }
+
+  // ボラティリティを記録
+  recordVolatility(asset, atrPercent, timestamp = Date.now()) {
+    if (!asset) return;
+
+    if (!this.volatilityHistory.has(asset)) {
+      this.volatilityHistory.set(asset, []);
+    }
+
+    const history = this.volatilityHistory.get(asset);
+    history.push({ atrPercent, timestamp });
+
+    // 履歴が最大サイズを超えたら古いものを削除
+    if (history.length > this.maxHistorySize) {
+      history.shift();
+    }
+  }
+
+  // 通貨ペアの平均ボラティリティを取得
+  getAverageVolatility(asset) {
+    if (!asset || !this.volatilityHistory.has(asset)) {
+      return null;
+    }
+
+    const history = this.volatilityHistory.get(asset);
+    if (history.length === 0) return null;
+
+    const sum = history.reduce((acc, h) => acc + h.atrPercent, 0);
+    return sum / history.length;
+  }
+
+  // 現在のボラティリティが平均と比べて高いか低いかを判定
+  getVolatilityLevel(asset, currentAtrPercent) {
+    const avgVolatility = this.getAverageVolatility(asset);
+
+    if (avgVolatility === null) {
+      // 履歴がない場合はデフォルト判定
+      if (currentAtrPercent > 1.0) return { level: 'HIGH', ratio: 1.5 };
+      if (currentAtrPercent < 0.3) return { level: 'LOW', ratio: 0.5 };
+      return { level: 'NORMAL', ratio: 1.0 };
+    }
+
+    const ratio = currentAtrPercent / avgVolatility;
+
+    if (ratio > 1.5) return { level: 'VERY_HIGH', ratio };
+    if (ratio > 1.2) return { level: 'HIGH', ratio };
+    if (ratio < 0.5) return { level: 'VERY_LOW', ratio };
+    if (ratio < 0.8) return { level: 'LOW', ratio };
+    return { level: 'NORMAL', ratio };
+  }
+
+  // 動的閾値を計算（ボラティリティに応じて調整）
+  getDynamicThreshold(asset, baseThreshold, currentAtrPercent) {
+    const volatilityLevel = this.getVolatilityLevel(asset, currentAtrPercent);
+
+    // 高ボラティリティ時は閾値を上げる、低ボラティリティ時は下げる
+    const multiplier = Math.max(0.5, Math.min(2.0, volatilityLevel.ratio));
+
+    return {
+      threshold: baseThreshold * multiplier,
+      multiplier,
+      level: volatilityLevel.level
+    };
+  }
+
+  // 統計情報を取得
+  getStatistics(asset) {
+    if (!asset || !this.volatilityHistory.has(asset)) {
+      return null;
+    }
+
+    const history = this.volatilityHistory.get(asset);
+    if (history.length === 0) return null;
+
+    const values = history.map(h => h.atrPercent);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const sorted = [...values].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+
+    // 標準偏差
+    const variance = values.reduce((acc, v) => acc + Math.pow(v - avg, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+
+    return {
+      count: history.length,
+      average: Math.round(avg * 1000) / 1000,
+      median: Math.round(median * 1000) / 1000,
+      min: Math.round(min * 1000) / 1000,
+      max: Math.round(max * 1000) / 1000,
+      stdDev: Math.round(stdDev * 1000) / 1000
+    };
+  }
+}
+
+// ========================================
+// 12. Market Sentiment Analyzer
 // ========================================
 
 class MarketSentimentAnalyzer {
@@ -2009,6 +2502,7 @@ class MultiDimensionalAnalyzerV2 {
 
 // グローバルスコープに公開
 if (typeof window !== 'undefined') {
+  // 基本指標
   window.MultiDimensionalAnalyzer = MultiDimensionalAnalyzer;
   window.MACDIndicator = MACDIndicator;
   window.ADXIndicator = ADXIndicator;
@@ -2017,12 +2511,20 @@ if (typeof window !== 'undefined') {
   window.ROCIndicator = ROCIndicator;
   window.MarketSentimentAnalyzer = MarketSentimentAnalyzer;
 
-  // 🆕 新しいアナライザーを公開
+  // 🆕 v5.3.0 新規指標
+  window.RSIIndicator = RSIIndicator;
+  window.MomentumIndicator = MomentumIndicator;
+  window.WilliamsRIndicator = WilliamsRIndicator;
+  window.CCIIndicator = CCIIndicator;
+  window.PriceActionAnalyzer = PriceActionAnalyzer;
+  window.VolatilityLearner = VolatilityLearner;
+
+  // 新しいアナライザーを公開
   window.TimeframeTrendAnalyzer = TimeframeTrendAnalyzer;
   window.EnhancedIndicatorCalculator = EnhancedIndicatorCalculator;
   window.MultiScaleTrendAnalyzer = MultiScaleTrendAnalyzer;
 
-  // 🆕 V2アーキテクチャ
+  // V2アーキテクチャ
   window.PhaseDetector = PhaseDetector;
   window.ResistanceFilter = ResistanceFilter;
   window.MultiDimensionalAnalyzerV2 = MultiDimensionalAnalyzerV2;
