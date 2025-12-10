@@ -209,6 +209,60 @@ class DBManager {
     }
 
     /**
+     * 単一レコードを追加（重複時はエラー）
+     * @param {Object} record - 追加するデータ
+     */
+    async addRecord(record) {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+
+            const request = store.add(record);
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+
+            request.onerror = (event) => {
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
+     * 全レコードを削除
+     */
+    async clearAllRecords() {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+
+            const request = store.clear();
+
+            request.onsuccess = () => {
+                console.log('[DB] All records cleared');
+                resolve();
+            };
+
+            request.onerror = (event) => {
+                console.error('[DB] Clear error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
+     * レコード件数を取得（getCountのエイリアス）
+     */
+    async getRecordCount(assetName = null) {
+        return this.getCount(assetName);
+    }
+
+    /**
      * データベースを削除（デバッグ用）
      */
     async deleteDatabase() {

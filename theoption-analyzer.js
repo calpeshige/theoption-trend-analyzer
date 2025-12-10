@@ -2997,7 +2997,7 @@ function initializeAnalyzer() {
 
       // シグナルが出た場合にアラート音を鳴らす（選択中の時間枠のみ）
       // テクニカル: HIGH/LOW/STRONG_HIGH/STRONG_LOW
-      // AI: HIGH/LOW + 傾向(20pt差以上)
+      // AI: HIGH/LOW + 傾向(20pt差以上) + 強化シグナル
       if (targetTimeframe === currentTimeframe && !isTabSwitch) {
         const techSignal = multiDimResult?.signal;
         // 注意: predictionsのキーは '15s', '30s' などの文字列形式
@@ -3005,22 +3005,43 @@ function initializeAnalyzer() {
         const mlPred = mlPredictions?.predictions?.[predictionKey];
         const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
 
-        // AI予測のシグナル判定（60%シグナル + 20pt差傾向）
+        // AI予測のシグナル判定（60%シグナル + 20pt差傾向 + 強化シグナル）
         let hasAISignal = false;
+        let aiSignalType = 'なし';
+
         if (mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA') {
-          const upRate = mlPred.upRate || 0;
-          const downRate = mlPred.downRate || 0;
+          // 層別化結果がある場合はそちらを優先（サイドパネルの表示と一致させる）
+          const cachedStratification = cachedStratificationResults[targetTimeframe];
+          let upRate, downRate;
+
+          if (cachedStratification && cachedStratification.hasEnoughData) {
+            upRate = cachedStratification.upRate || 0;
+            downRate = cachedStratification.downRate || 0;
+          } else {
+            upRate = mlPred.upRate || 0;
+            downRate = mlPred.downRate || 0;
+          }
+
           const drawRate = 100 - upRate - downRate;
           const diff = Math.abs(upRate - downRate);
 
-          // 同値率30%以下で、60%シグナルまたは20pt差傾向がある場合
-          if (drawRate <= 30 && (upRate >= 60 || downRate >= 60 || diff >= 20)) {
-            hasAISignal = true;
+          // 同値率30%以下の場合のみシグナル判定
+          if (drawRate <= 30) {
+            if (upRate >= 60 || downRate >= 60) {
+              // 60%シグナル
+              hasAISignal = true;
+              aiSignalType = upRate >= 60 ? 'HIGH(60%+)' : 'LOW(60%+)';
+            } else if (diff >= 20) {
+              // 20pt差傾向
+              hasAISignal = true;
+              aiSignalType = upRate > downRate ? '上昇傾向(20pt+)' : '下降傾向(20pt+)';
+            }
           }
         }
 
+        // テクニカルのみ、AIのみ、または両方でアラート音を再生
         if (hasTechSignal || hasAISignal) {
-          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal}, AI=${hasAISignal ? '傾向あり' : 'なし'} - アラート音を再生`);
+          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType} - アラート音を再生`);
           playAlertSound();
         }
       }
@@ -4397,9 +4418,53 @@ function initializeAnalyzer() {
         const currencyPairs = Object.keys(mlData).length;
         const totalRecords = allRecords.length;
 
-        // JSON形式で生成
-        const json = JSON.stringify(mlData, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
+        // データ量が多い場合はストリーミング形式でJSON生成
+        // 50,000件以上の場合、JSON.stringifyで「Invalid string length」エラーが発生する可能性がある
+        const MAX_RECORDS_FOR_DIRECT_STRINGIFY = 30000;
+
+        let blob;
+        if (totalRecords > MAX_RECORDS_FOR_DIRECT_STRINGIFY) {
+          console.log(`[JSON Export] 大量データ(${totalRecords}件)のため、チャンク分割でエクスポート`);
+
+          // チャンク分割でJSON生成（メモリ効率を改善）
+          const chunks = [];
+          chunks.push('{\n');
+
+          const keys = Object.keys(mlData);
+          for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const records = mlData[key];
+
+            // キー名を追加
+            chunks.push(`  "${key}": [\n`);
+
+            // レコードを小さなチャンクに分割
+            const CHUNK_SIZE = 1000;
+            for (let j = 0; j < records.length; j += CHUNK_SIZE) {
+              const recordChunk = records.slice(j, j + CHUNK_SIZE);
+              const recordStrings = recordChunk.map(r => '    ' + JSON.stringify(r));
+              chunks.push(recordStrings.join(',\n'));
+              if (j + CHUNK_SIZE < records.length) {
+                chunks.push(',\n');
+              }
+            }
+
+            chunks.push('\n  ]');
+            if (i < keys.length - 1) {
+              chunks.push(',\n');
+            } else {
+              chunks.push('\n');
+            }
+          }
+
+          chunks.push('}');
+
+          blob = new Blob(chunks, { type: 'application/json' });
+        } else {
+          // 通常のJSON.stringify
+          const json = JSON.stringify(mlData, null, 2);
+          blob = new Blob([json], { type: 'application/json' });
+        }
 
         // ダウンロード
         const link = document.createElement('a');
@@ -4421,7 +4486,14 @@ function initializeAnalyzer() {
         showDownloadNotification(`完全バックアップ (${currencyPairs}通貨ペア, ${totalRecords}件)`);
       } catch (error) {
         console.error('[JSON Export] エラー:', error);
-        alert('❌ エクスポートに失敗しました\n\n' + error.message);
+
+        // エラーの種類に応じたメッセージ
+        let errorMessage = error.message;
+        if (error.message.includes('Invalid string length') || error.message.includes('out of memory')) {
+          errorMessage = 'データ量が大きすぎます。\n\nCSVダウンロードで通貨ペア別にエクスポートしてください。';
+        }
+
+        alert('❌ エクスポートに失敗しました\n\n' + errorMessage);
       }
     }
 
@@ -4436,7 +4508,7 @@ function initializeAnalyzer() {
       document.body.appendChild(fileInput);
       fileInput.click();
 
-      fileInput.onchange = (e) => {
+      fileInput.onchange = async (e) => {
         // 使用後に要素を削除
         document.body.removeChild(fileInput);
         const file = e.target.files[0];
@@ -4447,7 +4519,7 @@ function initializeAnalyzer() {
 
         const reader = new FileReader();
 
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           try {
             const data = JSON.parse(event.target.result);
 
@@ -4459,43 +4531,80 @@ function initializeAnalyzer() {
               return;
             }
 
-            // 確認ダイアログ
-            const confirmed = confirm(
-              `${validation.currencyPairs}通貨ペア, ${validation.totalRecords}件のデータをインポートします。\n\n` +
-              `⚠️ 既存のデータは上書きされます。\n\n続行しますか？`
-            );
+            // 現在のデータ件数を取得
+            const dbManager = new DBManager();
+            await dbManager.init();
+            const currentCount = await dbManager.getRecordCount();
 
-            if (!confirmed) {
+            // シンプルな確認ダイアログ
+            let confirmMessage = `📦 データをインポートします\n\n`;
+            confirmMessage += `ファイル: ${file.name}\n`;
+            confirmMessage += `通貨ペア数: ${validation.currencyPairs}\n`;
+            confirmMessage += `レコード数: ${validation.totalRecords.toLocaleString()}件\n`;
+            if (currentCount > 0) {
+              confirmMessage += `\n現在のデータ: ${currentCount.toLocaleString()}件\n`;
+              confirmMessage += `→ 重複データは自動的にスキップされます`;
+            }
+            confirmMessage += `\n\nインポートを実行しますか？`;
+
+            if (!confirm(confirmMessage)) {
               console.log('[JSON Import] キャンセルされました');
               return;
             }
 
-            // Chrome Storageに復元
-            chrome.storage.local.set(data, () => {
-              if (chrome.runtime.lastError) {
-                console.error('[JSON Import] エラー:', chrome.runtime.lastError);
-                alert('❌ インポートに失敗しました\n\n' + chrome.runtime.lastError.message);
-              } else {
-                console.log(`[JSON Import] ✅ インポート完了: ${validation.totalRecords}件`);
+            // プログレス表示用
+            let importedCount = 0;
+            let errorCount = 0;
 
-                // 通知
-                alert(
-                  `✅ データをインポートしました\n\n` +
-                  `通貨ペア: ${validation.currencyPairs}\n` +
-                  `データ件数: ${validation.totalRecords}件\n\n` +
-                  `ページをリロードします。`
-                );
+            // IndexedDBにデータを保存（saveRecordでput=upsert動作）
+            console.log('[JSON Import] インポート開始...');
 
-                // ページリロード
-                setTimeout(() => {
-                  location.reload();
-                }, 1000);
+            for (const key of Object.keys(data)) {
+              const records = data[key];
+              // キー名から通貨ペア名を抽出 (theoption_ml_EUR_USD → EUR/USD)
+              const assetName = key.replace('theoption_ml_', '').replace(/_/g, '/');
+
+              for (const record of records) {
+                try {
+                  // assetNameを設定（エクスポート時に含まれていない場合）
+                  if (!record.assetName) {
+                    record.assetName = assetName;
+                  }
+
+                  // saveRecord (put) を使用：同じtimestampなら上書き、なければ追加
+                  await dbManager.saveRecord(record);
+                  importedCount++;
+                } catch (err) {
+                  errorCount++;
+                  console.warn('[JSON Import] レコード追加エラー:', err);
+                }
               }
-            });
+            }
+
+            // 最終的なデータ件数を取得
+            const finalCount = await dbManager.getRecordCount();
+
+            console.log(`[JSON Import] ✅ インポート完了: 処理=${importedCount}, エラー=${errorCount}, 最終件数=${finalCount}`);
+
+            // 結果通知
+            let resultMessage = `✅ インポート完了\n\n`;
+            resultMessage += `処理したレコード: ${importedCount.toLocaleString()}件\n`;
+            resultMessage += `現在の総データ数: ${finalCount.toLocaleString()}件\n`;
+            if (errorCount > 0) {
+              resultMessage += `エラー: ${errorCount}件\n`;
+            }
+            resultMessage += `\nページをリロードします。`;
+
+            alert(resultMessage);
+
+            // ページリロード
+            setTimeout(() => {
+              location.reload();
+            }, 1000);
 
           } catch (error) {
             console.error('[JSON Import] ファイル読み込みエラー:', error);
-            alert('❌ ファイルの読み込みに失敗しました\n\nJSON形式が正しいか確認してください。');
+            alert('❌ ファイルの読み込みに失敗しました\n\nJSON形式が正しいか確認してください。\n\n' + error.message);
           }
         };
 
