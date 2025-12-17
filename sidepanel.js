@@ -627,6 +627,11 @@ function listenForAnalysisUpdates() {
     if (message.type === 'SYSTEM_STATE' && message.data) {
       handleSystemStateChange(message.data);
     }
+
+    // ページ状態通知（タブ切り替え検出）
+    if (message.type === 'PAGE_STATE' && message.data) {
+      handlePageStateChange(message.data);
+    }
     // 同期的に処理完了するため、return falseまたは省略
     // return trueは非同期レスポンスが必要な場合のみ使用
   });
@@ -634,13 +639,18 @@ function listenForAnalysisUpdates() {
 
 // システム状態変更ハンドラ（タブ切り替え対策）
 let isSystemActive = true;
+let isOnTheOptionPage = true;
 
 function handleSystemStateChange(data) {
   if (data.active) {
     // システム再開
     debugLog('[SidePanel] システム再開通知を受信');
     isSystemActive = true;
-    updateStatus('connected', 'データ受信中');
+
+    // TheOptionページにいる場合のみ「データ受信中」
+    if (isOnTheOptionPage) {
+      updateStatus('connected', 'データ受信中');
+    }
 
     // シグナル表示状態をリセット（古い状態が残らないように）
     signalDisplayed = false;
@@ -653,9 +663,77 @@ function handleSystemStateChange(data) {
     debugLog('[SidePanel] システム一時停止通知を受信');
     isSystemActive = false;
     updateStatus('waiting', '他のページを表示中...');
-
-    // シグナル表示状態を保持（戻ってきた時に再開できるように）
   }
+}
+
+// ページ状態変更ハンドラ（TheOption以外のページ検出）
+function handlePageStateChange(data) {
+  const wasOnTheOptionPage = isOnTheOptionPage;
+  isOnTheOptionPage = data.isTheOptionPage;
+
+  debugLog(`[SidePanel] ページ状態変更: TheOption=${data.isTheOptionPage}`);
+
+  if (!isOnTheOptionPage) {
+    // TheOption以外のページに移動
+    debugLog('[SidePanel] TheOption以外のページを検出 - 待機状態に移行');
+    isSystemActive = false;
+
+    // UIを待機状態にリセット
+    showWaitingState();
+  } else if (!wasOnTheOptionPage && isOnTheOptionPage) {
+    // TheOptionページに戻った
+    debugLog('[SidePanel] TheOptionページに復帰 - システム再開');
+    isSystemActive = true;
+
+    // シグナル表示状態をリセット
+    signalDisplayed = false;
+    lastDisplayedSignal = null;
+
+    // シグナルカードを「準備中」にリセット
+    resetSignalCardsToWaiting();
+    updateStatus('connected', 'データ受信中');
+
+    // 最新データを要求
+    requestAnalysisData();
+  }
+}
+
+// 待機状態のUIを表示
+function showWaitingState() {
+  // ステータス表示
+  updateStatus('waiting', 'TheOptionページを開いてください');
+
+  // シグナルカードを待機状態に
+  const techCardEl = document.getElementById('tech-signal-card');
+  const techIconEl = document.getElementById('tech-signal-icon');
+  const techLabelEl = document.getElementById('tech-signal-label');
+  const techConfidenceEl = document.getElementById('tech-signal-confidence');
+  if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
+  if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
+  if (techLabelEl) techLabelEl.textContent = '待機中';
+  if (techConfidenceEl) techConfidenceEl.textContent = '--';
+
+  const aiCardEl = document.getElementById('ai-signal-card');
+  const aiIconEl = document.getElementById('ai-signal-icon');
+  const aiLabelEl = document.getElementById('ai-signal-label');
+  const aiConfidenceEl = document.getElementById('ai-signal-confidence');
+  if (aiIconEl) aiIconEl.setAttribute('data-signal', 'wait');
+  if (aiCardEl) aiCardEl.setAttribute('data-signal-type', 'wait');
+  if (aiLabelEl) aiLabelEl.textContent = '待機中';
+  if (aiConfidenceEl) aiConfidenceEl.textContent = '--';
+
+  // カウントダウンをリセット
+  const nextAnalysisEl = document.getElementById('next-analysis');
+  if (nextAnalysisEl) {
+    nextAnalysisEl.textContent = '--';
+  }
+
+  // プログレスリングをリセット
+  updateProgressRing(0, 1);
+
+  // 通貨ペア表示をクリア
+  document.getElementById('asset-name-display').textContent = '---';
+  document.getElementById('asset-data-count').textContent = '--件';
 }
 
 // シグナルカードをリセット（取引終了時）

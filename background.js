@@ -33,8 +33,58 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+// タブがアクティブになった時の処理（サイドパネルに通知）
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    const isTheOptionPage = tab.url && (
+      tab.url.includes('theoption.com/trading') ||
+      tab.url.includes('jp.theoption.com/trading')
+    );
+
+    // サイドパネルにページ状態を通知
+    chrome.runtime.sendMessage({
+      type: 'PAGE_STATE',
+      data: {
+        isTheOptionPage: isTheOptionPage,
+        url: tab.url
+      }
+    }).catch(() => {
+      // サイドパネルが開いていない場合は無視
+    });
+
+    debugLog(`[Background] タブ切り替え検出: isTheOption=${isTheOptionPage}, url=${tab.url}`);
+  } catch (error) {
+    // タブ取得エラーは無視
+  }
+});
+
+// タブのURL変更時の処理
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.active && tab.url) {
+    const isTheOptionPage = tab.url.includes('theoption.com/trading') ||
+                           tab.url.includes('jp.theoption.com/trading');
+
+    // サイドパネルにページ状態を通知
+    chrome.runtime.sendMessage({
+      type: 'PAGE_STATE',
+      data: {
+        isTheOptionPage: isTheOptionPage,
+        url: tab.url
+      }
+    }).catch(() => {
+      // サイドパネルが開いていない場合は無視
+    });
+  }
+});
+
 // メッセージハンドラー
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // システム状態をサイドパネルに転送
+  if (message.type === 'SYSTEM_STATE') {
+    chrome.runtime.sendMessage(message).catch(() => {});
+  }
+
   // コンテンツスクリプトからの分析データ更新
   if (message.type === 'ANALYSIS_UPDATE') {
     // データをキャッシュ
