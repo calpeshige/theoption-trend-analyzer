@@ -52,8 +52,25 @@
       </div>
     </header>
 
+    <!-- 待機画面（TheOption以外のページ用） -->
+    <div class="waiting-screen" id="waiting-screen" style="display: none;">
+      <div class="waiting-content">
+        <div class="waiting-icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+          </svg>
+        </div>
+        <h2 class="waiting-title">待機中</h2>
+        <p class="waiting-message">TheOptionのトレーディング画面を<br>開いてください</p>
+        <div class="waiting-hint">
+          <span class="waiting-hint-icon">💡</span>
+          <span class="waiting-hint-text">jp.theoption.com/trading にアクセスすると<br>自動的に分析が開始されます</span>
+        </div>
+      </div>
+    </div>
+
     <!-- メインコンテンツ -->
-    <main class="main-content">
+    <main class="main-content" id="main-content">
       <!-- 時間枠セレクター -->
       <nav class="timeframe-nav">
         <div class="timeframe-chips">

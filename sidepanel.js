@@ -710,6 +710,9 @@ function handlePageStateChange(data) {
     // TheOptionページに戻った
     debugLog('[SidePanel] TheOptionページに復帰 - 安定化期間開始');
 
+    // まずアクティブ画面を表示（待機画面を消す）
+    showActiveState();
+
     // 安定化期間を開始（この間はANALYSIS_UPDATEを無視）
     isStabilizing = true;
     isSystemActive = false;  // 安定化中はまだ非アクティブ扱い
@@ -749,29 +752,25 @@ function handlePageStateChange(data) {
   }
 }
 
-// 待機状態のUIを表示
+// 待機状態のUIを表示（TheOption以外のページ用）
 function showWaitingState() {
+  debugLog('[SidePanel] 待機画面を表示');
+
+  // 待機画面を表示、メインコンテンツを非表示
+  const waitingScreen = document.getElementById('waiting-screen');
+  const mainContent = document.getElementById('main-content');
+  const topBar = document.querySelector('.top-bar');
+
+  if (waitingScreen) waitingScreen.style.display = 'flex';
+  if (mainContent) mainContent.style.display = 'none';
+  if (topBar) topBar.classList.add('waiting-mode');
+
   // ステータス表示
   updateStatus('waiting', 'TheOptionページを開いてください');
 
-  // シグナルカードを待機状態に
-  const techCardEl = document.getElementById('tech-signal-card');
-  const techIconEl = document.getElementById('tech-signal-icon');
-  const techLabelEl = document.getElementById('tech-signal-label');
-  const techConfidenceEl = document.getElementById('tech-signal-confidence');
-  if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
-  if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
-  if (techLabelEl) techLabelEl.textContent = '待機中';
-  if (techConfidenceEl) techConfidenceEl.textContent = '--';
-
-  const aiCardEl = document.getElementById('ai-signal-card');
-  const aiIconEl = document.getElementById('ai-signal-icon');
-  const aiLabelEl = document.getElementById('ai-signal-label');
-  const aiConfidenceEl = document.getElementById('ai-signal-confidence');
-  if (aiIconEl) aiIconEl.setAttribute('data-signal', 'wait');
-  if (aiCardEl) aiCardEl.setAttribute('data-signal-type', 'wait');
-  if (aiLabelEl) aiLabelEl.textContent = '待機中';
-  if (aiConfidenceEl) aiConfidenceEl.textContent = '--';
+  // 通貨ペア表示をクリア
+  document.getElementById('asset-name-display').textContent = '---';
+  document.getElementById('asset-data-count').textContent = '--件';
 
   // カウントダウンをリセット
   const nextAnalysisEl = document.getElementById('next-analysis');
@@ -781,10 +780,20 @@ function showWaitingState() {
 
   // プログレスリングをリセット
   updateProgressRing(0, 1);
+}
 
-  // 通貨ペア表示をクリア
-  document.getElementById('asset-name-display').textContent = '---';
-  document.getElementById('asset-data-count').textContent = '--件';
+// アクティブ状態のUIを表示（TheOptionページ用）
+function showActiveState() {
+  debugLog('[SidePanel] アクティブ画面を表示');
+
+  // 待機画面を非表示、メインコンテンツを表示
+  const waitingScreen = document.getElementById('waiting-screen');
+  const mainContent = document.getElementById('main-content');
+  const topBar = document.querySelector('.top-bar');
+
+  if (waitingScreen) waitingScreen.style.display = 'none';
+  if (mainContent) mainContent.style.display = 'block';
+  if (topBar) topBar.classList.remove('waiting-mode');
 }
 
 // シグナルカードをリセット（取引終了時）
