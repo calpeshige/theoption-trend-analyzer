@@ -605,12 +605,22 @@ function notifySettingChange(key, value) {
 function listenForAnalysisUpdates() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'ANALYSIS_UPDATE') {
+      // 安定化期間中またはTheOptionページ外ではデータを無視
+      if (isStabilizing || !isOnTheOptionPage) {
+        debugLog('[SidePanel] ANALYSIS_UPDATE無視（安定化中またはページ外）');
+        return;
+      }
       latestAnalysisData = message.data;
       updateDisplay(message.data);
       updateStatus('connected', 'データ受信中');
     }
 
     if (message.type === 'STATUS_UPDATE') {
+      // 安定化期間中またはTheOptionページ外ではステータス更新を無視
+      if (isStabilizing || !isOnTheOptionPage) {
+        debugLog('[SidePanel] STATUS_UPDATE無視（安定化中またはページ外）');
+        return;
+      }
       updateRealtimeStatus(message.data);
     }
 
@@ -640,24 +650,33 @@ function listenForAnalysisUpdates() {
 // システム状態変更ハンドラ（タブ切り替え対策）
 let isSystemActive = true;
 let isOnTheOptionPage = true;
+let isStabilizing = false;  // 安定化期間中フラグ（ページ復帰後のチカチカ防止）
+let stabilizingTimer = null;
 
 function handleSystemStateChange(data) {
-  if (data.active) {
-    // システム再開
-    debugLog('[SidePanel] システム再開通知を受信');
-    isSystemActive = true;
+  // PAGE_STATEで既に処理済みの場合はSYSTEM_STATEを無視
+  // （重複処理によるチカチカを防止）
+  if (isStabilizing) {
+    debugLog('[SidePanel] 安定化期間中のためSYSTEM_STATEを無視');
+    return;
+  }
 
-    // TheOptionページにいる場合のみ「データ受信中」
-    if (isOnTheOptionPage) {
-      updateStatus('connected', 'データ受信中');
+  if (data.active) {
+    // システム再開通知を受信したが、PAGE_STATEが来ていない場合のみ処理
+    // （通常はPAGE_STATEが先に来るはず）
+    debugLog('[SidePanel] SYSTEM_STATE active受信（PAGE_STATE未処理の場合のみ有効）');
+
+    // TheOptionページにいない場合は無視
+    if (!isOnTheOptionPage) {
+      debugLog('[SidePanel] TheOptionページではないためSYSTEM_STATEを無視');
+      return;
     }
 
-    // シグナル表示状態をリセット（古い状態が残らないように）
-    signalDisplayed = false;
-    lastDisplayedSignal = null;
+    isSystemActive = true;
+    updateStatus('connected', 'データ受信中');
 
-    // シグナルカードを「準備中」にリセット
-    resetSignalCardsToWaiting();
+    // 注意: ここではresetSignalCardsToWaiting()を呼ばない
+    // （PAGE_STATEハンドラで既に処理されているはず）
   } else {
     // システム一時停止
     debugLog('[SidePanel] システム一時停止通知を受信');
@@ -677,13 +696,23 @@ function handlePageStateChange(data) {
     // TheOption以外のページに移動
     debugLog('[SidePanel] TheOption以外のページを検出 - 待機状態に移行');
     isSystemActive = false;
+    isStabilizing = false;
+
+    // 安定化タイマーをクリア
+    if (stabilizingTimer) {
+      clearTimeout(stabilizingTimer);
+      stabilizingTimer = null;
+    }
 
     // UIを待機状態にリセット
     showWaitingState();
   } else if (!wasOnTheOptionPage && isOnTheOptionPage) {
     // TheOptionページに戻った
-    debugLog('[SidePanel] TheOptionページに復帰 - システム再開');
-    isSystemActive = true;
+    debugLog('[SidePanel] TheOptionページに復帰 - 安定化期間開始');
+
+    // 安定化期間を開始（この間はANALYSIS_UPDATEを無視）
+    isStabilizing = true;
+    isSystemActive = false;  // 安定化中はまだ非アクティブ扱い
 
     // シグナル表示状態を完全にリセット（古いデータの干渉を防ぐ）
     signalDisplayed = false;
@@ -700,13 +729,23 @@ function handlePageStateChange(data) {
     resetSignalCardsToWaiting();
     updateStatus('connected', '再接続中...');
 
-    // コンテンツスクリプトが安定するまで少し待ってからデータ要求
-    // （古いキャッシュデータではなく新鮮なデータを取得するため）
-    setTimeout(() => {
+    // 前回の安定化タイマーをクリア
+    if (stabilizingTimer) {
+      clearTimeout(stabilizingTimer);
+    }
+
+    // 安定化期間（1.5秒）後にシステムをアクティブ化
+    // この間にコンテンツスクリプトが安定し、古いデータが消える
+    stabilizingTimer = setTimeout(() => {
       if (isOnTheOptionPage) {
+        debugLog('[SidePanel] 安定化期間終了 - システムアクティブ化');
+        isStabilizing = false;
+        isSystemActive = true;
+
+        // 最新データを要求
         requestAnalysisData();
       }
-    }, 500);
+    }, 1500);
   }
 }
 
