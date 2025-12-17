@@ -503,13 +503,24 @@ function initializeAnalyzer() {
     /**
      * ページがアクティブになった時の処理
      */
+    // ページ復帰後の安定化期間（STATUS_UPDATE送信を抑制）
+    let isStabilizingAfterActivation = false;
+    let stabilizationTimer = null;
+    const STABILIZATION_PERIOD_MS = 2000;  // 2秒間の安定化期間
+
     function handlePageActivated() {
       if (isPageActive) return; // 既にアクティブ
 
-      console.log('[TheOption Analyzer] 📢 ページがアクティブになりました - システム再開');
+      console.log('[TheOption Analyzer] 📢 ページがアクティブになりました - 安定化期間開始');
       isPageActive = true;
+      isStabilizingAfterActivation = true;  // 安定化期間を開始
 
-      // サイドパネルにシステム再開を通知
+      // 前回のタイマーをクリア
+      if (stabilizationTimer) {
+        clearTimeout(stabilizationTimer);
+      }
+
+      // サイドパネルにシステム再開を通知（サイドパネル側も安定化期間に入る）
       chrome.runtime.sendMessage({
         type: 'SYSTEM_STATE',
         data: { active: true, reason: 'page_activated' }
@@ -541,7 +552,13 @@ function initializeAnalyzer() {
         lastAnalysisTimes[tf] = 0;
       });
 
-      console.log('[TheOption Analyzer] ✅ システム再開完了 - 全キャッシュをクリアしました');
+      // 安定化期間終了後にデータ送信を再開
+      stabilizationTimer = setTimeout(() => {
+        isStabilizingAfterActivation = false;
+        console.log('[TheOption Analyzer] ✅ 安定化期間終了 - データ送信再開');
+      }, STABILIZATION_PERIOD_MS);
+
+      console.log('[TheOption Analyzer] ⏳ 安定化期間中（STATUS_UPDATE抑制）');
     }
 
     /**
@@ -739,6 +756,12 @@ function initializeAnalyzer() {
 
     // サイドパネルに分析データを送信
     async function sendAnalysisToSidePanel() {
+      // 安定化期間中はANALYSIS_UPDATEを送信しない（データジャンプ防止）
+      if (isStabilizingAfterActivation) {
+        console.log('[TheOption Analyzer] ⏳ 安定化期間中 - ANALYSIS_UPDATE送信スキップ');
+        return;
+      }
+
       console.log('[TheOption Analyzer] 🔵 sendAnalysisToSidePanel 呼び出し開始');
       if (!chrome.runtime || !chrome.runtime.sendMessage) {
         console.log('[TheOption Analyzer] ⚠️ chrome.runtime が利用不可');
@@ -1197,6 +1220,12 @@ function initializeAnalyzer() {
 
     // サイドパネルにリアルタイムステータスを送信（カウントダウン、データ収集進捗）
     function sendStatusToSidePanel(countdown) {
+      // 安定化期間中はSTATUS_UPDATEを送信しない（タイマージャンプ防止）
+      if (isStabilizingAfterActivation) {
+        console.log('[TheOption Analyzer] ⏳ 安定化期間中 - STATUS_UPDATE送信スキップ');
+        return;
+      }
+
       console.log('[TheOption Analyzer] 🟢 sendStatusToSidePanel 呼び出し countdown:', countdown);
       if (!chrome.runtime || !chrome.runtime.sendMessage) return;
 
