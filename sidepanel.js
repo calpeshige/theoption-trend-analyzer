@@ -685,16 +685,28 @@ function handlePageStateChange(data) {
     debugLog('[SidePanel] TheOptionページに復帰 - システム再開');
     isSystemActive = true;
 
-    // シグナル表示状態をリセット
+    // シグナル表示状態を完全にリセット（古いデータの干渉を防ぐ）
     signalDisplayed = false;
     lastDisplayedSignal = null;
+    latestAnalysisData = null;  // キャッシュデータをクリア
+    latestEnhancedSignal = null;
+
+    // 前回表示状態もリセット（チカチカ防止用変数）
+    lastMLStats = { dataCountWithResults: null, dataCount: null, learningLevel: null };
+    lastAISignal = { signal: null, matchCount: null, available: null };
+    lastTechSignal = { signal: null, confidence: null };
 
     // シグナルカードを「準備中」にリセット
     resetSignalCardsToWaiting();
-    updateStatus('connected', 'データ受信中');
+    updateStatus('connected', '再接続中...');
 
-    // 最新データを要求
-    requestAnalysisData();
+    // コンテンツスクリプトが安定するまで少し待ってからデータ要求
+    // （古いキャッシュデータではなく新鮮なデータを取得するため）
+    setTimeout(() => {
+      if (isOnTheOptionPage) {
+        requestAnalysisData();
+      }
+    }, 500);
   }
 }
 
@@ -1046,6 +1058,12 @@ function updateRealtimeStatus(data) {
 
 // 分析データ要求
 function requestAnalysisData() {
+  // TheOptionページ以外では何もしない（待機状態を維持）
+  if (!isOnTheOptionPage) {
+    debugLog('[SidePanel] TheOptionページ外のためデータ要求をスキップ');
+    return;
+  }
+
   // まず現在の時間枠をコンテンツスクリプトに通知（同期）
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
 
@@ -1055,6 +1073,13 @@ function requestAnalysisData() {
       debugLog('[SidePanel] メッセージ送信エラー（無視可能）:', chrome.runtime.lastError.message);
       return;
     }
+
+    // レスポンス処理中にページ状態が変わった可能性があるため再チェック
+    if (!isOnTheOptionPage) {
+      debugLog('[SidePanel] レスポンス受信時にTheOptionページ外のため無視');
+      return;
+    }
+
     if (response) {
       latestAnalysisData = response;
       updateDisplay(response);

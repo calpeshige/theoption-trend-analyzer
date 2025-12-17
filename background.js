@@ -42,6 +42,13 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
       tab.url.includes('jp.theoption.com/trading')
     );
 
+    // TheOption以外のページに移動した場合はキャッシュをクリア
+    // （戻った時に古いデータが表示されないようにするため）
+    if (!isTheOptionPage) {
+      cachedAnalysisData = null;
+      debugLog('[Background] TheOption以外のページ - キャッシュをクリア');
+    }
+
     // サイドパネルにページ状態を通知
     chrome.runtime.sendMessage({
       type: 'PAGE_STATE',
@@ -64,6 +71,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.active && tab.url) {
     const isTheOptionPage = tab.url.includes('theoption.com/trading') ||
                            tab.url.includes('jp.theoption.com/trading');
+
+    // TheOption以外のページに移動した場合はキャッシュをクリア
+    if (!isTheOptionPage) {
+      cachedAnalysisData = null;
+    }
 
     // サイドパネルにページ状態を通知
     chrome.runtime.sendMessage({
