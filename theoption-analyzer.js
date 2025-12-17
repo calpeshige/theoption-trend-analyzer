@@ -1046,6 +1046,9 @@ function initializeAnalyzer() {
           cachedStratificationResults[currentTimeframe] = stratificationResult;
         }
 
+        // 時間帯フィルタ情報を取得
+        const timeFilterInfo = mlSystem && mlSystem.getTimeFilterInfo ? mlSystem.getTimeFilterInfo() : null;
+
         const data = {
           asset: currentAsset,
           dataCount: priceHistory.length,
@@ -1053,7 +1056,8 @@ function initializeAnalyzer() {
           currentTimeframe: currentTimeframe,
           mlStats: mlStats,
           enhancedSignal: enhancedSignal,  // 強化シグナルを追加
-          stratification: stratificationResult  // 層別化結果を追加
+          stratification: stratificationResult,  // 層別化結果を追加
+          timeFilterInfo: timeFilterInfo  // 時間帯フィルタ情報を追加
         };
 
         console.log('[TheOption Analyzer] 📤 サイドパネル送信 mlStats:', mlStats);
@@ -1449,6 +1453,17 @@ function initializeAnalyzer() {
             currentDataLimit = message.value;
             // ML予測を再実行
             rerunMLPrediction();
+          } else if (message.key === 'timeFilterMode') {
+            // 時間帯別分析モードの変更
+            if (mlSystem && mlSystem.setTimeFilterMode) {
+              console.log(`[TheOption Analyzer] 時間帯フィルタモード変更: ${message.value}`);
+              mlSystem.setTimeFilterMode(message.value).then(() => {
+                // モード変更後にML予測を再実行
+                rerunMLPrediction();
+              }).catch(err => {
+                console.error('[TheOption Analyzer] 時間帯フィルタモード変更エラー:', err);
+              });
+            }
           }
 
           // サイドパネルにデータを再送信

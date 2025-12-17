@@ -1467,6 +1467,21 @@ body {
   box-shadow: 0 2px 8px rgba(8, 70, 216, 0.3);
 }
 
+/* Time Filter Info */
+.time-filter-info {
+  display: none;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  margin-top: 4px;
+}
+
+.time-filter-info:not(:empty) {
+  display: inline-block;
+}
+
 /* ================================================
    Bottom Sheet
    ================================================ */

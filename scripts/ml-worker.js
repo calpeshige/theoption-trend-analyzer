@@ -15,6 +15,7 @@ importScripts(
 let patternMatcher = null;
 let trainingData = [];
 let assetName = 'default';
+let timeFilterMode = 'all'; // 'all' | 'session' | 'hour'
 
 // メッセージハンドラ
 self.onmessage = function (e) {
@@ -52,16 +53,20 @@ function handleInit(payload, id) {
     // console.log(`[ML Worker] Initializing for ${payload.assetName} with ${payload.data.length} records`);
     assetName = payload.assetName;
     trainingData = payload.data || [];
+    timeFilterMode = payload.timeFilterMode || 'all';
 
     // PatternMatchingSystemの初期化
     patternMatcher = new self.PatternMatchingSystem(trainingData);
+
+    console.log(`[ML Worker] 初期化完了: ${trainingData.length}件, モード: ${timeFilterMode}`);
 
     self.postMessage({
         type: 'INIT_COMPLETE',
         id: id,
         payload: {
             success: true,
-            count: trainingData.length
+            count: trainingData.length,
+            timeFilterMode: timeFilterMode
         }
     });
 }
@@ -99,19 +104,28 @@ function handlePredict(payload, id) {
 
     const { currentSituation, timeframe, threshold, maxDataCount } = payload;
 
-    // 🔍 デバッグ: payloadの内容を詳細に確認（本番ではコメントアウト）
-    // console.log(`[ML Worker Debug] Received payload keys:`, Object.keys(payload));
-    // console.log(`[ML Worker Debug] maxDataCount value: ${maxDataCount}, type: ${typeof maxDataCount}`);
+    // 時間帯別モードの場合、時間優先度を計算に追加
+    let options = {
+        maxDataCount,
+        timeFilterMode
+    };
 
-    // const dataRangeText = maxDataCount ? `直近${maxDataCount}件` : '全期間';
-    // console.log(`[ML Worker] Predicting for ${timeframe}s (threshold: ${threshold}%, データ範囲: ${dataRangeText})`);
+    // 時間帯別モードで現在時刻情報を追加
+    if (timeFilterMode !== 'all' && currentSituation) {
+        options.currentHour = currentSituation.hour || new Date().getHours();
+    }
 
     const result = patternMatcher.predict(
         currentSituation,
         timeframe,
         threshold,
-        maxDataCount
+        maxDataCount,
+        options
     );
+
+    // 時間帯フィルタ情報を結果に追加
+    result.timeFilterMode = timeFilterMode;
+    result.dataCount = trainingData.length;
 
     self.postMessage({
         type: 'PREDICT_RESULT',

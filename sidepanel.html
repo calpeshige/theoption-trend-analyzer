@@ -177,6 +177,14 @@
       <!-- クイック設定セクション -->
       <section class="quick-settings">
         <div class="setting-group">
+          <span class="setting-group-label">分析モード</span>
+          <div class="chip-group" id="time-filter-chips">
+            <button class="setting-chip active" data-mode="all">全体</button>
+            <button class="setting-chip" data-mode="session">時間帯別</button>
+          </div>
+          <span class="time-filter-info" id="time-filter-info"></span>
+        </div>
+        <div class="setting-group">
           <span class="setting-group-label">類似度閾値</span>
           <div class="chip-group" id="threshold-chips">
             <button class="setting-chip" data-threshold="50">50%</button>

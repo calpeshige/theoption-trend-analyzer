@@ -21,7 +21,10 @@ class PatternMatchingSystem {
     }
 
     // 類似パターンを検索（段階的マッチング）
-    findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null) {
+    // options: { timeFilterMode, currentHour }
+    findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null, options = {}) {
+        const timeFilterMode = options.timeFilterMode || 'all';
+        const currentHour = options.currentHour ?? new Date().getHours();
         // データ件数制限の適用
         let targetData = this.trainingData;
         const totalDataCount = this.trainingData.length;
@@ -68,7 +71,15 @@ class PatternMatchingSystem {
             if (result.pending === true) continue;
 
             // 類似度を計算（timeframeを渡す）
-            const similarity = this.calculateSimilarity(currentSituation, past, timeframe);
+            let similarity = this.calculateSimilarity(currentSituation, past, timeframe);
+
+            // 時間帯別モードの場合、時間の近さでボーナスを追加
+            if (timeFilterMode !== 'all' && past.hour !== undefined) {
+                const hourBonus = this.calculateHourBonus(currentHour, past.hour);
+                // 最大5%のボーナス（類似度が95%を超えないように）
+                similarity = Math.min(100, similarity + hourBonus);
+            }
+
             totalChecked++;
             allSimilarities.push(similarity); // 🔬 診断用
 
@@ -77,7 +88,8 @@ class PatternMatchingSystem {
                 similarPatterns.push({
                     pattern: past,
                     similarity: similarity,
-                    result: result
+                    result: result,
+                    hourMatch: past.hour === currentHour // 同時刻フラグ
                 });
             }
         }
@@ -167,8 +179,18 @@ class PatternMatchingSystem {
     }
 
     // 予測を生成（改善版: 重み付け投票による精度向上）
-    predict(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null) {
-        const similarPatterns = this.findSimilarPatterns(currentSituation, timeframe, minSimilarity, maxDataCount);
+    // options: { maxDataCount, timeFilterMode, currentHour }
+    predict(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null, options = {}) {
+        const timeFilterMode = options.timeFilterMode || 'all';
+        const currentHour = options.currentHour ?? new Date().getHours();
+
+        const similarPatterns = this.findSimilarPatterns(
+            currentSituation,
+            timeframe,
+            minSimilarity,
+            maxDataCount,
+            { timeFilterMode, currentHour }
+        );
 
         // 結果が記録されたデータの総数を確認
         const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`]).length;
@@ -284,11 +306,29 @@ class PatternMatchingSystem {
     }
 
     // 指定された閾値で予測を実行（閾値変更時用）
-    predictWithThreshold(currentSituation, timeframe = 15, minSimilarity = 70) {
+    predictWithThreshold(currentSituation, timeframe = 15, minSimilarity = 70, options = {}) {
         pmsLog(`[ML] 🎯 predictWithThreshold呼び出し: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
-        const result = this.predict(currentSituation, timeframe, minSimilarity);
+        const result = this.predict(currentSituation, timeframe, minSimilarity, null, options);
         pmsLog(`[ML] 🎯 predictWithThreshold結果:`, result);
         return result;
+    }
+
+    /**
+     * 時間の近さに応じたボーナスを計算
+     * @param {number} currentHour - 現在の時間 (0-23)
+     * @param {number} pastHour - 過去データの時間 (0-23)
+     * @returns {number} ボーナス値 (0-5)
+     */
+    calculateHourBonus(currentHour, pastHour) {
+        // 時間差を計算（24時間の循環を考慮）
+        const diff = Math.abs(currentHour - pastHour);
+        const circularDiff = Math.min(diff, 24 - diff);
+
+        // 同時刻: +5%, 1時間差: +3%, 2時間差: +1%, それ以上: 0%
+        if (circularDiff === 0) return 5;
+        if (circularDiff === 1) return 3;
+        if (circularDiff === 2) return 1;
+        return 0;
     }
 
     // テクニカル指標の時系列比較（動きのパターンで評価）

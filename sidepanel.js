@@ -25,7 +25,8 @@ let currentSettings = {
   volume: 'medium',
   fontSize: 'medium',
   similarityThreshold: 70,
-  dataLimit: 'all'
+  dataLimit: 'all',
+  timeFilterMode: 'all' // 'all' | 'session'
 };
 
 // 状態管理
@@ -138,7 +139,7 @@ async function loadMLDataCountForAsset(assetName) {
 
 // 設定読み込み
 function loadSettings() {
-  chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit'], (result) => {
+  chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode'], (result) => {
     if (result.alertSoundEnabled !== undefined) {
       currentSettings.alertSound = result.alertSoundEnabled;
       const toggle = document.getElementById('alert-sound-toggle');
@@ -174,6 +175,12 @@ function loadSettings() {
     }
     currentSettings.dataLimit = dataLimit;
     updateDataLimitChips(dataLimit);
+
+    // 時間帯フィルタモード
+    if (result.timeFilterMode) {
+      currentSettings.timeFilterMode = result.timeFilterMode;
+      updateTimeFilterChips(result.timeFilterMode);
+    }
   });
 }
 
@@ -257,6 +264,14 @@ function setupEventListeners() {
     chip.addEventListener('click', () => {
       const limit = chip.dataset.limit;
       changeDataLimit(limit);
+    });
+  });
+
+  // 時間帯フィルタチップ
+  document.querySelectorAll('#time-filter-chips .setting-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const mode = chip.dataset.mode;
+      changeTimeFilterMode(mode);
     });
   });
 
@@ -496,6 +511,89 @@ function updateDataLimitChips(limit) {
     const isActive = chipLimit === limit || (chipLimit === 'all' && limit === null);
     chip.classList.toggle('active', isActive);
   });
+}
+
+// 時間帯フィルタモード変更
+function changeTimeFilterMode(mode) {
+  currentSettings.timeFilterMode = mode;
+  updateTimeFilterChips(mode);
+  chrome.storage.local.set({ timeFilterMode: mode });
+  notifySettingChange('timeFilterMode', mode);
+
+  // 時間帯情報を即座に更新
+  updateTimeFilterInfo();
+}
+
+function updateTimeFilterChips(mode) {
+  document.querySelectorAll('#time-filter-chips .setting-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.mode === mode);
+  });
+}
+
+// 時間帯フィルタ情報を更新
+function updateTimeFilterInfo() {
+  const infoEl = document.getElementById('time-filter-info');
+  if (!infoEl) return;
+
+  if (currentSettings.timeFilterMode === 'all') {
+    infoEl.textContent = '';
+    infoEl.style.display = 'none';
+  } else {
+    // 現在時刻から市場セッションを判定
+    const hour = new Date().getHours();
+    let sessionName = '不明';
+    let hourRange = '';
+
+    if (hour >= 9 && hour <= 15) {
+      sessionName = '東京';
+      hourRange = `${Math.max(9, hour - 2)}〜${Math.min(15, hour + 2)}時`;
+    } else if (hour >= 16 && hour <= 20) {
+      sessionName = '欧州';
+      hourRange = `${Math.max(16, hour - 2)}〜${Math.min(20, hour + 2)}時`;
+    } else if (hour >= 21 || hour <= 2) {
+      sessionName = 'NY';
+      hourRange = `${hour - 2 < 0 ? hour - 2 + 24 : hour - 2}〜${(hour + 2) % 24}時`;
+    } else {
+      sessionName = '静穏';
+      hourRange = `${Math.max(3, hour - 2)}〜${Math.min(8, hour + 2)}時`;
+    }
+
+    infoEl.textContent = `${sessionName} (${hourRange})`;
+    infoEl.style.display = 'inline';
+  }
+}
+
+// 時間帯フィルタ情報を更新（サーバーから受信した情報を使用）
+function updateTimeFilterInfoFromServer(timeFilterInfo) {
+  const infoEl = document.getElementById('time-filter-info');
+  if (!infoEl) return;
+
+  if (!timeFilterInfo || timeFilterInfo.mode === 'all') {
+    infoEl.textContent = '';
+    infoEl.style.display = 'none';
+  } else {
+    const sessionName = timeFilterInfo.sessionName || '不明';
+    const currentHour = timeFilterInfo.currentHour;
+    const targetHours = timeFilterInfo.targetHours || [];
+
+    // 時間範囲を表示
+    let hourRange = '';
+    if (targetHours.length > 0) {
+      const minHour = Math.min(...targetHours);
+      const maxHour = Math.max(...targetHours);
+      hourRange = `${minHour}〜${maxHour}時`;
+    } else if (currentHour !== undefined) {
+      hourRange = `${currentHour}時付近`;
+    }
+
+    // フィルタ後のデータ件数を表示（あれば）
+    const dataCountText = timeFilterInfo.filteredDataCount !== undefined
+      ? ` [${timeFilterInfo.filteredDataCount}件]`
+      : '';
+
+    infoEl.textContent = `${sessionName} (${hourRange})${dataCountText}`;
+    infoEl.style.display = 'inline';
+  }
 }
 
 // 設定変更通知
@@ -892,6 +990,11 @@ function updateDisplay(data) {
 
   if (data.mlStats) {
     updateMLStatus(data.mlStats);
+  }
+
+  // 時間帯フィルタ情報を更新（サーバーから受信した情報を使用）
+  if (data.timeFilterInfo) {
+    updateTimeFilterInfoFromServer(data.timeFilterInfo);
   }
 }
 

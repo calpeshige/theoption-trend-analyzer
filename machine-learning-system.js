@@ -30,6 +30,10 @@ class DataCollectionSystem {
     // IndexedDBマネージャー
     this.dbManager = new window.DBManager();
     this.dbInitialized = false;
+
+    // 時間帯別分析モード
+    this.timeFilterMode = 'all'; // 'all' | 'session' | 'hour'
+    this.timeFilteredData = []; // 時間帯フィルタ後のデータ
   }
 
   async initDB() {
@@ -415,6 +419,114 @@ class DataCollectionSystem {
 
   getDataCount() { return this.trainingData.length; }
   getDataCountWithResults() { return this.trainingData.filter(d => !d.result15s?.pending).length; }
+
+  // ========================================
+  // 時間帯別分析機能
+  // ========================================
+
+  /**
+   * 時間帯フィルタモードを設定
+   * @param {string} mode - 'all' | 'session' | 'hour'
+   */
+  async setTimeFilterMode(mode) {
+    this.timeFilterMode = mode;
+    mlsLog(`[ML] 時間帯フィルタモード変更: ${mode}`);
+
+    if (mode === 'all') {
+      // 全期間モード: フィルタなし
+      this.timeFilteredData = this.trainingData;
+    } else {
+      // 時間帯別モード: データを再ロード
+      await this.loadTimeFilteredData();
+    }
+
+    // Workerにフィルタ後のデータを送信
+    if (this.patternMatcher) {
+      this.patternMatcher.updateWorkerData(this.timeFilteredData, mode);
+    }
+
+    return this.timeFilteredData.length;
+  }
+
+  /**
+   * 時間帯フィルタ済みデータをロード
+   */
+  async loadTimeFilteredData() {
+    if (!this.dbInitialized) {
+      this.timeFilteredData = [];
+      return;
+    }
+
+    const currentHour = new Date().getHours();
+    const currentSession = window.DBManager.getCurrentSession(currentHour);
+    const sessions = window.DBManager.getMarketSessions();
+
+    let targetHours = [];
+
+    if (this.timeFilterMode === 'session') {
+      // セッションモード: 現在のセッション全体 + 現在時刻±1.5時間を優先
+      const sessionInfo = sessions[currentSession];
+      targetHours = sessionInfo ? sessionInfo.hours : [];
+      mlsLog(`[ML] セッションモード: ${currentSession} (${sessionInfo?.name}), 対象時間: ${targetHours.join(',')}`);
+    } else if (this.timeFilterMode === 'hour') {
+      // 時間帯モード: 現在時刻±2時間
+      targetHours = window.DBManager.getHourRangeWithPriority(currentHour, 2);
+      mlsLog(`[ML] 時間帯モード: 現在${currentHour}時, 対象時間: ${targetHours.join(',')}`);
+    }
+
+    try {
+      this.timeFilteredData = await this.dbManager.getRecordsByHours(this.assetName, targetHours);
+      mlsLog(`[ML] 時間帯フィルタ完了: ${this.timeFilteredData.length}件 (全${this.trainingData.length}件中)`);
+
+      // データ不足時の段階的拡張
+      const MIN_DATA_COUNT = 20;
+      if (this.timeFilteredData.length < MIN_DATA_COUNT && this.timeFilterMode === 'hour') {
+        mlsLog(`[ML] データ不足 (${this.timeFilteredData.length}件), セッション全体に拡張`);
+        const sessionInfo = sessions[currentSession];
+        if (sessionInfo) {
+          this.timeFilteredData = await this.dbManager.getRecordsByHours(this.assetName, sessionInfo.hours);
+          mlsLog(`[ML] セッション拡張後: ${this.timeFilteredData.length}件`);
+        }
+      }
+
+      // それでも不足の場合はデータ不足として扱う（全データには戻さない）
+      if (this.timeFilteredData.length < MIN_DATA_COUNT) {
+        mlsLog(`[ML] ⚠️ データ不足: ${this.timeFilteredData.length}件 (最低${MIN_DATA_COUNT}件必要)`);
+      }
+    } catch (error) {
+      console.error('[ML] 時間帯フィルタエラー:', error);
+      this.timeFilteredData = [];
+    }
+  }
+
+  /**
+   * 時間帯フィルタ情報を取得
+   */
+  getTimeFilterInfo() {
+    const currentHour = new Date().getHours();
+    const currentSession = window.DBManager.getCurrentSession(currentHour);
+    const sessions = window.DBManager.getMarketSessions();
+    const sessionInfo = sessions[currentSession];
+
+    return {
+      mode: this.timeFilterMode,
+      currentHour,
+      currentSession,
+      sessionName: sessionInfo?.name || '不明',
+      filteredCount: this.timeFilteredData.length,
+      totalCount: this.trainingData.length,
+      targetHours: this.timeFilterMode === 'hour'
+        ? window.DBManager.getHourRangeWithPriority(currentHour, 2)
+        : (sessionInfo?.hours || [])
+    };
+  }
+
+  /**
+   * 分析用データを取得（フィルタモードに応じて返す）
+   */
+  getAnalysisData() {
+    return this.timeFilterMode === 'all' ? this.trainingData : this.timeFilteredData;
+  }
 }
 
 // ========================================
@@ -477,14 +589,15 @@ class PatternMatchingSystem {
     }
   }
 
-  updateWorkerData(data) {
+  updateWorkerData(data, timeFilterMode = 'all') {
     if (!this.worker) return;
     this.worker.postMessage({
       type: 'INIT',
       id: 'init_' + Date.now(),
       payload: {
         assetName: 'current',
-        data: data
+        data: data,
+        timeFilterMode: timeFilterMode
       }
     });
   }
@@ -644,6 +757,19 @@ class MachineLearningSystem {
 
   getDataCount() { return this.dataSystem.getDataCount(); }
   getDataCountWithResults() { return this.dataSystem.getDataCountWithResults(); }
+
+  // 時間帯別分析機能
+  async setTimeFilterMode(mode) {
+    return this.dataSystem.setTimeFilterMode(mode);
+  }
+
+  getTimeFilterInfo() {
+    return this.dataSystem.getTimeFilterInfo();
+  }
+
+  getTimeFilterMode() {
+    return this.dataSystem.timeFilterMode;
+  }
 }
 
 // グローバルに公開

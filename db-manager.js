@@ -4,7 +4,7 @@
  */
 
 class DBManager {
-    constructor(dbName = 'TheOptionTrendDB', version = 1) {
+    constructor(dbName = 'TheOptionTrendDB', version = 2) {
         this.dbName = dbName;
         this.version = version;
         this.db = null;
@@ -31,6 +31,7 @@ class DBManager {
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                const oldVersion = event.oldVersion;
 
                 // パターンストアを作成（timestampをキーパスとする）
                 if (!db.objectStoreNames.contains(this.storeName)) {
@@ -39,8 +40,18 @@ class DBManager {
                     // インデックス作成
                     store.createIndex('assetName', 'assetName', { unique: false });
                     store.createIndex('timestamp', 'timestamp', { unique: true });
+                    store.createIndex('hour', 'hour', { unique: false });
 
-                    console.log('[DB] Object store created');
+                    console.log('[DB] Object store created with hour index');
+                } else if (oldVersion < 2) {
+                    // v1 → v2: hourインデックスを追加
+                    const transaction = event.target.transaction;
+                    const store = transaction.objectStore(this.storeName);
+
+                    if (!store.indexNames.contains('hour')) {
+                        store.createIndex('hour', 'hour', { unique: false });
+                        console.log('[DB] Added hour index for time-based filtering');
+                    }
                 }
             };
         });
@@ -260,6 +271,100 @@ class DBManager {
      */
     async getRecordCount(assetName = null) {
         return this.getCount(assetName);
+    }
+
+    /**
+     * 時間帯でフィルタしてレコードを取得
+     * @param {string} assetName - 通貨ペア名
+     * @param {number[]} hours - 取得する時間帯の配列 (例: [10, 11, 12])
+     * @returns {Promise<Array>} フィルタされたレコード
+     */
+    async getRecordsByHours(assetName, hours) {
+        if (!this.db) await this.init();
+        if (!hours || hours.length === 0) {
+            return this.getAllRecords(assetName);
+        }
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const results = [];
+
+            // hourインデックスを使用して各時間帯のデータを取得
+            let completedQueries = 0;
+            const totalQueries = hours.length;
+
+            for (const hour of hours) {
+                const index = store.index('hour');
+                const request = index.getAll(IDBKeyRange.only(hour));
+
+                request.onsuccess = () => {
+                    const records = request.result;
+                    // assetNameでフィルタ
+                    const filtered = assetName
+                        ? records.filter(r => r.assetName === assetName)
+                        : records;
+                    results.push(...filtered);
+                    completedQueries++;
+
+                    if (completedQueries === totalQueries) {
+                        // 重複を除去してtimestamp順にソート
+                        const uniqueResults = [...new Map(results.map(r => [r.timestamp, r])).values()];
+                        uniqueResults.sort((a, b) => a.timestamp - b.timestamp);
+                        resolve(uniqueResults);
+                    }
+                };
+
+                request.onerror = (event) => {
+                    console.error('[DB] Get by hours error:', event.target.error);
+                    reject(event.target.error);
+                };
+            }
+        });
+    }
+
+    /**
+     * 市場セッションの定義
+     */
+    static getMarketSessions() {
+        return {
+            TOKYO: { name: '東京', hours: [9, 10, 11, 12, 13, 14, 15], start: 9, end: 15 },
+            EUROPE: { name: '欧州', hours: [16, 17, 18, 19, 20], start: 16, end: 20 },
+            NY: { name: 'NY', hours: [21, 22, 23, 0, 1, 2], start: 21, end: 2 },
+            QUIET: { name: '静穏', hours: [3, 4, 5, 6, 7, 8], start: 3, end: 8 }
+        };
+    }
+
+    /**
+     * 現在時刻の市場セッションを取得
+     * @param {number} hour - 時間 (0-23)
+     * @returns {string} セッション名 (TOKYO, EUROPE, NY, QUIET)
+     */
+    static getCurrentSession(hour) {
+        const sessions = DBManager.getMarketSessions();
+        for (const [sessionName, session] of Object.entries(sessions)) {
+            if (session.hours.includes(hour)) {
+                return sessionName;
+            }
+        }
+        return 'QUIET';
+    }
+
+    /**
+     * 時間帯優先度付きの時間範囲を取得
+     * 例: 11時の場合 → [11, 10, 12, 9, 13]（±1.5時間を段階的に）
+     * @param {number} currentHour - 現在の時間
+     * @param {number} range - 範囲（デフォルト1.5時間 → 2時間として計算）
+     * @returns {number[]} 優先度順の時間配列
+     */
+    static getHourRangeWithPriority(currentHour, range = 2) {
+        const hours = [currentHour];
+        for (let i = 1; i <= range; i++) {
+            const before = (currentHour - i + 24) % 24;
+            const after = (currentHour + i) % 24;
+            hours.push(before, after);
+        }
+        return hours;
     }
 
     /**
