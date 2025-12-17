@@ -40,6 +40,9 @@ let lastAISignal = { signal: null, matchCount: null, available: null };
 let lastTechSignal = { signal: null, confidence: null };
 // データカウントは常に増加のみ許可（チカチカ防止）
 let highestMLDataCount = 0;
+// シグナル表示状態の追跡（シグナル消失防止）
+let signalDisplayed = false;  // シグナルが一度表示されたかどうか
+let lastDisplayedSignal = null;  // 最後に表示されたシグナル
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
@@ -406,8 +409,14 @@ async function loadAssetDataList() {
 
 // ダウンロードリクエスト
 function requestDownload(type) {
-  debugLog('[SidePanel] ダウンロードリクエスト:', type);
-  chrome.runtime.sendMessage({ type: 'REQUEST_DOWNLOAD', downloadType: type });
+  console.log('[SidePanel] ダウンロードリクエスト送信:', type);
+  chrome.runtime.sendMessage({ type: 'REQUEST_DOWNLOAD', downloadType: type }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('[SidePanel] メッセージ送信エラー:', chrome.runtime.lastError.message);
+    } else {
+      console.log('[SidePanel] メッセージ送信完了');
+    }
+  });
   closeDownload();
 }
 
@@ -445,6 +454,8 @@ function selectTimeframe(timeframe) {
   // 時間枠切替時はシグナルカードを「準備中」にリセット
   // 実際のシグナル表示は次のSTATUS_UPDATEで適切なタイミング（prepTime以内）に更新される
   resetSignalCardsToWaiting();
+  signalDisplayed = false;  // シグナル表示状態もリセット
+  lastDisplayedSignal = null;
 
   // 詳細カードを更新
   if (latestAnalysisData) {
@@ -692,6 +703,15 @@ function updateProgressRing(current, total) {
 function updateRealtimeStatus(data) {
   if (!data) return;
 
+  // デバッグ: 受信データをログ出力
+  debugLog('[SidePanel] STATUS_UPDATE受信:', {
+    isTrading: data.isTrading,
+    tradingRemaining: data.tradingRemaining,
+    countdown: data.countdown,
+    signalReset: data.signalReset,
+    currentSignal: data.currentSignal
+  });
+
   if (data.asset) {
     document.getElementById('asset-name-display').textContent = data.asset;
   }
@@ -702,6 +722,8 @@ function updateRealtimeStatus(data) {
   // シグナルリセット（取引終了時）
   if (data.signalReset) {
     resetSignalCards();
+    signalDisplayed = false;  // シグナル表示状態もリセット
+    lastDisplayedSignal = null;
   }
 
   // カウントダウン（フェーズに応じて表示を変更）
@@ -739,6 +761,12 @@ function updateRealtimeStatus(data) {
     // アラート音はtheoption-analyzer.jsで再生するため、ここでは再生しない
     // （二重再生防止）
 
+    // シグナルが有効な場合は表示状態を更新
+    if (hasSignal && signal) {
+      signalDisplayed = true;
+      lastDisplayedSignal = signal;
+    }
+
     // フェーズを決定して表示を変更
     if (isTrading) {
       // 取引中：判定時間のカウントダウン
@@ -751,6 +779,9 @@ function updateRealtimeStatus(data) {
       // 取引中はシグナルカードを表示（保存されたシグナルを使用）
       if (signal) {
         updateSignalCardsFromStatus(signal);
+      } else if (lastDisplayedSignal) {
+        // シグナルがない場合は最後に表示されたシグナルを使用
+        updateSignalCardsFromStatus(lastDisplayedSignal);
       }
     } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
       // 準備：シグナルがあり、残り5秒以内
@@ -764,16 +795,28 @@ function updateRealtimeStatus(data) {
       if (signal) {
         updateSignalCardsFromStatus(signal);
       }
+    } else if (signalDisplayed && lastDisplayedSignal && countdown > 0) {
+      // シグナルが一度表示された後は、取引終了まで保持（エントリー待機中も含む）
+      nextAnalysisEl.textContent = countdown;
+      if (countdownContainer) {
+        countdownContainer.classList.remove('phase-analyzing', 'phase-trading');
+        countdownContainer.classList.add('phase-ready');
+      }
+      if (countdownLabel) countdownLabel.textContent = 'エントリー';
+      // 保存されたシグナルを表示し続ける
+      updateSignalCardsFromStatus(lastDisplayedSignal);
     } else {
-      // 分析中：デフォルト状態
+      // 分析中：デフォルト状態（シグナルがまだ表示されていない場合のみリセット）
       nextAnalysisEl.textContent = countdown;
       if (countdownContainer) {
         countdownContainer.classList.remove('phase-ready', 'phase-trading');
         countdownContainer.classList.add('phase-analyzing');
       }
       if (countdownLabel) countdownLabel.textContent = '分析中';
-      // 分析中はシグナルカードを「準備中」にリセット
-      resetSignalCardsToWaiting();
+      // シグナルがまだ表示されていない場合のみ「準備中」にリセット
+      if (!signalDisplayed) {
+        resetSignalCardsToWaiting();
+      }
     }
 
     // プログレスリング更新

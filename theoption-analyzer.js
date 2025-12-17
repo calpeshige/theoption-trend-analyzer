@@ -647,7 +647,7 @@ function initializeAnalyzer() {
 
             // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
             const multiDim = result.multiDim;
-            const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, candleHistory, currentAsset);
+            const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, null, currentAsset);
             const totalStrength = strengthResult.total;
 
             // 時間枠別の閾値を取得（動的閾値を優先）
@@ -1280,7 +1280,7 @@ function initializeAnalyzer() {
               const multiDim = result.multiDim;
 
               // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
-              const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, candleHistory, currentAsset);
+              const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, null, currentAsset);
               const totalStrength = strengthResult.total;
 
               // 時間枠別の閾値を取得（動的閾値を優先）
@@ -2977,15 +2977,19 @@ function initializeAnalyzer() {
       // 3段階トレンド分析
       const hierarchicalTrend = getHierarchicalTrend(targetTimeframe);
 
-      // 履歴記録（パフォーマンス最適化のため無効化）
-      // if (!isTabSwitch) {
-      //   try {
-      //     recordPrediction(targetTimeframe, mlPredictions, multiDimResult);
-      //     recordTrend(targetTimeframe, hierarchicalTrend, multiDimResult);
-      //   } catch (error) {
-      //     console.error('[TheOption Analyzer] 履歴記録エラー:', error);
-      //   }
-      // }
+      // 履歴記録
+      if (!isTabSwitch) {
+        try {
+          console.log('[TheOption Analyzer] 📝 履歴記録開始:', targetTimeframe, 'mlPredictions:', mlPredictions ? 'あり' : 'なし');
+          recordPrediction(targetTimeframe, mlPredictions, multiDimResult);
+          recordTrend(targetTimeframe, hierarchicalTrend, multiDimResult);
+          console.log('[TheOption Analyzer] 📝 履歴記録完了 - predictionHistory:', predictionHistory.length, 'trendHistory:', trendHistory.length);
+        } catch (error) {
+          console.error('[TheOption Analyzer] 履歴記録エラー:', error);
+        }
+      } else {
+        console.log('[TheOption Analyzer] ⏭️ タブ切替のため履歴記録スキップ');
+      }
 
       // 分析結果をキャッシュに保存（currentSituationも保存して閾値変更時に使用）
       timeframeResults[targetTimeframe] = {
@@ -4089,9 +4093,12 @@ function initializeAnalyzer() {
     }
 
     function recordPrediction(timeframe, mlPredictions, multiDim) {
+      console.log('[History] recordPrediction呼び出し:', timeframe, mlPredictions?.predictions ? 'あり' : 'なし');
+
       if (!mlPredictions || !mlPredictions.predictions) return;
 
       const pred = mlPredictions.predictions[`${timeframe}s`];
+      console.log('[History] 予測データ:', pred?.prediction, '信頼度:', pred?.confidence);
 
       if (pred && pred.prediction !== 'INSUFFICIENT_DATA') {
         predictionHistory.push({
@@ -4325,20 +4332,20 @@ function initializeAnalyzer() {
     }
 
     function downloadMLDataAsCSV() {
+      console.log('[CSV Download] AI学習データダウンロード開始');
+      console.log('[CSV Download] mlSystem:', mlSystem);
+      console.log('[CSV Download] mlSystem.dataSystem:', mlSystem?.dataSystem);
+      console.log('[CSV Download] trainingData length:', mlSystem?.dataSystem?.trainingData?.length);
+
       if (!mlSystem) {
         alert('AI学習システムが初期化されていません');
         return;
       }
 
-      const system = mlSystem.getCurrentSystem();
-      if (!system || !system.dataCollector) {
-        alert('学習データがありません');
-        return;
-      }
-
-      const trainingData = system.dataCollector.trainingData;
+      // mlSystem.dataSystemからtrainingDataを取得
+      const trainingData = mlSystem.dataSystem?.trainingData;
       if (!trainingData || trainingData.length === 0) {
-        alert('ダウンロード可能なデータがありません');
+        alert('ダウンロード可能なデータがありません\n\nデータが蓄積されるまでしばらくお待ちください。\n\n（デバッグ情報はコンソールを確認）');
         return;
       }
 
@@ -4525,8 +4532,11 @@ function initializeAnalyzer() {
     }
 
     function downloadPredictionsAsCSV() {
+      console.log('[CSV Download] 予測履歴ダウンロード開始');
+      console.log('[CSV Download] predictionHistory:', predictionHistory?.length);
+
       if (!predictionHistory || predictionHistory.length === 0) {
-        alert('予測履歴データがありません\n\n分析が実行されると自動的に記録されます。');
+        alert('予測履歴データがありません\n\n分析が実行されると自動的に記録されます。\n（v5.4.0以降で記録が有効化されました）');
         return;
       }
 
@@ -4558,16 +4568,16 @@ function initializeAnalyzer() {
           record.timestamp,
           dateStr,
           record.timeframe,
-          record.prediction,
-          record.confidence,
-          record.upRate,
-          record.downRate,
-          record.sampleSize,
-          record.avgChange,
-          record.currentPrice.toFixed(5),
-          record.macdStrength.toFixed(2),
-          record.adxValue.toFixed(2),
-          record.rsi.toFixed(2)
+          record.prediction || '',
+          record.confidence ?? '',
+          record.upRate ?? '',
+          record.downRate ?? '',
+          record.sampleSize ?? '',
+          record.avgChange ?? '',
+          record.currentPrice ? record.currentPrice.toFixed(5) : '',
+          record.macdStrength ? record.macdStrength.toFixed(2) : '',
+          record.adxValue ? record.adxValue.toFixed(2) : '',
+          record.rsi ? record.rsi.toFixed(2) : ''
         ].join(',');
       });
 
@@ -4637,17 +4647,17 @@ function initializeAnalyzer() {
           record.timestamp,
           dateStr,
           record.timeframe,
-          record.longTrend,
-          record.midTrend,
-          record.shortTrend,
-          record.alignment,
-          record.technicalSignal,
-          record.technicalScore,
-          record.trendStrength,
-          record.macdSignal,
-          record.adxValue.toFixed(2),
-          record.adxTrend,
-          record.volatility
+          record.longTrend || '',
+          record.midTrend || '',
+          record.shortTrend || '',
+          record.alignment || '',
+          record.technicalSignal || '',
+          record.technicalScore ?? '',
+          record.trendStrength ?? '',
+          record.macdSignal || '',
+          record.adxValue ? record.adxValue.toFixed(2) : '',
+          record.adxTrend || '',
+          record.volatility || ''
         ].join(',');
       });
 

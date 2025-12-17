@@ -110,12 +110,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ダウンロード要求をコンテンツスクリプトに転送
   if (message.type === 'REQUEST_DOWNLOAD') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, {
+    console.log('[Background] REQUEST_DOWNLOAD受信:', message.downloadType);
+    // theoption.comのタブを探す（アクティブタブではなく、URL一致で検索）
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      console.log('[Background] theoption.comタブ検索結果:', tabs?.length, 'タブ');
+      if (tabs && tabs.length > 0) {
+        const targetTab = tabs[0];
+        console.log('[Background] ダウンロード指示送信先:', targetTab.id, targetTab.url);
+        chrome.tabs.sendMessage(targetTab.id, {
           type: 'EXECUTE_DOWNLOAD',
           downloadType: message.downloadType
-        }).catch(() => {});
+        }).then(() => {
+          console.log('[Background] EXECUTE_DOWNLOAD送信成功');
+        }).catch((error) => {
+          console.error('[Background] EXECUTE_DOWNLOAD送信失敗:', error);
+        });
+      } else {
+        console.warn('[Background] theoption.comタブが見つかりません');
       }
     });
   }
