@@ -530,69 +530,57 @@ function updateTimeFilterChips(mode) {
   });
 }
 
-// 時間帯フィルタ情報を更新
+// 時間帯フィルタ情報を更新（AI予測詳細タイトル横のバッジ）
 function updateTimeFilterInfo() {
-  const infoEl = document.getElementById('time-filter-info');
-  if (!infoEl) return;
+  const badgeEl = document.getElementById('time-filter-badge');
+  if (!badgeEl) return;
 
   if (currentSettings.timeFilterMode === 'all') {
-    infoEl.textContent = '';
-    infoEl.style.display = 'none';
+    badgeEl.textContent = '';
   } else {
     // 現在時刻から市場セッションを判定
     const hour = new Date().getHours();
     let sessionName = '不明';
-    let hourRange = '';
 
     if (hour >= 9 && hour <= 15) {
       sessionName = '東京';
-      hourRange = `${Math.max(9, hour - 2)}〜${Math.min(15, hour + 2)}時`;
     } else if (hour >= 16 && hour <= 20) {
       sessionName = '欧州';
-      hourRange = `${Math.max(16, hour - 2)}〜${Math.min(20, hour + 2)}時`;
     } else if (hour >= 21 || hour <= 2) {
       sessionName = 'NY';
-      hourRange = `${hour - 2 < 0 ? hour - 2 + 24 : hour - 2}〜${(hour + 2) % 24}時`;
     } else {
       sessionName = '静穏';
-      hourRange = `${Math.max(3, hour - 2)}〜${Math.min(8, hour + 2)}時`;
     }
 
-    infoEl.textContent = `${sessionName} (${hourRange})`;
-    infoEl.style.display = 'inline';
+    // 一時的に表示（サーバーからの正確な情報が来るまで）
+    badgeEl.textContent = `${sessionName}時間`;
   }
 }
 
 // 時間帯フィルタ情報を更新（サーバーから受信した情報を使用）
 function updateTimeFilterInfoFromServer(timeFilterInfo) {
-  const infoEl = document.getElementById('time-filter-info');
-  if (!infoEl) return;
+  const badgeEl = document.getElementById('time-filter-badge');
+  if (!badgeEl) return;
+
+  // 現在の設定が「全体」モードなら常に非表示
+  if (currentSettings.timeFilterMode === 'all') {
+    badgeEl.textContent = '';
+    return;
+  }
 
   if (!timeFilterInfo || timeFilterInfo.mode === 'all') {
-    infoEl.textContent = '';
-    infoEl.style.display = 'none';
+    // サーバー情報がない場合は、ローカル判定を維持
+    return;
+  }
+
+  const sessionName = timeFilterInfo.sessionName || '不明';
+  const filteredCount = timeFilterInfo.filteredCount;
+
+  // フィルタ後のデータ件数を含めて表示
+  if (filteredCount !== undefined && filteredCount > 0) {
+    badgeEl.textContent = `${sessionName} ${filteredCount}件`;
   } else {
-    const sessionName = timeFilterInfo.sessionName || '不明';
-    const currentHour = timeFilterInfo.currentHour;
-    const targetHours = timeFilterInfo.targetHours || [];
-
-    // 時間範囲を表示
-    let hourRange = '';
-    if (targetHours.length > 0) {
-      const minHour = Math.min(...targetHours);
-      const maxHour = Math.max(...targetHours);
-      hourRange = `${minHour}〜${maxHour}時`;
-    } else if (currentHour !== undefined) {
-      hourRange = `${currentHour}時付近`;
-    }
-
-    // フィルタ後のデータ件数を表示（あれば）
-    const dataCountText = timeFilterInfo.filteredDataCount !== undefined
-      ? ` [${timeFilterInfo.filteredDataCount}件]`
-      : '';
-
-    infoEl.textContent = `${sessionName} (${hourRange})${dataCountText}`;
-    infoEl.style.display = 'inline';
+    badgeEl.textContent = `${sessionName}時間`;
   }
 }
 
