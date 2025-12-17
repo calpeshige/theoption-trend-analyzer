@@ -104,6 +104,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* 左側を固定幅にしてカウントダウンを常に中央に配置 */
+  flex: 0 0 100px;
+  min-width: 100px;
 }
 
 .asset-name {
@@ -111,6 +114,11 @@ body {
   font-weight: 600;
   color: #ffffff;
   letter-spacing: -0.3px;
+  /* テキストが長くても切り詰め */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
 }
 
 /* asset-badge は connection-indicator に移動しました */
@@ -118,6 +126,10 @@ body {
 .top-bar-actions {
   display: flex;
   gap: 4px;
+  /* 右側も固定幅にしてカウントダウンを常に中央に配置 */
+  flex: 0 0 100px;
+  min-width: 100px;
+  justify-content: flex-end;
 }
 
 .icon-button {
