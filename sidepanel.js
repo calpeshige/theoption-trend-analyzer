@@ -622,9 +622,40 @@ function listenForAnalysisUpdates() {
         document.getElementById('asset-data-count').textContent = `${message.data.dataCount}件`;
       }
     }
+
+    // システム状態通知（ページ非アクティブ時の対応）
+    if (message.type === 'SYSTEM_STATE' && message.data) {
+      handleSystemStateChange(message.data);
+    }
     // 同期的に処理完了するため、return falseまたは省略
     // return trueは非同期レスポンスが必要な場合のみ使用
   });
+}
+
+// システム状態変更ハンドラ（タブ切り替え対策）
+let isSystemActive = true;
+
+function handleSystemStateChange(data) {
+  if (data.active) {
+    // システム再開
+    debugLog('[SidePanel] システム再開通知を受信');
+    isSystemActive = true;
+    updateStatus('connected', 'データ受信中');
+
+    // シグナル表示状態をリセット（古い状態が残らないように）
+    signalDisplayed = false;
+    lastDisplayedSignal = null;
+
+    // シグナルカードを「準備中」にリセット
+    resetSignalCardsToWaiting();
+  } else {
+    // システム一時停止
+    debugLog('[SidePanel] システム一時停止通知を受信');
+    isSystemActive = false;
+    updateStatus('waiting', '他のページを表示中...');
+
+    // シグナル表示状態を保持（戻ってきた時に再開できるように）
+  }
 }
 
 // シグナルカードをリセット（取引終了時）
@@ -801,6 +832,12 @@ function updateProgressRing(current, total) {
 function updateRealtimeStatus(data) {
   if (!data) return;
 
+  // システムが非アクティブの場合は更新しない（タブ切り替え対策）
+  if (!isSystemActive) {
+    debugLog('[SidePanel] システム非アクティブのため STATUS_UPDATE をスキップ');
+    return;
+  }
+
   // デバッグ: 受信データをログ出力
   debugLog('[SidePanel] STATUS_UPDATE受信:', {
     isTrading: data.isTrading,
@@ -951,6 +988,12 @@ function requestAnalysisData() {
 // メイン表示更新
 function updateDisplay(data) {
   if (!data) return;
+
+  // システムが非アクティブの場合は更新しない（タブ切り替え対策）
+  if (!isSystemActive) {
+    debugLog('[SidePanel] システム非アクティブのため ANALYSIS_UPDATE をスキップ');
+    return;
+  }
 
   if (data.asset) {
     document.getElementById('asset-name-display').textContent = data.asset;

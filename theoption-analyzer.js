@@ -476,6 +476,104 @@ function initializeAnalyzer() {
     let predictionQualityLog = [];
 
     // ========================================
+    // ページ可視性管理（タブ切り替え対策）
+    // ========================================
+
+    let isPageActive = true;  // ページがアクティブかどうか
+    let pausedState = null;   // 一時停止時の状態保存
+
+    /**
+     * ページがアクティブかどうかをチェック
+     * TheOptionのトレーディングページでのみtrueを返す
+     */
+    function checkPageActive() {
+      // ドキュメントが非表示の場合
+      if (document.hidden) {
+        return false;
+      }
+
+      // URLがTheOptionのトレーディングページかどうかをチェック
+      const url = window.location.href;
+      const isTheOptionPage = url.includes('theoption.com/trading') ||
+                              url.includes('jp.theoption.com/trading');
+
+      return isTheOptionPage;
+    }
+
+    /**
+     * ページがアクティブになった時の処理
+     */
+    function handlePageActivated() {
+      if (isPageActive) return; // 既にアクティブ
+
+      console.log('[TheOption Analyzer] 📢 ページがアクティブになりました - システム再開');
+      isPageActive = true;
+
+      // サイドパネルにシステム再開を通知
+      chrome.runtime.sendMessage({
+        type: 'SYSTEM_STATE',
+        data: { active: true, reason: 'page_activated' }
+      }).catch(() => { });
+
+      // キャッシュをクリアして状態をリセット
+      // （古いカウントダウンやシグナルが残らないように）
+      Object.keys(timeframeResults).forEach(tf => {
+        if (timeframeResults[tf]) {
+          // ml結果は保持、UI関連のキャッシュのみクリア
+          timeframeResults[tf].lastUIUpdate = 0;
+        }
+      });
+
+      // 分析時刻をリセットして再分析を促す
+      Object.keys(lastAnalysisTimes).forEach(tf => {
+        lastAnalysisTimes[tf] = 0;
+      });
+
+      console.log('[TheOption Analyzer] ✅ システム再開完了 - 分析を再開します');
+    }
+
+    /**
+     * ページが非アクティブになった時の処理
+     */
+    function handlePageDeactivated() {
+      if (!isPageActive) return; // 既に非アクティブ
+
+      console.log('[TheOption Analyzer] ⏸️ ページが非アクティブになりました - システム一時停止');
+      isPageActive = false;
+
+      // サイドパネルに一時停止を通知
+      chrome.runtime.sendMessage({
+        type: 'SYSTEM_STATE',
+        data: { active: false, reason: 'page_deactivated' }
+      }).catch(() => { });
+    }
+
+    // ページ可視性変更イベントを監視
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        handlePageDeactivated();
+      } else {
+        // TheOptionページに戻った場合のみ再開
+        if (checkPageActive()) {
+          handlePageActivated();
+        }
+      }
+    });
+
+    // ウィンドウフォーカスイベントも監視（タブ切り替え対策）
+    window.addEventListener('focus', () => {
+      if (checkPageActive()) {
+        handlePageActivated();
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      // フォーカスを失った時点では非アクティブにしない
+      // （同じブラウザ内の別タブを見ているだけかもしれないため）
+      // visibilitychangeで hidden になった時のみ非アクティブにする
+    });
+
+    // ========================================
     // 時間枠別設定
     // ========================================
 
@@ -2184,6 +2282,11 @@ function initializeAnalyzer() {
       let lastDisplayedCountdown = -1;
 
       priceUpdateInterval = setInterval(async () => {
+        // ページが非アクティブの場合は何もしない（タブ切り替え対策）
+        if (!isPageActive) {
+          return;
+        }
+
         const price = getCurrentPriceFromDOM();
         const now = Date.now();
 
