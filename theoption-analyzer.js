@@ -515,21 +515,33 @@ function initializeAnalyzer() {
         data: { active: true, reason: 'page_activated' }
       }).catch(() => { });
 
-      // キャッシュをクリアして状態をリセット
-      // （古いカウントダウンやシグナルが残らないように）
-      Object.keys(timeframeResults).forEach(tf => {
-        if (timeframeResults[tf]) {
-          // ml結果は保持、UI関連のキャッシュのみクリア
-          timeframeResults[tf].lastUIUpdate = 0;
-        }
+      // *** 重要: timeframeResultsを完全にクリア ***
+      // 古いシグナルデータが残っていると、ページ復帰時にチカチカする原因になる
+      // ML結果は失われるが、新しい分析で再計算される
+      timeframeResults = {
+        15: null,
+        30: null,
+        60: null,
+        180: null,
+        300: null
+      };
+
+      // 層別化結果キャッシュもクリア
+      Object.keys(cachedStratificationResults).forEach(tf => {
+        cachedStratificationResults[tf] = null;
       });
+
+      // 取引状態もリセット（古い取引状態が残っていると問題が発生）
+      tradingState.isTrading = false;
+      tradingState.signal = null;
+      tradingState.remainingTime = 0;
 
       // 分析時刻をリセットして再分析を促す
       Object.keys(lastAnalysisTimes).forEach(tf => {
         lastAnalysisTimes[tf] = 0;
       });
 
-      console.log('[TheOption Analyzer] ✅ システム再開完了 - 分析を再開します');
+      console.log('[TheOption Analyzer] ✅ システム再開完了 - 全キャッシュをクリアしました');
     }
 
     /**
