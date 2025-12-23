@@ -218,6 +218,7 @@
             <button class="setting-chip" data-limit="2000">2K</button>
             <button class="setting-chip active" data-limit="all">全期間</button>
           </div>
+          <span class="setting-hint" id="data-limit-hint">全データを使用</span>
         </div>
       </section>
     </main>
@@ -372,6 +373,25 @@
       </div>
     </aside>
   </div>
+
+  <!-- 時間帯別データ詳細モーダル -->
+  <div class="bottom-sheet-overlay" id="session-data-overlay"></div>
+  <aside class="bottom-sheet" id="session-data-sheet">
+    <div class="bottom-sheet-handle"></div>
+    <div class="bottom-sheet-header">
+      <h2 class="bottom-sheet-title">🕐 時間帯別データ件数</h2>
+      <button class="icon-button" id="close-session-data">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="bottom-sheet-content" id="session-data-content">
+      <div class="session-data-loading">
+        <span>読み込み中...</span>
+      </div>
+    </div>
+  </aside>
 
   <!-- 通貨ペア別データ状況モーダル -->
   <div class="bottom-sheet-overlay" id="asset-data-overlay"></div>

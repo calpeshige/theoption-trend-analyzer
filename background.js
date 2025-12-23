@@ -1,6 +1,9 @@
 /**
  * Background Service Worker
  * サイドパネルの制御とコンテンツスクリプトとの通信を担当
+ *
+ * v5.6.4: bubinga_systemパターンに従い、onActivated/onFocusChangedを削除
+ * macOS Spaces切り替えでも分析が継続するようにシンプル化
  */
 
 // デバッグモード（本番ではfalse）
@@ -15,78 +18,25 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
-// TheOptionのトレーディングページでサイドパネルを有効化
+// TheOptionのトレーディングページでサイドパネルを有効化/無効化
+// bubinga_systemパターン: onUpdatedのみでサイドパネル制御
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    if (tab.url.includes('theoption.com/trading')) {
+    const isTheOption = tab.url.includes('theoption.com/trading');
+
+    if (isTheOption) {
       chrome.sidePanel.setOptions({
         tabId,
         path: 'sidepanel.html',
         enabled: true
       });
+      debugLog(`[Background] サイドパネル有効化: tabId=${tabId}`);
     } else {
       chrome.sidePanel.setOptions({
         tabId,
         enabled: false
       });
     }
-  }
-});
-
-// タブがアクティブになった時の処理（サイドパネルに通知）
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  try {
-    const tab = await chrome.tabs.get(activeInfo.tabId);
-    const isTheOptionPage = tab.url && (
-      tab.url.includes('theoption.com/trading') ||
-      tab.url.includes('jp.theoption.com/trading')
-    );
-
-    // TheOption以外のページに移動した場合はキャッシュをクリア
-    // （戻った時に古いデータが表示されないようにするため）
-    if (!isTheOptionPage) {
-      cachedAnalysisData = null;
-      debugLog('[Background] TheOption以外のページ - キャッシュをクリア');
-    }
-
-    // サイドパネルにページ状態を通知
-    chrome.runtime.sendMessage({
-      type: 'PAGE_STATE',
-      data: {
-        isTheOptionPage: isTheOptionPage,
-        url: tab.url
-      }
-    }).catch(() => {
-      // サイドパネルが開いていない場合は無視
-    });
-
-    debugLog(`[Background] タブ切り替え検出: isTheOption=${isTheOptionPage}, url=${tab.url}`);
-  } catch (error) {
-    // タブ取得エラーは無視
-  }
-});
-
-// タブのURL変更時の処理
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.active && tab.url) {
-    const isTheOptionPage = tab.url.includes('theoption.com/trading') ||
-                           tab.url.includes('jp.theoption.com/trading');
-
-    // TheOption以外のページに移動した場合はキャッシュをクリア
-    if (!isTheOptionPage) {
-      cachedAnalysisData = null;
-    }
-
-    // サイドパネルにページ状態を通知
-    chrome.runtime.sendMessage({
-      type: 'PAGE_STATE',
-      data: {
-        isTheOptionPage: isTheOptionPage,
-        url: tab.url
-      }
-    }).catch(() => {
-      // サイドパネルが開いていない場合は無視
-    });
   }
 });
 
@@ -131,9 +81,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // サイドパネルからのデータ要求
   if (message.type === 'GET_ANALYSIS_DATA') {
-    // 常にコンテンツスクリプトから最新データを取得（キャッシュを使わない）
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
+    // TheOptionタブを探してデータを取得
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
         chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_ANALYSIS_DATA' })
           .then(response => {
             if (response) {
@@ -154,8 +104,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 設定変更をコンテンツスクリプトに転送
   if (message.type === 'SETTING_CHANGED') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
         chrome.tabs.sendMessage(tabs[0].id, message).catch(() => {});
       }
     });
@@ -163,8 +113,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 時間枠変更をコンテンツスクリプトに転送
   if (message.type === 'TIMEFRAME_CHANGED') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
         chrome.tabs.sendMessage(tabs[0].id, message).catch(() => {});
       }
     });
@@ -172,18 +122,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ダウンロード要求をコンテンツスクリプトに転送
   if (message.type === 'REQUEST_DOWNLOAD') {
-    console.log('[Background] REQUEST_DOWNLOAD受信:', message.downloadType);
-    // theoption.comのタブを探す（アクティブタブではなく、URL一致で検索）
+    debugLog('[Background] REQUEST_DOWNLOAD受信:', message.downloadType);
     chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
-      console.log('[Background] theoption.comタブ検索結果:', tabs?.length, 'タブ');
+      debugLog('[Background] theoption.comタブ検索結果:', tabs?.length, 'タブ');
       if (tabs && tabs.length > 0) {
         const targetTab = tabs[0];
-        console.log('[Background] ダウンロード指示送信先:', targetTab.id, targetTab.url);
+        debugLog('[Background] ダウンロード指示送信先:', targetTab.id, targetTab.url);
         chrome.tabs.sendMessage(targetTab.id, {
           type: 'EXECUTE_DOWNLOAD',
           downloadType: message.downloadType
         }).then(() => {
-          console.log('[Background] EXECUTE_DOWNLOAD送信成功');
+          debugLog('[Background] EXECUTE_DOWNLOAD送信成功');
         }).catch((error) => {
           console.error('[Background] EXECUTE_DOWNLOAD送信失敗:', error);
         });
@@ -195,8 +144,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 通貨ペア別データ一覧を取得（IndexedDBから）
   if (message.type === 'GET_ASSET_DATA_LIST') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
         chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_ASSET_DATA_LIST' })
           .then(response => {
             sendResponse(response);
@@ -205,14 +154,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ error: 'Content script not available' });
           });
       } else {
-        sendResponse({ error: 'No active tab' });
+        sendResponse({ error: 'No TheOption tab' });
       }
     });
     return true; // 非同期レスポンスを使用
   }
 
-  // GET_ANALYSIS_DATA以外は同期処理なのでreturn falseまたは省略
-  // return trueはGET_ANALYSIS_DATAの処理内で既に返している
+  // 時間帯別データ件数を取得（IndexedDBから）
+  if (message.type === 'GET_SESSION_DATA_COUNT') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_SESSION_DATA_COUNT' })
+          .then(response => {
+            sendResponse(response);
+          })
+          .catch(() => {
+            sendResponse({ error: 'Content script not available' });
+          });
+      } else {
+        sendResponse({ error: 'No TheOption tab' });
+      }
+    });
+    return true; // 非同期レスポンスを使用
+  }
 });
 
 debugLog('[Background] Service Worker 起動完了');

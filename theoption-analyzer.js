@@ -463,6 +463,17 @@ function initializeAnalyzer() {
       signal: null             // 取引開始時のシグナル（取引中に保持）
     };
 
+    // v5.6.6: シグナル表示後の予測値固定用
+    // シグナルが出た後は、そのサイクルが終わるまで予測値を変更しない
+    let lockedPrediction = {
+      isLocked: false,           // ロック状態（シグナル表示中はtrue）
+      timeframe: null,           // ロック中の時間枠
+      mlPredictions: null,       // ロックされたML予測結果
+      stratification: null,      // ロックされた層別化結果
+      lockTime: 0,               // ロック開始時刻
+      cycleEndTime: 0            // サイクル終了時刻（次のエントリータイミング）
+    };
+
     // 事前計算されたMLデータ（全判定時間のデータを15秒ごとに1回だけ計算）
     let cachedMLData = null;
 
@@ -476,131 +487,15 @@ function initializeAnalyzer() {
     let predictionQualityLog = [];
 
     // ========================================
-    // ページ可視性管理（タブ切り替え対策）
+    // v5.6.4: ページ可視性管理を削除（bubinga_systemパターン）
+    // macOS Spacesでも常にデータ収集を継続
     // ========================================
 
-    let isPageActive = true;  // ページがアクティブかどうか
-    let pausedState = null;   // 一時停止時の状態保存
+    // isPageActiveは常にtrue（削除せず互換性維持）
+    const isPageActive = true;
 
-    /**
-     * ページがアクティブかどうかをチェック
-     * TheOptionのトレーディングページでのみtrueを返す
-     */
-    function checkPageActive() {
-      // ドキュメントが非表示の場合
-      if (document.hidden) {
-        return false;
-      }
-
-      // URLがTheOptionのトレーディングページかどうかをチェック
-      const url = window.location.href;
-      const isTheOptionPage = url.includes('theoption.com/trading') ||
-                              url.includes('jp.theoption.com/trading');
-
-      return isTheOptionPage;
-    }
-
-    /**
-     * ページがアクティブになった時の処理
-     */
-    // ページ復帰後の安定化期間（STATUS_UPDATE送信を抑制）
-    let isStabilizingAfterActivation = false;
-    let stabilizationTimer = null;
-    const STABILIZATION_PERIOD_MS = 2000;  // 2秒間の安定化期間
-
-    function handlePageActivated() {
-      if (isPageActive) return; // 既にアクティブ
-
-      console.log('[TheOption Analyzer] 📢 ページがアクティブになりました - 安定化期間開始');
-      isPageActive = true;
-      isStabilizingAfterActivation = true;  // 安定化期間を開始
-
-      // 前回のタイマーをクリア
-      if (stabilizationTimer) {
-        clearTimeout(stabilizationTimer);
-      }
-
-      // サイドパネルにシステム再開を通知（サイドパネル側も安定化期間に入る）
-      chrome.runtime.sendMessage({
-        type: 'SYSTEM_STATE',
-        data: { active: true, reason: 'page_activated' }
-      }).catch(() => { });
-
-      // *** 重要: timeframeResultsを完全にクリア ***
-      // 古いシグナルデータが残っていると、ページ復帰時にチカチカする原因になる
-      // ML結果は失われるが、新しい分析で再計算される
-      timeframeResults = {
-        15: null,
-        30: null,
-        60: null,
-        180: null,
-        300: null
-      };
-
-      // 層別化結果キャッシュもクリア
-      Object.keys(cachedStratificationResults).forEach(tf => {
-        cachedStratificationResults[tf] = null;
-      });
-
-      // 取引状態もリセット（古い取引状態が残っていると問題が発生）
-      tradingState.isTrading = false;
-      tradingState.signal = null;
-      tradingState.remainingTime = 0;
-
-      // 分析時刻をリセットして再分析を促す
-      Object.keys(lastAnalysisTimes).forEach(tf => {
-        lastAnalysisTimes[tf] = 0;
-      });
-
-      // 安定化期間終了後にデータ送信を再開
-      stabilizationTimer = setTimeout(() => {
-        isStabilizingAfterActivation = false;
-        console.log('[TheOption Analyzer] ✅ 安定化期間終了 - データ送信再開');
-      }, STABILIZATION_PERIOD_MS);
-
-      console.log('[TheOption Analyzer] ⏳ 安定化期間中（STATUS_UPDATE抑制）');
-    }
-
-    /**
-     * ページが非アクティブになった時の処理
-     */
-    function handlePageDeactivated() {
-      if (!isPageActive) return; // 既に非アクティブ
-
-      console.log('[TheOption Analyzer] ⏸️ ページが非アクティブになりました - システム一時停止');
-      isPageActive = false;
-
-      // サイドパネルに一時停止を通知
-      chrome.runtime.sendMessage({
-        type: 'SYSTEM_STATE',
-        data: { active: false, reason: 'page_deactivated' }
-      }).catch(() => { });
-    }
-
-    // ページ可視性変更イベントを監視
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        handlePageDeactivated();
-      } else {
-        // TheOptionページに戻った場合のみ再開
-        if (checkPageActive()) {
-          handlePageActivated();
-        }
-      }
-    });
-
-    // ウィンドウフォーカスイベントも監視（タブ切り替え対策）
-    window.addEventListener('focus', () => {
-      if (checkPageActive()) {
-        handlePageActivated();
-      }
-    });
-
-    window.addEventListener('blur', () => {
-      // フォーカスを失った時点では非アクティブにしない
-      // （同じブラウザ内の別タブを見ているだけかもしれないため）
-      // visibilitychangeで hidden になった時のみ非アクティブにする
-    });
+    // 安定化期間も不要（常にアクティブ）
+    const isStabilizingAfterActivation = false;
 
     // ========================================
     // 時間枠別設定
@@ -1294,7 +1189,11 @@ function initializeAnalyzer() {
               ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
               aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
               aiDiff: signals.ai ? signals.ai.diff : null,
-              aiStarLevel: null  // 強化シグナル用
+              aiStarLevel: null,  // 強化シグナル用
+              // v5.6.5: AI予測詳細データも保持（シグナル表示時に詳細も表示するため）
+              aiUpRate: signals.ai ? signals.ai.upRate : null,
+              aiDownRate: signals.ai ? signals.ai.downRate : null,
+              aiMatchCount: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.sampleSize || 0
             };
 
             // === 強化シグナルのチェック ===
@@ -1372,6 +1271,16 @@ function initializeAnalyzer() {
             }
             // 分析結果をクリア（取引していた時間枠の結果をクリア）
             timeframeResults[tradingTimeframe] = null;
+
+            // v5.6.6: 予測値ロックも解除
+            if (lockedPrediction.isLocked && lockedPrediction.timeframe === tradingTimeframe) {
+              console.log(`[TheOption Analyzer] 🔓 取引終了により予測値ロック解除: ${tradingTimeframe}秒`);
+              lockedPrediction.isLocked = false;
+              lockedPrediction.timeframe = null;
+              lockedPrediction.mlPredictions = null;
+              lockedPrediction.stratification = null;
+            }
+
             console.log(`[TheOption Analyzer] 🔄 取引終了: ${tradingTimeframe}秒のシグナルをリセット (現在の時間枠: ${currentTimeframe}秒, countdown: ${countdown})`);
           }
         }
@@ -1611,7 +1520,19 @@ function initializeAnalyzer() {
 
         if (message.type === 'TIMEFRAME_CHANGED') {
           // 時間枠変更
+          const oldTimeframe = currentTimeframe;
           currentTimeframe = message.timeframe;
+
+          // v5.6.6: 時間枠が変更されたら予測値ロックを解除
+          // 別の時間枠に切り替えた場合、古いロックは無効
+          if (lockedPrediction.isLocked && lockedPrediction.timeframe !== currentTimeframe) {
+            console.log(`[TheOption Analyzer] 🔓 時間枠変更により予測値ロック解除: ${lockedPrediction.timeframe}秒 → ${currentTimeframe}秒`);
+            lockedPrediction.isLocked = false;
+            lockedPrediction.timeframe = null;
+            lockedPrediction.mlPredictions = null;
+            lockedPrediction.stratification = null;
+          }
+
           // UI更新
           const result = timeframeResults[currentTimeframe];
           if (result) {
@@ -1706,6 +1627,81 @@ function initializeAnalyzer() {
               });
             } catch (error) {
               console.error('[TheOption Analyzer] IndexedDBエラー:', error);
+              sendResponse({ error: error.message });
+            }
+          })();
+          return true; // 非同期レスポンス
+        }
+
+        // 時間帯別データ件数を取得（現在選択中の通貨ペアのみ）
+        if (message.type === 'REQUEST_SESSION_DATA_COUNT') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+
+              // 現在の通貨ペア
+              const targetAsset = currentAsset || '';
+
+              if (!targetAsset) {
+                sendResponse({
+                  sessionCounts: { tokyo: 0, europe: 0, ny: 0, quiet: 0 },
+                  totalCount: 0,
+                  currentSession: 'quiet',
+                  assetName: ''
+                });
+                return;
+              }
+
+              // 全レコードを取得
+              const allRecords = await dbManager.getAllRecords();
+
+              // 現在の通貨ペアのレコードのみフィルタ
+              const assetRecords = allRecords.filter(record =>
+                record.assetName === targetAsset
+              );
+
+              // 時間帯別にカウント
+              const sessionCounts = {
+                tokyo: 0,   // 東京時間 9:00-15:59
+                europe: 0,  // 欧州時間 16:00-20:59
+                ny: 0,      // NY時間 21:00-2:59
+                quiet: 0    // 静穏時間 3:00-8:59
+              };
+
+              assetRecords.forEach(record => {
+                const hour = record.hour !== undefined ? record.hour : new Date(record.timestamp).getHours();
+
+                if (hour >= 9 && hour <= 15) {
+                  sessionCounts.tokyo++;
+                } else if (hour >= 16 && hour <= 20) {
+                  sessionCounts.europe++;
+                } else if (hour >= 21 || hour <= 2) {
+                  sessionCounts.ny++;
+                } else {
+                  sessionCounts.quiet++;
+                }
+              });
+
+              // 現在の時間帯を判定
+              const currentHour = new Date().getHours();
+              let currentSession = 'quiet';
+              if (currentHour >= 9 && currentHour <= 15) {
+                currentSession = 'tokyo';
+              } else if (currentHour >= 16 && currentHour <= 20) {
+                currentSession = 'europe';
+              } else if (currentHour >= 21 || currentHour <= 2) {
+                currentSession = 'ny';
+              }
+
+              sendResponse({
+                sessionCounts: sessionCounts,
+                totalCount: assetRecords.length,
+                currentSession: currentSession,
+                assetName: targetAsset
+              });
+            } catch (error) {
+              console.error('[TheOption Analyzer] 時間帯別データ取得エラー:', error);
               sendResponse({ error: error.message });
             }
           })();
@@ -2340,6 +2336,15 @@ function initializeAnalyzer() {
               // 通貨ペアが切り替わった
               console.log(`[TheOption Analyzer] 🔄 通貨ペア切り替え検出: ${currentAsset} → ${detectedAsset}`);
 
+              // v5.6.6: 通貨ペア変更時に予測値ロックを解除
+              if (lockedPrediction.isLocked) {
+                console.log(`[TheOption Analyzer] 🔓 通貨ペア変更により予測値ロック解除`);
+                lockedPrediction.isLocked = false;
+                lockedPrediction.timeframe = null;
+                lockedPrediction.mlPredictions = null;
+                lockedPrediction.stratification = null;
+              }
+
               // 表示キャッシュをクリア（ML学習データは保持）
               timeframeResults = {
                 15: null,
@@ -2404,8 +2409,19 @@ function initializeAnalyzer() {
                 patternStratifier.setSymbol(detectedAsset);
               }
 
-              mlSystem.initialize(detectedAsset).then(() => {
+              mlSystem.initialize(detectedAsset).then(async () => {
                 console.log(`[TheOption Analyzer] 🧠 ${detectedAsset} のMLシステムを初期化完了`);
+
+                // v5.6.5: ストレージから時間帯フィルタモードを読み込んで適用
+                try {
+                  const result = await chrome.storage.local.get(['timeFilterMode']);
+                  if (result.timeFilterMode && result.timeFilterMode !== 'all') {
+                    console.log(`[TheOption Analyzer] 🕐 時間帯フィルタモードを適用: ${result.timeFilterMode}`);
+                    await mlSystem.setTimeFilterMode(result.timeFilterMode);
+                  }
+                } catch (err) {
+                  console.error('[TheOption Analyzer] 時間帯フィルタモード読み込みエラー:', err);
+                }
 
                 // 価格履歴から過去のML結果を復元（ブラウザ更新時のsetTimeout消失対策）
                 if (priceHistory.length > 0) {
@@ -2468,8 +2484,19 @@ function initializeAnalyzer() {
                 sendAnalysisToSidePanel({ mlStats: stats });
               };
 
-              mlSystem.initialize(detectedAsset).then(() => {
+              mlSystem.initialize(detectedAsset).then(async () => {
                 console.log(`[TheOption Analyzer] 🧠 ${detectedAsset} のMLシステムを初期化完了`);
+
+                // v5.6.5: ストレージから時間帯フィルタモードを読み込んで適用
+                try {
+                  const result = await chrome.storage.local.get(['timeFilterMode']);
+                  if (result.timeFilterMode && result.timeFilterMode !== 'all') {
+                    console.log(`[TheOption Analyzer] 🕐 時間帯フィルタモードを適用: ${result.timeFilterMode}`);
+                    await mlSystem.setTimeFilterMode(result.timeFilterMode);
+                  }
+                } catch (err) {
+                  console.error('[TheOption Analyzer] 時間帯フィルタモード読み込みエラー:', err);
+                }
 
                 // 価格履歴から過去のML結果を復元（ブラウザ更新時のsetTimeout消失対策）
                 if (priceHistory.length > 0) {
@@ -2878,6 +2905,26 @@ function initializeAnalyzer() {
       const config = TIMEFRAME_CONFIGS[targetTimeframe];
       const isTabSwitch = options.isTabSwitch || false;
 
+      // v5.6.6: 予測値がロックされている場合、ML予測をスキップ
+      // シグナルが出た後は、そのサイクルが終わるまで予測値を変更しない
+      if (lockedPrediction.isLocked && lockedPrediction.timeframe === targetTimeframe) {
+        const now = Date.now();
+        // ロックの有効期限チェック（次のエントリータイミングまで）
+        if (now < lockedPrediction.cycleEndTime) {
+          console.log(`[TheOption Analyzer] 🔒 予測値ロック中: ${config.label} (残り${Math.ceil((lockedPrediction.cycleEndTime - now) / 1000)}秒)`);
+          // ロック中はテクニカル分析のみ更新し、ML予測は保持
+          // UIの更新のためにsendAnalysisToSidePanelは呼ぶが、ML予測は変更しない
+          return;
+        } else {
+          // ロック期限切れ - ロックを解除
+          console.log(`[TheOption Analyzer] 🔓 予測値ロック解除: ${config.label}`);
+          lockedPrediction.isLocked = false;
+          lockedPrediction.timeframe = null;
+          lockedPrediction.mlPredictions = null;
+          lockedPrediction.stratification = null;
+        }
+      }
+
       // 時間枠に応じた最低データ数をチェック
       if (priceHistory.length < config.minDataPoints) {
         // 選択中の時間枠の場合のみUI更新
@@ -3208,6 +3255,24 @@ function initializeAnalyzer() {
         if (hasTechSignal || hasAISignal) {
           console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType} - アラート音を再生`);
           playAlertSound();
+
+          // v5.6.6: シグナルが出たら予測値をロック（次のサイクルまで変更しない）
+          // これにより、シグナル表示後にパーセンテージが変動することを防ぐ
+          if (!lockedPrediction.isLocked) {
+            const secondsUntilEntry = getSecondsUntilNextTiming(targetTimeframe);
+            // 次のエントリータイミング + 時間枠分の余裕を持たせる
+            const cycleEndTime = Date.now() + (secondsUntilEntry * 1000) + (targetTimeframe * 1000);
+
+            lockedPrediction.isLocked = true;
+            lockedPrediction.timeframe = targetTimeframe;
+            lockedPrediction.mlPredictions = mlPredictions;
+            lockedPrediction.stratification = cachedStratificationResults[targetTimeframe];
+            lockedPrediction.lockTime = Date.now();
+            lockedPrediction.cycleEndTime = cycleEndTime;
+
+            console.log(`[TheOption Analyzer] 🔒 予測値をロック: ${config.label} (${Math.ceil((cycleEndTime - Date.now()) / 1000)}秒間)`);
+            window.mlLog?.(`🔒 予測値ロック: UP=${mlPred?.upRate || 0}%, DOWN=${mlPred?.downRate || 0}%`);
+          }
         }
       }
 
@@ -3300,6 +3365,33 @@ function initializeAnalyzer() {
       // DEBUG_MODEに関係なく表示
       window.mlLog?.(`[シグナル判定] ml.status=${ml.status}, 使用値=${useStratification ? '層別化後' : '元の予測'}, upRate=${upRate}, downRate=${downRate}`);
 
+      // v5.6.6: サンプルサイズチェック（最低10件必要）
+      // 層別化使用時はstratification.sampleSize、そうでなければmlPred.sampleSize
+      const sampleSize = useStratification
+        ? (stratification?.sampleSize || 0)
+        : (mlPred?.sampleSize || 0);
+
+      const MIN_SAMPLE_SIZE = 10;
+
+      if (sampleSize < MIN_SAMPLE_SIZE) {
+        // マッチ数が10件未満の場合はシグナルを生成しない
+        window.mlLog?.(`[シグナル判定] サンプルサイズ不足: ${sampleSize}件 < ${MIN_SAMPLE_SIZE}件 → INSUFFICIENT_DATA`);
+        ai = {
+          available: false,
+          signal: 'INSUFFICIENT_DATA',
+          confidence: 0,
+          direction: 'データ不足',
+          timeframe: TIMEFRAME_CONFIGS[currentTimeframe].label,
+          mlDataCount: ml.dataCountWithResults || ml.dataCount || 0,
+          mlDataTotal: ml.dataCount || 0,
+          upRate: upRate,
+          downRate: downRate,
+          diff: 0,
+          sampleSize: sampleSize
+        };
+        return { technical, ai };
+      }
+
       const drawRate = 100 - upRate - downRate;
       const diff = Math.abs(upRate - downRate);
 
@@ -3353,11 +3445,12 @@ function initializeAnalyzer() {
         mlDataTotal: ml.dataCount || 0,
         upRate: upRate,
         downRate: downRate,
-        diff: diff
+        diff: diff,
+        sampleSize: sampleSize  // v5.6.6: サンプルサイズを追加
       };
 
       // デバッグ: シグナル判定結果（重要な運用ログ）
-      window.mlLog?.(`[シグナル判定結果] UP=${upRate}%, DOWN=${downRate}%, 同値率=${drawRate.toFixed(1)}%, 差=${diff.toFixed(1)}pt → aiSignal=${aiSignal}, available=${ai.available}`);
+      window.mlLog?.(`[シグナル判定結果] サンプル=${sampleSize}件, UP=${upRate}%, DOWN=${downRate}%, 同値率=${drawRate.toFixed(1)}%, 差=${diff.toFixed(1)}pt → aiSignal=${aiSignal}, available=${ai.available}`);
 
       return { technical, ai };
     }

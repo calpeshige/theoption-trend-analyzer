@@ -45,9 +45,21 @@ let highestMLDataCount = 0;
 let signalDisplayed = false;  // シグナルが一度表示されたかどうか
 let lastDisplayedSignal = null;  // 最後に表示されたシグナル
 
+// v5.6.5: AI予測詳細の表示保持用（取引終了までデータを保持）
+let lastValidAICardData = null;  // 最後に有効だったAI予測詳細データ
+let isInTrading = false;  // 取引中フラグ
+
+// v5.6.6: AI予測詳細のロック機構（シグナル表示後は値を固定）
+let aiPredictionLock = {
+  isLocked: false,           // ロック状態
+  lockedData: null,          // ロックされたデータ（upRate, downRate, matchCount, stratification）
+  lockTime: 0,               // ロック開始時刻
+  lastCountdown: 0           // ロック時のカウントダウン値
+};
+
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
-  debugLog('[SidePanel] Material Design 3 インターフェース初期化');
+  debugLog('[SidePanel] Material Design 3 インターフェース初期化 (v5.6.5)');
 
   loadSettings();
   setupEventListeners();
@@ -56,8 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 初期状態でシグナルカードを「準備中」にする
   resetSignalCardsToWaiting();
-
-  requestAnalysisData();
 
   // 初期データ取得
   chrome.storage.local.get(['sidepanel_asset', 'sidepanel_dataCount'], (result) => {
@@ -69,6 +79,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // v5.6.4: 常にアクティブ状態で開始（待機画面を使わない）
+  showActiveState();
+  updateStatus('connected', 'データ受信中');
+  requestAnalysisData();
+
   // 定期的にデータを要求
   setInterval(requestAnalysisData, 2000);
 
@@ -77,9 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const card = document.getElementById(cardId);
     if (card) card.classList.add('expanded');
   });
-
-  updateStatus('waiting', '接続待機中...');
 });
+
+// v5.6.4: visibilitychange監視は削除（不要）
+// bubinga_systemパターン: 状態管理を行わず、常にアクティブで動作
 
 // ストレージ変更監視
 function listenForStorageChanges() {
@@ -180,7 +196,14 @@ function loadSettings() {
     if (result.timeFilterMode) {
       currentSettings.timeFilterMode = result.timeFilterMode;
       updateTimeFilterChips(result.timeFilterMode);
+      // v5.6.4: 初期化時にも時間帯ラベルを表示
+      updateTimeFilterInfo();
+      // v5.6.4: 初期化時にコンテンツスクリプトにも通知
+      notifySettingChange('timeFilterMode', result.timeFilterMode);
     }
+
+    // v5.6.5: データ範囲のヒントを初期化
+    updateDataLimitHint(dataLimit);
   });
 }
 
@@ -279,6 +302,14 @@ function setupEventListeners() {
   document.getElementById('ml-detail-btn').addEventListener('click', openAssetDataModal);
   document.getElementById('close-asset-data').addEventListener('click', closeAssetDataModal);
   document.getElementById('asset-data-overlay').addEventListener('click', closeAssetDataModal);
+
+  // 時間帯バッジクリックで時間帯別データ詳細モーダルを開く
+  document.getElementById('time-filter-badge').addEventListener('click', (e) => {
+    e.stopPropagation(); // カードヘッダーのクリックイベントを防止
+    openSessionDataModal();
+  });
+  document.getElementById('close-session-data').addEventListener('click', closeSessionDataModal);
+  document.getElementById('session-data-overlay').addEventListener('click', closeSessionDataModal);
 }
 
 // 設定パネル開閉
@@ -313,6 +344,99 @@ function openAssetDataModal() {
 function closeAssetDataModal() {
   document.getElementById('asset-data-overlay').classList.remove('active');
   document.getElementById('asset-data-sheet').classList.remove('active');
+}
+
+// 時間帯別データモーダル
+function openSessionDataModal() {
+  document.getElementById('session-data-overlay').classList.add('active');
+  document.getElementById('session-data-sheet').classList.add('active');
+  loadSessionDataList();
+}
+
+function closeSessionDataModal() {
+  document.getElementById('session-data-overlay').classList.remove('active');
+  document.getElementById('session-data-sheet').classList.remove('active');
+}
+
+// 時間帯別データを読み込み
+async function loadSessionDataList() {
+  const contentEl = document.getElementById('session-data-content');
+  contentEl.innerHTML = '<div class="session-data-loading"><span>読み込み中...</span></div>';
+
+  try {
+    // コンテンツスクリプト経由でIndexedDBから時間帯別データを取得
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: 'GET_SESSION_DATA_COUNT' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+
+    const sessionCounts = response?.sessionCounts || {};
+    const totalCount = response?.totalCount || 0;
+    const currentSession = response?.currentSession || '';
+    const assetName = response?.assetName || '';
+
+    // モーダルタイトルを通貨ペア名付きに更新
+    const titleEl = document.querySelector('#session-data-sheet .bottom-sheet-title');
+    if (titleEl) {
+      titleEl.textContent = assetName ? `🕐 ${assetName} 時間帯別データ` : '🕐 時間帯別データ件数';
+    }
+
+    // 時間帯の定義
+    const sessions = [
+      { key: 'tokyo', name: '東京時間', time: '9:00 - 15:59', icon: '🇯🇵' },
+      { key: 'europe', name: '欧州時間', time: '16:00 - 20:59', icon: '🇪🇺' },
+      { key: 'ny', name: 'NY時間', time: '21:00 - 2:59', icon: '🇺🇸' },
+      { key: 'quiet', name: '静穏時間', time: '3:00 - 8:59', icon: '🌙' }
+    ];
+
+    // HTMLを構築
+    let html = '<div class="session-data-list">';
+
+    for (const session of sessions) {
+      const count = sessionCounts[session.key] || 0;
+      const isCurrent = session.key === currentSession;
+
+      html += `
+        <div class="session-data-item${isCurrent ? ' current' : ''}">
+          <div class="session-info">
+            <span class="session-name">${session.icon} ${session.name}</span>
+            <span class="session-time">${session.time}</span>
+          </div>
+          <span class="session-count">${count.toLocaleString()}件</span>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+
+    // 合計
+    html += `
+      <div class="session-total">
+        <span class="session-total-label">合計データ数</span>
+        <span class="session-total-count">${totalCount.toLocaleString()}件</span>
+      </div>
+    `;
+
+    contentEl.innerHTML = html;
+
+  } catch (error) {
+    console.error('[SidePanel] 時間帯別データ取得エラー:', error);
+    contentEl.innerHTML = `
+      <div class="session-data-loading">
+        <span>データを取得できません</span>
+        <span style="font-size: 11px; margin-top: 8px;">TheOptionページでトレードを開始してください</span>
+      </div>
+    `;
+  }
 }
 
 // 通貨ペア別データを読み込み（IndexedDBから取得）
@@ -472,6 +596,14 @@ function selectTimeframe(timeframe) {
   signalDisplayed = false;  // シグナル表示状態もリセット
   lastDisplayedSignal = null;
 
+  // v5.6.6: 時間枠変更時にAI予測詳細のロックも解除
+  if (aiPredictionLock.isLocked) {
+    debugLog('[SidePanel] 🔓 時間枠変更によりAI予測詳細ロック解除');
+    aiPredictionLock.isLocked = false;
+    aiPredictionLock.lockedData = null;
+  }
+  lastValidAICardData = null;
+
   // 詳細カードを更新
   if (latestAnalysisData) {
     updateDisplay(latestAnalysisData);
@@ -499,6 +631,7 @@ function updateThresholdChips(threshold) {
 function changeDataLimit(limit) {
   currentSettings.dataLimit = limit;
   updateDataLimitChips(limit);
+  updateDataLimitHint(limit);
   // ストレージと通知には変換後の値を使用（'all' → null, 数値文字列 → 数値）
   const convertedValue = limit === 'all' ? null : parseInt(limit);
   chrome.storage.local.set({ dataLimit: convertedValue });
@@ -513,6 +646,27 @@ function updateDataLimitChips(limit) {
   });
 }
 
+// v5.6.5: データ範囲のヒントテキストを更新
+function updateDataLimitHint(limit) {
+  const hintEl = document.getElementById('data-limit-hint');
+  if (!hintEl) return;
+
+  if (limit === 'all' || limit === null) {
+    if (currentSettings.timeFilterMode === 'session') {
+      hintEl.textContent = '時間帯フィルタ後の全データを使用';
+    } else {
+      hintEl.textContent = '全データを使用';
+    }
+  } else {
+    const limitNum = parseInt(limit);
+    if (currentSettings.timeFilterMode === 'session') {
+      hintEl.textContent = `時間帯フィルタ後の直近${limitNum.toLocaleString()}件を使用`;
+    } else {
+      hintEl.textContent = `直近${limitNum.toLocaleString()}件を使用`;
+    }
+  }
+}
+
 // 時間帯フィルタモード変更
 function changeTimeFilterMode(mode) {
   currentSettings.timeFilterMode = mode;
@@ -522,6 +676,8 @@ function changeTimeFilterMode(mode) {
 
   // 時間帯情報を即座に更新
   updateTimeFilterInfo();
+  // v5.6.5: データ範囲のヒントも更新
+  updateDataLimitHint(currentSettings.dataLimit);
 }
 
 function updateTimeFilterChips(mode) {
@@ -552,7 +708,7 @@ function updateTimeFilterInfo() {
       sessionName = '静穏';
     }
 
-    // 一時的に表示（サーバーからの正確な情報が来るまで）
+    // v5.6.4: 初期表示は時間帯名のみ（件数はサーバーから来たら更新）
     badgeEl.textContent = `${sessionName}時間`;
   }
 }
@@ -568,18 +724,21 @@ function updateTimeFilterInfoFromServer(timeFilterInfo) {
     return;
   }
 
-  if (!timeFilterInfo || timeFilterInfo.mode === 'all') {
-    // サーバー情報がない場合は、ローカル判定を維持
+  // サイドパネル側が時間帯別モードなら、サーバー情報を使って表示
+  // （サーバー側のmodeが'all'でも、サイドパネルの設定を優先）
+  if (!timeFilterInfo) {
+    // サーバー情報がない場合は、ローカル判定で時間帯名のみ表示
     return;
   }
 
   const sessionName = timeFilterInfo.sessionName || '不明';
   const filteredCount = timeFilterInfo.filteredCount;
 
-  // フィルタ後のデータ件数を含めて表示
-  if (filteredCount !== undefined && filteredCount > 0) {
+  // フィルタ後のデータ件数を表示（0件でも正常に表示）
+  if (filteredCount !== undefined) {
     badgeEl.textContent = `${sessionName} ${filteredCount}件`;
   } else {
+    // filteredCountがundefinedの場合のみ時間帯名のみ
     badgeEl.textContent = `${sessionName}時間`;
   }
 }
@@ -590,184 +749,49 @@ function notifySettingChange(key, value) {
 }
 
 // 分析データ更新監視
+// v5.6.4: bubinga_systemパターン - 常にデータを受信、状態管理なし
 function listenForAnalysisUpdates() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'ANALYSIS_UPDATE') {
-      // 安定化期間中またはTheOptionページ外ではデータを無視
-      if (isStabilizing || !isOnTheOptionPage) {
-        debugLog('[SidePanel] ANALYSIS_UPDATE無視（安定化中またはページ外）');
-        return;
-      }
       latestAnalysisData = message.data;
       updateDisplay(message.data);
       updateStatus('connected', 'データ受信中');
     }
 
     if (message.type === 'STATUS_UPDATE') {
-      // 安定化期間中またはTheOptionページ外ではステータス更新を無視
-      if (isStabilizing || !isOnTheOptionPage) {
-        debugLog('[SidePanel] STATUS_UPDATE無視（安定化中またはページ外）');
-        return;
-      }
       updateRealtimeStatus(message.data);
     }
 
     if (message.type === 'ASSET_UPDATE' && message.data) {
       if (message.data.asset) {
         document.getElementById('asset-name-display').textContent = message.data.asset;
+
+        // v5.6.6: 通貨ペア変更時にAI予測詳細のロックも解除
+        if (aiPredictionLock.isLocked) {
+          debugLog('[SidePanel] 🔓 通貨ペア変更によりAI予測詳細ロック解除');
+          aiPredictionLock.isLocked = false;
+          aiPredictionLock.lockedData = null;
+        }
+        lastValidAICardData = null;
+        signalDisplayed = false;
+        lastDisplayedSignal = null;
       }
       if (message.data.dataCount !== undefined) {
         document.getElementById('asset-data-count').textContent = `${message.data.dataCount}件`;
       }
     }
-
-    // システム状態通知（ページ非アクティブ時の対応）
-    if (message.type === 'SYSTEM_STATE' && message.data) {
-      handleSystemStateChange(message.data);
-    }
-
-    // ページ状態通知（タブ切り替え検出）
-    if (message.type === 'PAGE_STATE' && message.data) {
-      handlePageStateChange(message.data);
-    }
-    // 同期的に処理完了するため、return falseまたは省略
-    // return trueは非同期レスポンスが必要な場合のみ使用
+    // v5.6.4: PAGE_STATE, SYSTEM_STATEは使用しない（bubinga_systemパターン）
   });
 }
 
-// システム状態変更ハンドラ（タブ切り替え対策）
-let isSystemActive = true;
-let isOnTheOptionPage = true;
-let isStabilizing = false;  // 安定化期間中フラグ（ページ復帰後のチカチカ防止）
-let stabilizingTimer = null;
+// v5.6.4: bubinga_systemパターン - 状態管理を削除
+// isSystemActive, isOnTheOptionPage, isStabilizing, stabilizingTimer,
+// handleSystemStateChange, handlePageStateChange は削除済み
 
-function handleSystemStateChange(data) {
-  // PAGE_STATEで既に処理済みの場合はSYSTEM_STATEを無視
-  // （重複処理によるチカチカを防止）
-  if (isStabilizing) {
-    debugLog('[SidePanel] 安定化期間中のためSYSTEM_STATEを無視');
-    return;
-  }
-
-  if (data.active) {
-    // システム再開通知を受信したが、PAGE_STATEが来ていない場合のみ処理
-    // （通常はPAGE_STATEが先に来るはず）
-    debugLog('[SidePanel] SYSTEM_STATE active受信（PAGE_STATE未処理の場合のみ有効）');
-
-    // TheOptionページにいない場合は無視
-    if (!isOnTheOptionPage) {
-      debugLog('[SidePanel] TheOptionページではないためSYSTEM_STATEを無視');
-      return;
-    }
-
-    isSystemActive = true;
-    updateStatus('connected', 'データ受信中');
-
-    // 注意: ここではresetSignalCardsToWaiting()を呼ばない
-    // （PAGE_STATEハンドラで既に処理されているはず）
-  } else {
-    // システム一時停止
-    debugLog('[SidePanel] システム一時停止通知を受信');
-    isSystemActive = false;
-    updateStatus('waiting', '他のページを表示中...');
-  }
-}
-
-// ページ状態変更ハンドラ（TheOption以外のページ検出）
-function handlePageStateChange(data) {
-  const wasOnTheOptionPage = isOnTheOptionPage;
-  isOnTheOptionPage = data.isTheOptionPage;
-
-  debugLog(`[SidePanel] ページ状態変更: TheOption=${data.isTheOptionPage}`);
-
-  if (!isOnTheOptionPage) {
-    // TheOption以外のページに移動
-    debugLog('[SidePanel] TheOption以外のページを検出 - 待機状態に移行');
-    isSystemActive = false;
-    isStabilizing = false;
-
-    // 安定化タイマーをクリア
-    if (stabilizingTimer) {
-      clearTimeout(stabilizingTimer);
-      stabilizingTimer = null;
-    }
-
-    // UIを待機状態にリセット
-    showWaitingState();
-  } else if (!wasOnTheOptionPage && isOnTheOptionPage) {
-    // TheOptionページに戻った
-    debugLog('[SidePanel] TheOptionページに復帰 - 安定化期間開始');
-
-    // まずアクティブ画面を表示（待機画面を消す）
-    showActiveState();
-
-    // 安定化期間を開始（この間はANALYSIS_UPDATEを無視）
-    isStabilizing = true;
-    isSystemActive = false;  // 安定化中はまだ非アクティブ扱い
-
-    // シグナル表示状態を完全にリセット（古いデータの干渉を防ぐ）
-    signalDisplayed = false;
-    lastDisplayedSignal = null;
-    latestAnalysisData = null;  // キャッシュデータをクリア
-    latestEnhancedSignal = null;
-
-    // 前回表示状態もリセット（チカチカ防止用変数）
-    lastMLStats = { dataCountWithResults: null, dataCount: null, learningLevel: null };
-    lastAISignal = { signal: null, matchCount: null, available: null };
-    lastTechSignal = { signal: null, confidence: null };
-
-    // シグナルカードを「準備中」にリセット
-    resetSignalCardsToWaiting();
-    updateStatus('connected', '再接続中...');
-
-    // 前回の安定化タイマーをクリア
-    if (stabilizingTimer) {
-      clearTimeout(stabilizingTimer);
-    }
-
-    // 安定化期間（1.5秒）後にシステムをアクティブ化
-    // この間にコンテンツスクリプトが安定し、古いデータが消える
-    stabilizingTimer = setTimeout(() => {
-      if (isOnTheOptionPage) {
-        debugLog('[SidePanel] 安定化期間終了 - システムアクティブ化');
-        isStabilizing = false;
-        isSystemActive = true;
-
-        // 最新データを要求
-        requestAnalysisData();
-      }
-    }, 1500);
-  }
-}
-
-// 待機状態のUIを表示（TheOption以外のページ用）
+// 待機状態のUIを表示（使用しないが互換性のため残す）
 function showWaitingState() {
-  debugLog('[SidePanel] 待機画面を表示');
-
-  // 待機画面を表示、メインコンテンツを非表示
-  const waitingScreen = document.getElementById('waiting-screen');
-  const mainContent = document.getElementById('main-content');
-  const topBar = document.querySelector('.top-bar');
-
-  if (waitingScreen) waitingScreen.style.display = 'flex';
-  if (mainContent) mainContent.style.display = 'none';
-  if (topBar) topBar.classList.add('waiting-mode');
-
-  // ステータス表示
-  updateStatus('waiting', 'TheOptionページを開いてください');
-
-  // 通貨ペア表示をクリア
-  document.getElementById('asset-name-display').textContent = '---';
-  document.getElementById('asset-data-count').textContent = '--件';
-
-  // カウントダウンをリセット
-  const nextAnalysisEl = document.getElementById('next-analysis');
-  if (nextAnalysisEl) {
-    nextAnalysisEl.textContent = '--';
-  }
-
-  // プログレスリングをリセット
-  updateProgressRing(0, 1);
+  debugLog('[SidePanel] showWaitingState called (v5.6.4: no-op)');
+  // v5.6.4: 待機状態への遷移は行わない
 }
 
 // アクティブ状態のUIを表示（TheOptionページ用）
@@ -936,6 +960,20 @@ function updateSignalCardsFromStatus(signal) {
     aiConfidenceEl.textContent = confidence;
     if (aiCardEl) aiCardEl.setAttribute('data-signal-type', dataSignal);
   }
+
+  // v5.6.5: シグナルに含まれるAI予測詳細データでAI予測詳細カードも更新
+  // シグナルが表示されているのに詳細が表示されない問題を解決
+  if (signal.aiUpRate !== undefined && signal.aiDownRate !== undefined && signal.aiMatchCount >= 10) {
+    const aiData = {
+      upRate: signal.aiUpRate,
+      downRate: signal.aiDownRate,
+      matchCount: signal.aiMatchCount,
+      signal: signal.ai,
+      available: true
+    };
+    // AI予測詳細カードを直接更新
+    updateAICardFromSignal(aiData);
+  }
 }
 
 // 円形プログレスリングの周長（2 * π * r = 2 * π * 26 ≈ 163.36）
@@ -958,11 +996,7 @@ function updateProgressRing(current, total) {
 function updateRealtimeStatus(data) {
   if (!data) return;
 
-  // システムが非アクティブの場合は更新しない（タブ切り替え対策）
-  if (!isSystemActive) {
-    debugLog('[SidePanel] システム非アクティブのため STATUS_UPDATE をスキップ');
-    return;
-  }
+  // v5.6.4: 常に更新を受け入れる（状態チェック削除）
 
   // デバッグ: 受信データをログ出力
   debugLog('[SidePanel] STATUS_UPDATE受信:', {
@@ -972,6 +1006,11 @@ function updateRealtimeStatus(data) {
     signalReset: data.signalReset,
     currentSignal: data.currentSignal
   });
+
+  // v5.6.5: 取引中フラグを更新
+  if (data.isTrading !== undefined) {
+    isInTrading = data.isTrading;
+  }
 
   if (data.asset) {
     document.getElementById('asset-name-display').textContent = data.asset;
@@ -985,6 +1024,16 @@ function updateRealtimeStatus(data) {
     resetSignalCards();
     signalDisplayed = false;  // シグナル表示状態もリセット
     lastDisplayedSignal = null;
+    // v5.6.5: 取引終了時にAI予測詳細の保持データもクリア
+    lastValidAICardData = null;
+    isInTrading = false;
+
+    // v5.6.6: AI予測詳細のロックも解除
+    if (aiPredictionLock.isLocked) {
+      debugLog('[SidePanel] 🔓 取引終了によりAI予測詳細ロック解除');
+      aiPredictionLock.isLocked = false;
+      aiPredictionLock.lockedData = null;
+    }
   }
 
   // カウントダウン（フェーズに応じて表示を変更）
@@ -1005,6 +1054,15 @@ function updateRealtimeStatus(data) {
     if (data.signalReset || countdown > lastCountdownTotal) {
       // 時間枠に応じた最大値を設定
       lastCountdownTotal = currentTimeframe;
+
+      // v5.6.6: 新しいサイクル開始時にAI予測詳細のロックを解除
+      if (aiPredictionLock.isLocked && !data.signalReset) {
+        debugLog('[SidePanel] 🔓 新サイクル開始によりAI予測詳細ロック解除');
+        aiPredictionLock.isLocked = false;
+        aiPredictionLock.lockedData = null;
+        signalDisplayed = false;
+        lastDisplayedSignal = null;
+      }
     }
     // 取引中の場合は取引時間を使用
     const totalForRing = isTrading ? tradingDuration : lastCountdownTotal;
@@ -1026,6 +1084,20 @@ function updateRealtimeStatus(data) {
     if (hasSignal && signal) {
       signalDisplayed = true;
       lastDisplayedSignal = signal;
+
+      // v5.6.6: シグナルが表示された時点でAI予測詳細をロック
+      // これ以降、このサイクルが終わるまでAI予測詳細は更新されない
+      if (!aiPredictionLock.isLocked) {
+        aiPredictionLock.isLocked = true;
+        aiPredictionLock.lockTime = Date.now();
+        aiPredictionLock.lastCountdown = countdown;
+        aiPredictionLock.lockedData = {
+          upRate: signal.aiUpRate,
+          downRate: signal.aiDownRate,
+          matchCount: signal.aiMatchCount
+        };
+        debugLog('[SidePanel] 🔒 AI予測詳細をロック:', aiPredictionLock.lockedData);
+      }
     }
 
     // フェーズを決定して表示を変更
@@ -1093,13 +1165,8 @@ function updateRealtimeStatus(data) {
 }
 
 // 分析データ要求
+// v5.6.4: 常にデータ要求を実行（状態チェック削除）
 function requestAnalysisData() {
-  // TheOptionページ以外では何もしない（待機状態を維持）
-  if (!isOnTheOptionPage) {
-    debugLog('[SidePanel] TheOptionページ外のためデータ要求をスキップ');
-    return;
-  }
-
   // まず現在の時間枠をコンテンツスクリプトに通知（同期）
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
 
@@ -1107,12 +1174,6 @@ function requestAnalysisData() {
     // chrome.runtime.lastError をチェックしてエラーを抑制
     if (chrome.runtime.lastError) {
       debugLog('[SidePanel] メッセージ送信エラー（無視可能）:', chrome.runtime.lastError.message);
-      return;
-    }
-
-    // レスポンス処理中にページ状態が変わった可能性があるため再チェック
-    if (!isOnTheOptionPage) {
-      debugLog('[SidePanel] レスポンス受信時にTheOptionページ外のため無視');
       return;
     }
 
@@ -1125,14 +1186,9 @@ function requestAnalysisData() {
 }
 
 // メイン表示更新
+// v5.6.4: 常に更新を受け入れる（状態チェック削除）
 function updateDisplay(data) {
   if (!data) return;
-
-  // システムが非アクティブの場合は更新しない（タブ切り替え対策）
-  if (!isSystemActive) {
-    debugLog('[SidePanel] システム非アクティブのため ANALYSIS_UPDATE をスキップ');
-    return;
-  }
 
   if (data.asset) {
     document.getElementById('asset-name-display').textContent = data.asset;
@@ -1717,6 +1773,12 @@ function animateVolaGauge(fromValue, toValue, color) {
 
 // AI予測詳細カード更新（シグナルはメインカードのみ）
 function updateAICard(ai, stratification) {
+  // v5.6.6: ロック中は更新をスキップ（シグナル表示後は値を固定）
+  if (aiPredictionLock.isLocked && aiPredictionLock.lockedData) {
+    debugLog('[SidePanel] 🔒 AI予測詳細ロック中 - 更新スキップ');
+    return;
+  }
+
   const probUp = document.getElementById('prob-up');
   const probDown = document.getElementById('prob-down');
   const probBarUp = document.getElementById('prob-bar-up');
@@ -1726,30 +1788,69 @@ function updateAICard(ai, stratification) {
 
   const available = ai ? ai.available : false;
   const signal = ai ? (ai.signal || 'NEUTRAL') : 'NEUTRAL';
-  const matchCount = ai ? (ai.matchCount || 0) : 0;
+  let matchCount = ai ? (ai.matchCount || 0) : 0;
+  let upRate = ai ? (ai.upRate || 0) : 0;
+  let downRate = ai ? (ai.downRate || 0) : 0;
 
-  // チカチカ防止
-  if (lastAISignal.signal === signal &&
-      lastAISignal.matchCount === matchCount &&
-      lastAISignal.available === available) {
-    return;
+  // v5.6.5: 最低10件のマッチパターンが必要（ML側の判定基準と同期）
+  const MIN_MATCH_COUNT = 10;
+
+  // v5.6.5: 有効なデータ = upRate/downRateがあり、かつマッチ数が10件以上
+  const hasValidData = (upRate > 0 || downRate > 0) && matchCount >= MIN_MATCH_COUNT;
+
+  if (hasValidData) {
+    // 有効なデータがあれば保持（10件以上の場合のみ）
+    lastValidAICardData = {
+      upRate,
+      downRate,
+      matchCount,
+      signal,
+      stratification
+    };
+    debugLog('[SidePanel] AI予測詳細データを保持:', lastValidAICardData);
+  } else if ((isInTrading || signalDisplayed) && lastValidAICardData) {
+    // v5.6.5: 取引中またはシグナル表示中でデータがない場合、前回の保持データを使用
+    // signalDisplayedがtrueの場合 = シグナルが一度表示されたサイクル内
+    debugLog('[SidePanel] 取引中/シグナル表示中: 保持データを使用:', lastValidAICardData);
+    upRate = lastValidAICardData.upRate;
+    downRate = lastValidAICardData.downRate;
+    matchCount = lastValidAICardData.matchCount;
+    stratification = lastValidAICardData.stratification;
   }
-  lastAISignal = { signal, matchCount, available };
 
-  if (!available) {
+  // v5.6.4: チカチカ防止を削除（正確な表示を優先）
+  lastAISignal = { signal, matchCount, available, upRate, downRate };
+
+  // v5.6.5: 表示可能なデータがあるかチェック（10件以上のマッチが必要）
+  // 保持データから復元した場合はすでに条件を満たしている
+  const hasDisplayData = (upRate > 0 || downRate > 0) && matchCount >= MIN_MATCH_COUNT;
+
+  if (!hasDisplayData) {
+    // データがない、またはマッチ数が不足の場合
     if (probUp) probUp.textContent = '上昇 --%';
     if (probDown) probDown.textContent = '下降 --%';
     if (probBarUp) probBarUp.style.width = '0%';
     if (probBarDown) probBarDown.style.width = '0%';
 
-    // INSUFFICIENT_DATA（マッチパターン不足）の場合はマッチパターン数を表示
-    if (ai && ai.signal === 'INSUFFICIENT_DATA') {
-      const threshold = currentSettings.similarityThreshold || 50;
+    // マッチパターン不足の場合はマッチパターン数を表示
+    const threshold = currentSettings.similarityThreshold || 50;
+    if (matchCount > 0 && matchCount < MIN_MATCH_COUNT) {
+      // 1件以上あるが10件未満
       if (detailBox) {
         detailBox.innerHTML = `
           <p class="detail-text" style="font-weight: 600;">
             閾値${threshold}%以上: <strong style="font-weight: 700;">${matchCount}件</strong>
-            <span style="color: #999; font-size: 0.85em;">（最低10件必要）</span>
+            <span style="color: #999; font-size: 0.85em;">（最低${MIN_MATCH_COUNT}件必要）</span>
+          </p>
+        `;
+      }
+    } else if (ai && ai.signal === 'INSUFFICIENT_DATA') {
+      // INSUFFICIENT_DATA シグナルの場合
+      if (detailBox) {
+        detailBox.innerHTML = `
+          <p class="detail-text" style="font-weight: 600;">
+            閾値${threshold}%以上: <strong style="font-weight: 700;">${matchCount}件</strong>
+            <span style="color: #999; font-size: 0.85em;">（最低${MIN_MATCH_COUNT}件必要）</span>
           </p>
         `;
       }
@@ -1760,11 +1861,12 @@ function updateAICard(ai, stratification) {
   }
 
   // 層別化データがある場合はそちらを優先表示
-  let displayUpRate = ai.upRate || 0;
-  let displayDownRate = ai.downRate || 0;
+  // v5.6.5: 保持データを使用する場合を考慮してupRate/downRateを使用
+  let displayUpRate = upRate;
+  let displayDownRate = downRate;
   let hasStratification = false;
-  let originalUpRate = ai.upRate || 0;
-  let originalDownRate = ai.downRate || 0;
+  let originalUpRate = upRate;
+  let originalDownRate = downRate;
 
   if (stratification && stratification.hasEnoughData) {
     displayUpRate = stratification.upRate;
@@ -1816,8 +1918,63 @@ function updateAICard(ai, stratification) {
   }
 }
 
+// v5.6.5: シグナルからAI予測詳細カードを直接更新
+// STATUS_UPDATEのcurrentSignalに含まれるデータを使用
+function updateAICardFromSignal(aiData) {
+  // v5.6.6: ロック中は更新をスキップ（シグナル表示後は値を固定）
+  if (aiPredictionLock.isLocked && aiPredictionLock.lockedData) {
+    debugLog('[SidePanel] 🔒 AI予測詳細ロック中（FromSignal） - 更新スキップ');
+    return;
+  }
+
+  const probUp = document.getElementById('prob-up');
+  const probDown = document.getElementById('prob-down');
+  const probBarUp = document.getElementById('prob-bar-up');
+  const probBarDown = document.getElementById('prob-bar-down');
+  const detailBox = document.getElementById('ai-detail');
+
+  const upRate = aiData.upRate || 0;
+  const downRate = aiData.downRate || 0;
+  const matchCount = aiData.matchCount || 0;
+
+  // データを保持（取引終了まで維持するため）
+  lastValidAICardData = {
+    upRate,
+    downRate,
+    matchCount,
+    signal: aiData.signal,
+    stratification: null
+  };
+
+  // 確率バー更新
+  if (probUp) probUp.textContent = `上昇 ${upRate}%`;
+  if (probDown) probDown.textContent = `下降 ${downRate}%`;
+  if (probBarUp) probBarUp.style.width = `${upRate}%`;
+  if (probBarDown) probBarDown.style.width = `${downRate}%`;
+
+  // 詳細情報
+  const threshold = currentSettings.similarityThreshold || 50;
+  const drawRate = 100 - upRate - downRate;
+
+  if (detailBox) {
+    detailBox.innerHTML = `
+      <p class="detail-text" style="font-weight: 600;">
+        閾値${threshold}%以上: <strong style="font-weight: 700;">${matchCount}件</strong>
+        <span style="color: #999; font-size: 0.85em; margin-left: 8px;">同値率: ${Math.round(drawRate)}%</span>
+      </p>
+    `;
+  }
+
+  debugLog('[SidePanel] シグナルからAI予測詳細を更新:', { upRate, downRate, matchCount });
+}
+
 // 層別化インサイトを表示
 function updateStratificationInsights(stratification) {
+  // v5.6.6: ロック中は更新をスキップ
+  if (aiPredictionLock.isLocked && aiPredictionLock.lockedData) {
+    return;
+  }
+
   const insightsContainer = document.getElementById('stratification-insights');
   if (!insightsContainer) return;
 
