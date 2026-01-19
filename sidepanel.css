@@ -1294,6 +1294,252 @@ body {
   color: var(--signal-down);
 }
 
+/* ================================================
+   Enhanced Technical Analysis Card (v5.7.0)
+   ================================================ */
+.enhanced-grade-badge {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-left: 8px;
+}
+
+.enhanced-grade-badge[data-grade="A+"],
+.enhanced-grade-badge[data-grade="A"] {
+  background: var(--signal-up-light);
+  color: var(--signal-up);
+}
+
+.enhanced-grade-badge[data-grade="B+"],
+.enhanced-grade-badge[data-grade="B"] {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.enhanced-grade-badge[data-grade="C+"],
+.enhanced-grade-badge[data-grade="C"] {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.enhanced-grade-badge[data-grade="D"],
+.enhanced-grade-badge[data-grade="F"] {
+  background: var(--signal-down-light);
+  color: var(--signal-down);
+}
+
+/* 相場状況カード内の両グレード表示 */
+.dual-grade-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.dual-grade-badges .grade-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.9;
+}
+
+.dual-grade-badges .enhanced-grade-badge,
+.dual-grade-badges .ai-grade-badge {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-left: 0;
+  min-width: 28px;
+  text-align: center;
+}
+
+/* 推奨アクション（T: / AI:）表示 */
+.dual-rec-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dual-rec-value .rec-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.9;
+}
+
+.dual-rec-value #tech-rec-value,
+.dual-rec-value #ai-rec-value {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* AI予測グレードバッジ */
+.ai-grade-badge {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  vertical-align: middle;
+}
+
+.ai-grade-badge[data-grade="A+"],
+.ai-grade-badge[data-grade="A"] {
+  background: var(--signal-up-light);
+  color: var(--signal-up);
+}
+
+.ai-grade-badge[data-grade="B+"],
+.ai-grade-badge[data-grade="B"] {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.ai-grade-badge[data-grade="C+"],
+.ai-grade-badge[data-grade="C"] {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.ai-grade-badge[data-grade="D"],
+.ai-grade-badge[data-grade="F"] {
+  background: var(--signal-down-light);
+  color: var(--signal-down);
+}
+
+/* 相場状況カード内の高精度分析サマリー */
+.enhanced-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 12px 4px;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: 8px;
+}
+
+.enhanced-summary-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.enhanced-summary-row .enhanced-label {
+  font-size: 10px;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 2px;
+}
+
+.enhanced-summary-row .enhanced-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.enhanced-recommendation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 8px 12px;
+  background: var(--md-sys-color-surface-container);
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.recommendation-label {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.recommendation-value {
+  color: var(--md-sys-color-on-surface);
+}
+
+.recommendation-value[data-rec="STRONG_ENTRY"] {
+  color: var(--signal-up);
+  font-weight: 700;
+}
+
+.recommendation-value[data-rec="ENTRY"] {
+  color: #1976d2;
+}
+
+.recommendation-value[data-rec="WEAK_ENTRY"] {
+  color: #f57c00;
+}
+
+.recommendation-value[data-rec="SKIP"] {
+  color: var(--signal-neutral);
+}
+
+.enhanced-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  padding: 8px 16px 12px;
+}
+
+.enhanced-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.enhanced-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.enhanced-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.enhanced-value[data-regime="STRONG_TREND"] {
+  color: var(--signal-up);
+}
+
+.enhanced-value[data-regime="WEAK_TREND"] {
+  color: #1976d2;
+}
+
+.enhanced-value[data-regime="RANGE"] {
+  color: var(--signal-neutral);
+}
+
+.enhanced-value[data-regime="BREAKOUT"] {
+  color: #f57c00;
+}
+
+.enhanced-value[data-regime="REVERSAL"] {
+  color: #9c27b0;
+}
+
+.enhanced-reason {
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  margin-top: 4px;
+}
+
+.enhanced-reason .detail-text {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
+}
+
 /* ML Stats */
 .ml-stats {
   display: grid;

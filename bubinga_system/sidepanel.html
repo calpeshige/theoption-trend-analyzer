@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bubinga専用ALL-IN自動分析システム</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- ステータス表示 -->
+    <section class="status-section">
+      <!-- ヘッダーボタン群 -->
+      <div class="header-buttons">
+        <button class="header-btn" id="dataManageBtn" title="データ管理">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </button>
+        <button class="header-btn" id="settingsBtn" title="設定">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="status-row centered">
+        <div class="status-item centered">
+          <span class="status-label">通貨ペア</span>
+          <div class="status-value-row">
+            <span class="status-value" id="currencyPair">検出中...</span>
+            <span class="payout-display" id="payoutDisplay">
+              <span class="payout-separator">:</span>
+              <span class="payout-rate" id="currentPayoutRate">--</span>
+            </span>
+          </div>
+        </div>
+      </div>
+      <!-- 次回エントリー額表示 -->
+      <div class="next-entry-amount">
+        <span class="next-entry-label">次回エントリー額：</span>
+        <span class="next-entry-value copyable" id="nextAmountValue" title="クリックでコピー">--</span>
+        <button class="edit-icon-btn" id="editAmountBtn" title="マーチン金額を設定">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot"></span>
+        <span class="connection-text">接続中...</span>
+      </div>
+    </section>
+
+    <!-- 分析結果時間・カウントダウン表示 -->
+    <section class="clock-section" id="clockSection">
+      <!-- 次の分析結果時間表示 -->
+      <div class="analysis-time-display" id="analysisTimeDisplay">
+        <div class="analysis-time-label">次の分析結果</div>
+        <div class="analysis-time-value" id="nextAnalysisTime">--:--:--</div>
+      </div>
+      <!-- カウントダウン（判定時に表示） -->
+      <div class="countdown-display" id="countdownDisplay" style="display: none;">
+        <div class="countdown-label" id="countdownLabel">準備中</div>
+        <div class="countdown-number" id="countdownNumber">10</div>
+        <div class="countdown-unit" id="countdownUnit">秒</div>
+      </div>
+      <!-- 結果表示（カウントダウン部分に表示） -->
+      <div class="result-display-inline" id="resultDisplayInline" style="display: none;">
+        <div class="result-text-large" id="resultTextLarge">WIN</div>
+      </div>
+    </section>
+
+    <!-- 監視コントロール -->
+    <section class="monitoring-section">
+      <button class="monitoring-btn" id="monitoringBtn">
+        <span class="btn-text" id="monitoringText">監視開始</span>
+      </button>
+      <div class="monitoring-status" id="monitoringStatus">
+        <span class="monitoring-indicator" id="monitoringIndicator"></span>
+        <span id="monitoringStatusText">待機中</span>
+      </div>
+    </section>
+
+    <!-- HIGH/LOWカウント表示 -->
+    <section class="count-section" id="countSection">
+      <div class="count-display">
+        <div class="count-item low">
+          <span class="count-label">LOW</span>
+          <span class="count-number" id="lowCount">-</span>
+        </div>
+        <div class="count-vs">vs</div>
+        <div class="count-item high">
+          <span class="count-label">HIGH</span>
+          <span class="count-number" id="highCount">-</span>
+        </div>
+      </div>
+      <!-- シグナル強度メーター -->
+      <div class="signal-strength" id="signalStrength">
+        <div class="strength-bar">
+          <div class="strength-fill" id="strengthFill"></div>
+          <div class="strength-center"></div>
+        </div>
+        <div class="strength-label" id="strengthLabel">--</div>
+      </div>
+      <button class="detail-toggle-btn" id="detailToggleBtn">
+        <span class="toggle-text">詳細を見る</span>
+        <span class="toggle-icon">&#9660;</span>
+      </button>
+    </section>
+
+    <!-- 現在のS/Rレベル表示セクション（常に表示） -->
+    <section class="sr-levels-section" id="srLevelsSection">
+      <div class="sr-levels-header">
+        <span class="sr-levels-title">レジサポライン</span>
+        <span class="sr-current-price" id="srCurrentPrice">現在: --</span>
+      </div>
+      <div class="sr-levels-content">
+        <div class="sr-level resistance" id="srResistanceLevel">
+          <span class="sr-level-label">レジスタンス</span>
+          <span class="sr-level-value" id="srResistanceValue">--</span>
+          <span class="sr-level-touches" id="srResistanceTouches"></span>
+        </div>
+        <div class="sr-level support" id="srSupportLevel">
+          <span class="sr-level-label">サポート</span>
+          <span class="sr-level-value" id="srSupportValue">--</span>
+          <span class="sr-level-touches" id="srSupportTouches"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- S/R警告セクション（警告時のみ表示） -->
+    <section class="sr-warning-section" id="srWarningSection" style="display: none;">
+      <div class="sr-warning-content">
+        <div class="sr-warning-icon" id="srWarningIcon">⚠️</div>
+        <div class="sr-warning-text" id="srWarningText">サポート/レジスタンス付近</div>
+        <div class="sr-warning-detail" id="srWarningDetail">予測困難な価格帯です</div>
+      </div>
+      <div class="sr-warning-buttons">
+        <button class="sr-skip-btn" id="srSkipBtn">スキップ</button>
+      </div>
+    </section>
+
+    <!-- 20インジケーター表示グリッド（初期非表示） - 詳細ボタンの直下に表示 -->
+    <section class="indicators-section" id="indicatorsSection" style="display: none;">
+      <div class="indicators-grid" id="indicatorsGrid">
+        <div class="indicator-card" data-id="MA">
+          <span class="indicator-abbr">MA</span>
+          <span class="indicator-signal" id="signal-MA">--</span>
+        </div>
+        <div class="indicator-card" data-id="BB">
+          <span class="indicator-abbr">BB</span>
+          <span class="indicator-signal" id="signal-BB">--</span>
+        </div>
+        <div class="indicator-card" data-id="MAC">
+          <span class="indicator-abbr">MAC</span>
+          <span class="indicator-signal" id="signal-MAC">--</span>
+        </div>
+        <div class="indicator-card" data-id="RSI">
+          <span class="indicator-abbr">RSI</span>
+          <span class="indicator-signal" id="signal-RSI">--</span>
+        </div>
+        <div class="indicator-card" data-id="STO">
+          <span class="indicator-abbr">STO</span>
+          <span class="indicator-signal" id="signal-STO">--</span>
+        </div>
+        <div class="indicator-card" data-id="ICH">
+          <span class="indicator-abbr">ICH</span>
+          <span class="indicator-signal" id="signal-ICH">--</span>
+        </div>
+        <div class="indicator-card" data-id="ATR">
+          <span class="indicator-abbr">ATR</span>
+          <span class="indicator-signal" id="signal-ATR">--</span>
+        </div>
+        <div class="indicator-card" data-id="ADX">
+          <span class="indicator-abbr">ADX</span>
+          <span class="indicator-signal" id="signal-ADX">--</span>
+        </div>
+        <div class="indicator-card" data-id="SAR">
+          <span class="indicator-abbr">SAR</span>
+          <span class="indicator-signal" id="signal-SAR">--</span>
+        </div>
+        <div class="indicator-card" data-id="ENV">
+          <span class="indicator-abbr">ENV</span>
+          <span class="indicator-signal" id="signal-ENV">--</span>
+        </div>
+        <div class="indicator-card" data-id="SDV">
+          <span class="indicator-abbr">SDV</span>
+          <span class="indicator-signal" id="signal-SDV">--</span>
+        </div>
+        <div class="indicator-card" data-id="CCI">
+          <span class="indicator-abbr">CCI</span>
+          <span class="indicator-signal" id="signal-CCI">--</span>
+        </div>
+        <div class="indicator-card" data-id="MOM">
+          <span class="indicator-abbr">MOM</span>
+          <span class="indicator-signal" id="signal-MOM">--</span>
+        </div>
+        <div class="indicator-card" data-id="WPR">
+          <span class="indicator-abbr">WPR</span>
+          <span class="indicator-signal" id="signal-WPR">--</span>
+        </div>
+        <div class="indicator-card" data-id="FRX">
+          <span class="indicator-abbr">FRX</span>
+          <span class="indicator-signal" id="signal-FRX">--</span>
+        </div>
+        <div class="indicator-card" data-id="DEM">
+          <span class="indicator-abbr">DEM</span>
+          <span class="indicator-signal" id="signal-DEM">--</span>
+        </div>
+        <div class="indicator-card" data-id="ALG">
+          <span class="indicator-abbr">ALG</span>
+          <span class="indicator-signal" id="signal-ALG">--</span>
+        </div>
+        <div class="indicator-card" data-id="FRA">
+          <span class="indicator-abbr">FRA</span>
+          <span class="indicator-signal" id="signal-FRA">--</span>
+        </div>
+        <div class="indicator-card" data-id="ACD">
+          <span class="indicator-abbr">ACD</span>
+          <span class="indicator-signal" id="signal-ACD">--</span>
+        </div>
+        <div class="indicator-card" data-id="OBV">
+          <span class="indicator-abbr">OBV</span>
+          <span class="indicator-signal" id="signal-OBV">--</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- トレード情報（エントリー中に表示） -->
+    <section class="trade-section" id="tradeSection" style="display: none;">
+      <div class="round-display" id="roundDisplay">
+        <span class="round-number" id="roundNumber">1</span>
+        <span class="round-text">回戦目</span>
+      </div>
+      <div class="trade-info">
+        <div class="trade-row">
+          <span class="trade-label">エントリー価格</span>
+          <span class="trade-value" id="entryPrice">--</span>
+        </div>
+        <div class="trade-row">
+          <span class="trade-label">方向</span>
+          <span class="trade-direction" id="tradeDirection">--</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 勝敗表示セクション -->
+    <section class="stats-section" id="statsSection">
+      <div class="stats-header">
+        <span class="stats-title">勝敗記録</span>
+        <div class="reset-btns">
+          <button class="reset-btn" id="resetTodayStatsBtn">今日リセット</button>
+          <button class="reset-btn all" id="resetAllStatsBtn">全てリセット</button>
+        </div>
+      </div>
+      <!-- 今日の勝敗 -->
+      <div class="stats-period-block">
+        <div class="stats-period-header">
+          <span class="stats-period-label">今日</span>
+          <div class="stats-total inline">
+            <div class="stat-item lose inline-item">
+              <span class="stat-value" id="todayLoses">0</span>
+              <span class="stat-label">負</span>
+            </div>
+            <div class="stat-item win inline-item">
+              <span class="stat-value" id="todayWins">0</span>
+              <span class="stat-label">勝</span>
+            </div>
+          </div>
+          <button class="stats-detail-toggle" id="todayStatsToggleBtn" title="今日の詳細">
+            <span class="toggle-icon">&#9660;</span>
+          </button>
+        </div>
+        <div class="stats-breakdown compact" id="todayStatsBreakdown" style="display: none;">
+          <div class="breakdown-row clickable" data-round="1" data-period="today">
+            <span class="breakdown-label">1回目:</span>
+            <span class="breakdown-value" id="todayWin1">0</span>
+            <span class="breakdown-detail" id="todayDetail1"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="2" data-period="today">
+            <span class="breakdown-label">2回目:</span>
+            <span class="breakdown-value" id="todayWin2">0</span>
+            <span class="breakdown-detail" id="todayDetail2"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="3" data-period="today">
+            <span class="breakdown-label">3回目:</span>
+            <span class="breakdown-value" id="todayWin3">0</span>
+            <span class="breakdown-detail" id="todayDetail3"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="4" data-period="today">
+            <span class="breakdown-label">4回目:</span>
+            <span class="breakdown-value" id="todayWin4">0</span>
+            <span class="breakdown-detail" id="todayDetail4"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="5" data-period="today">
+            <span class="breakdown-label">5回目:</span>
+            <span class="breakdown-value" id="todayWin5">0</span>
+            <span class="breakdown-detail" id="todayDetail5"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="6" data-period="today">
+            <span class="breakdown-label">6回目:</span>
+            <span class="breakdown-value" id="todayWin6">0</span>
+            <span class="breakdown-detail" id="todayDetail6"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="7" data-period="today">
+            <span class="breakdown-label">7回目:</span>
+            <span class="breakdown-value" id="todayWin7">0</span>
+            <span class="breakdown-detail" id="todayDetail7"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="8" data-period="today">
+            <span class="breakdown-label">8回目:</span>
+            <span class="breakdown-value" id="todayWin8">0</span>
+            <span class="breakdown-detail" id="todayDetail8"></span>
+          </div>
+          <div class="breakdown-row lose clickable" id="todayLose8Row" data-period="today">
+            <span class="breakdown-label">8連敗:</span>
+            <span class="breakdown-value" id="todayLose8">0</span>
+          </div>
+        </div>
+      </div>
+      <!-- 累計の勝敗 -->
+      <div class="stats-period-block">
+        <div class="stats-period-header">
+          <span class="stats-period-label">累計</span>
+          <div class="stats-total inline">
+            <div class="stat-item lose inline-item">
+              <span class="stat-value" id="totalLoses">0</span>
+              <span class="stat-label">負</span>
+            </div>
+            <div class="stat-item win inline-item">
+              <span class="stat-value" id="totalWins">0</span>
+              <span class="stat-label">勝</span>
+            </div>
+          </div>
+          <button class="stats-detail-toggle" id="totalStatsToggleBtn" title="累計の詳細">
+            <span class="toggle-icon">&#9660;</span>
+          </button>
+        </div>
+        <div class="stats-breakdown compact" id="totalStatsBreakdown" style="display: none;">
+          <div class="breakdown-row clickable" data-round="1">
+            <span class="breakdown-label">1回目:</span>
+            <span class="breakdown-value" id="win1">0</span>
+            <span class="breakdown-detail" id="detail1"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="2">
+            <span class="breakdown-label">2回目:</span>
+            <span class="breakdown-value" id="win2">0</span>
+            <span class="breakdown-detail" id="detail2"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="3">
+            <span class="breakdown-label">3回目:</span>
+            <span class="breakdown-value" id="win3">0</span>
+            <span class="breakdown-detail" id="detail3"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="4">
+            <span class="breakdown-label">4回目:</span>
+            <span class="breakdown-value" id="win4">0</span>
+            <span class="breakdown-detail" id="detail4"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="5">
+            <span class="breakdown-label">5回目:</span>
+            <span class="breakdown-value" id="win5">0</span>
+            <span class="breakdown-detail" id="detail5"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="6">
+            <span class="breakdown-label">6回目:</span>
+            <span class="breakdown-value" id="win6">0</span>
+            <span class="breakdown-detail" id="detail6"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="7">
+            <span class="breakdown-label">7回目:</span>
+            <span class="breakdown-value" id="win7">0</span>
+            <span class="breakdown-detail" id="detail7"></span>
+          </div>
+          <div class="breakdown-row clickable" data-round="8">
+            <span class="breakdown-label">8回目:</span>
+            <span class="breakdown-value" id="win8">0</span>
+            <span class="breakdown-detail" id="detail8"></span>
+          </div>
+          <div class="breakdown-row lose clickable" id="totalLose8Row" data-period="total">
+            <span class="breakdown-label">8連敗:</span>
+            <span class="breakdown-value" id="lose8">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 収支トラッカー -->
+    <section class="balance-section" id="balanceSection">
+      <div class="balance-header">
+        <span class="balance-title">収支</span>
+        <button class="history-btn" id="balanceHistoryBtn" title="履歴を見る">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span>履歴</span>
+        </button>
+      </div>
+      <div class="balance-content">
+        <div class="balance-item today">
+          <span class="balance-label">今日</span>
+          <span class="balance-value" id="todayBalance">¥0</span>
+          <button class="balance-reset-link" id="resetTodayBalanceBtn">リセット</button>
+        </div>
+        <div class="balance-divider"></div>
+        <div class="balance-item total">
+          <span class="balance-label">累計</span>
+          <span class="balance-value" id="totalBalance">¥0</span>
+          <button class="balance-reset-link" id="resetTotalBalanceBtn">リセット</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- フッター -->
+    <footer class="footer">
+      <span>Bubinga専用ALL-IN自動分析システム</span>
+    </footer>
+  </div>
+
+  <!-- 統一設定モーダル -->
+  <div class="modal-overlay" id="generalSettingsModal" style="display: none;">
+    <div class="modal-content settings-modal">
+      <div class="modal-header">
+        <h3>設定</h3>
+        <button class="modal-close" id="generalSettingsModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 音量設定セクション -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+            <span>アラート音量</span>
+          </div>
+          <select class="settings-select" id="soundLevelSelect">
+            <option value="off">OFF</option>
+            <option value="low">小</option>
+            <option value="medium" selected>中</option>
+            <option value="high">大</option>
+          </select>
+        </div>
+
+        <!-- レジサポライン警告設定 -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <span>レジサポライン警告</span>
+          </div>
+          <select class="settings-select" id="srWarningModeSelect">
+            <option value="off">OFF（警告なし）</option>
+            <option value="manual" selected>警告＋スキップボタン</option>
+            <option value="auto">自動スキップ</option>
+          </select>
+        </div>
+
+        <!-- トレンド/チャネルライン警告設定 -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            <span>トレンド/チャネル警告</span>
+          </div>
+          <select class="settings-select" id="tlWarningModeSelect">
+            <option value="off">OFF（警告なし）</option>
+            <option value="manual" selected>警告＋スキップボタン</option>
+            <option value="auto">自動スキップ</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn save" id="generalSettingsModalSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- データ管理モーダル -->
+  <div class="modal-overlay" id="dataManageModal" style="display: none;">
+    <div class="modal-content data-modal">
+      <div class="modal-header">
+        <h3>データ管理</h3>
+        <button class="modal-close" id="dataManageModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="data-manage-section">
+          <div class="data-manage-item">
+            <div class="data-manage-info">
+              <span class="data-manage-title">データをエクスポート</span>
+              <span class="data-manage-desc">勝敗記録・収支・設定をJSONファイルに保存</span>
+            </div>
+            <button class="data-manage-btn export" id="exportDataBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              エクスポート
+            </button>
+          </div>
+          <div class="data-manage-item">
+            <div class="data-manage-info">
+              <span class="data-manage-title">データをインポート</span>
+              <span class="data-manage-desc">保存したJSONファイルから復元</span>
+            </div>
+            <button class="data-manage-btn import" id="importDataBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              インポート
+            </button>
+            <input type="file" id="importFileInput" accept=".json" style="display: none;">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8連敗ログモーダル -->
+  <div class="modal-overlay" id="lose8LogModal" style="display: none;">
+    <div class="modal-content lose8-modal">
+      <div class="modal-header">
+        <h3>8連敗ログ</h3>
+        <button class="modal-close" id="lose8LogModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="lose8-period-label" id="lose8PeriodLabel">累計</div>
+        <div class="lose8-log-list" id="lose8LogList">
+          <!-- JavaScript で動的に生成 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 収支履歴モーダル -->
+  <div class="modal-overlay" id="balanceHistoryModal" style="display: none;">
+    <div class="modal-content history-modal">
+      <div class="modal-header">
+        <h3>収支履歴</h3>
+        <button class="modal-close" id="balanceHistoryModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- リセットボタン -->
+        <div class="history-reset-buttons">
+          <button class="reset-btn recalc" id="recalculateTotalBtn">累計を履歴から再計算</button>
+          <button class="reset-btn all" id="resetAllBalanceBtn">全てリセット</button>
+        </div>
+        <!-- ミニカレンダー（月選択） -->
+        <div class="history-calendar">
+          <div class="calendar-nav">
+            <button class="calendar-nav-btn" id="prevMonthBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <span class="calendar-month" id="currentMonthDisplay">2025年12月</span>
+            <button class="calendar-nav-btn" id="nextMonthBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <!-- 月間合計 -->
+        <div class="history-monthly-total">
+          <span class="monthly-total-label">月間合計</span>
+          <span class="monthly-total-value" id="monthlyTotalValue">¥0</span>
+        </div>
+        <!-- 日別収支リスト -->
+        <div class="history-list" id="historyList">
+          <!-- JavaScript で動的に生成 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- マーチン金額設定モーダル -->
+  <div class="modal-overlay" id="settingsModal" style="display: none;">
+    <div class="modal-content martingale-modal">
+      <div class="modal-header">
+        <h3>マーチン金額設定</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 自動計算セクション -->
+        <div class="auto-calc-section">
+          <div class="auto-calc-header">
+            <span class="auto-calc-title">自動計算</span>
+          </div>
+          <div class="auto-calc-inputs">
+            <div class="auto-calc-row">
+              <label>ペイアウト率</label>
+              <input type="number" id="payoutRate" placeholder="1.92" step="0.01" min="1.01" max="3.00" value="1.92">
+            </div>
+            <div class="auto-calc-row">
+              <label>1回戦目金額</label>
+              <input type="number" id="baseAmount" placeholder="1000" min="1">
+              <span class="currency">円</span>
+            </div>
+          </div>
+          <button class="auto-calc-btn" id="autoCalcBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+              <line x1="8" y1="12" x2="16" y2="12"/>
+              <line x1="12" y1="8" x2="12" y2="16"/>
+            </svg>
+            自動計算
+          </button>
+          <!-- 利益表示 -->
+          <div class="profit-display" id="profitDisplay" style="display: none;">
+            <span class="profit-label">期待利益（各回戦共通）:</span>
+            <span class="profit-value" id="profitValue">--</span>
+          </div>
+          <!-- ペイアウト率自動取得チェックボックス -->
+          <div class="auto-payout-section">
+            <label class="auto-payout-checkbox">
+              <input type="checkbox" id="autoPayoutCheckbox" checked>
+              <span class="checkbox-custom"></span>
+              <span class="auto-payout-label">ペイアウト率を自動取得してマーチン金額を調整</span>
+            </label>
+            <p class="auto-payout-hint">Bubingaのペイアウト率が変更されると自動的にマーチン金額を再計算します</p>
+          </div>
+        </div>
+
+        <div class="section-divider">
+          <span>各回戦の金額</span>
+        </div>
+
+        <div class="amount-inputs">
+          <div class="amount-row">
+            <label>1回戦目</label>
+            <input type="number" id="amount1" placeholder="1000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>2回戦目</label>
+            <input type="number" id="amount2" placeholder="2000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>3回戦目</label>
+            <input type="number" id="amount3" placeholder="4000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>4回戦目</label>
+            <input type="number" id="amount4" placeholder="8000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>5回戦目</label>
+            <input type="number" id="amount5" placeholder="16000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>6回戦目</label>
+            <input type="number" id="amount6" placeholder="32000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>7回戦目</label>
+            <input type="number" id="amount7" placeholder="64000" min="0">
+            <span class="currency">円</span>
+          </div>
+          <div class="amount-row">
+            <label>8回戦目</label>
+            <input type="number" id="amount8" placeholder="128000" min="0">
+            <span class="currency">円</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn cancel" id="modalCancel">キャンセル</button>
+        <button class="modal-btn save" id="modalSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ライセンス認証 - Bubinga専用ALL-IN自動分析システム</title>
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <!-- ロゴ・タイトル -->
+      <div class="auth-header">
+        <div class="auth-logo">
+          <img src="icons/icon128.png" alt="Logo" class="logo-img">
+        </div>
+        <h1 class="auth-title">Bubinga専用</h1>
+        <h2 class="auth-subtitle">ALL-IN自動分析システム</h2>
+      </div>
+
+      <!-- 認証フォーム -->
+      <div class="auth-form" id="authForm">
+        <div class="form-group">
+          <label for="licenseKey" class="form-label">ライセンスキー</label>
+          <input
+            type="text"
+            id="licenseKey"
+            class="form-input"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+
+        <button type="button" class="auth-btn" id="authBtn">
+          <span class="btn-text">認証する</span>
+          <span class="btn-loading" style="display: none;">
+            <span class="spinner"></span>
+            認証中...
+          </span>
+        </button>
+
+        <!-- エラーメッセージ -->
+        <div class="error-message" id="errorMessage" style="display: none;">
+          <span class="error-icon">!</span>
+          <span class="error-text" id="errorText"></span>
+        </div>
+      </div>
+
+      <!-- 認証済み表示 -->
+      <div class="auth-success" id="authSuccess" style="display: none;">
+        <div class="success-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <p class="success-text">認証完了</p>
+        <p class="success-subtext">システムを起動しています...</p>
+      </div>
+
+      <!-- デバイスID表示 -->
+      <div class="device-info">
+        <span class="device-label">デバイスID:</span>
+        <span class="device-id" id="deviceId">読み込み中...</span>
+      </div>
+    </div>
+
+    <!-- フッター -->
+    <footer class="auth-footer">
+      <span>Bubinga専用ALL-IN自動分析システム</span>
+    </footer>
+  </div>
+
+  <script src="firebase-config.js"></script>
+  <script src="auth.js"></script>
+</body>
+</html>

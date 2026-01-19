@@ -762,6 +762,11 @@ function listenForAnalysisUpdates() {
       updateRealtimeStatus(message.data);
     }
 
+    // 時間帯別データ更新を受信
+    if (message.type === 'TIME_FILTER_UPDATE' && message.data?.timeFilterInfo) {
+      updateTimeFilterInfoFromServer(message.data.timeFilterInfo);
+    }
+
     if (message.type === 'ASSET_UPDATE' && message.data) {
       if (message.data.asset) {
         document.getElementById('asset-name-display').textContent = message.data.asset;
@@ -910,6 +915,14 @@ function updateSignalCardsFromStatus(signal) {
     techLabelEl.textContent = label;
     techConfidenceEl.textContent = confidence;
     if (techCardEl) techCardEl.setAttribute('data-signal-type', dataSignal);
+
+    // v5.8.4: テクニカルグレードも更新（相場状況カード内）
+    // シグナルにテクニカルグレード情報があれば表示
+    const techGradeEl = document.getElementById('enhanced-grade');
+    if (techGradeEl && signal.techGrade) {
+      techGradeEl.textContent = signal.techGrade;
+      techGradeEl.setAttribute('data-grade', signal.techGrade);
+    }
   }
 
   // AI予測シグナルカード更新
@@ -959,6 +972,35 @@ function updateSignalCardsFromStatus(signal) {
     aiLabelEl.textContent = label;
     aiConfidenceEl.textContent = confidence;
     if (aiCardEl) aiCardEl.setAttribute('data-signal-type', dataSignal);
+
+    // v5.8.10: AIグレードも更新（相場状況カード内）
+    // AIシグナルが有効な場合のみグレードを表示
+    const validAISignals = ['HIGH', 'LOW', 'ENHANCED_HIGH', 'ENHANCED_LOW'];
+    const hasValidAISignal = validAISignals.includes(signal.ai);
+
+    const aiGradeEl = document.getElementById('ai-grade');
+    const aiRecValueEl = document.getElementById('ai-rec-value');
+    let aiGrade = null;
+
+    if (hasValidAISignal && signal.aiUpRate !== undefined && signal.aiDownRate !== undefined) {
+      aiGrade = calculateAIGrade(signal.aiUpRate, signal.aiDownRate);
+      if (aiGradeEl) {
+        aiGradeEl.textContent = aiGrade;
+        aiGradeEl.setAttribute('data-grade', aiGrade);
+      }
+      if (aiRecValueEl) {
+        aiRecValueEl.textContent = getRecommendationFromGrade(aiGrade);
+      }
+    } else if (!aiPredictionLock.isLocked) {
+      // AIシグナルがない場合はリセット（ロック中は維持）
+      if (aiGradeEl) {
+        aiGradeEl.textContent = '--';
+        aiGradeEl.removeAttribute('data-grade');
+      }
+      if (aiRecValueEl) {
+        aiRecValueEl.textContent = '--';
+      }
+    }
   }
 
   // v5.6.5: シグナルに含まれるAI予測詳細データでAI予測詳細カードも更新
@@ -1033,6 +1075,12 @@ function updateRealtimeStatus(data) {
       debugLog('[SidePanel] 🔓 取引終了によりAI予測詳細ロック解除');
       aiPredictionLock.isLocked = false;
       aiPredictionLock.lockedData = null;
+    }
+
+    // v5.7.6: 高精度分析のロックも解除
+    if (enhancedAnalysisLock.isLocked) {
+      debugLog('[SidePanel] 🔓 取引終了により高精度分析ロック解除');
+      resetEnhancedAnalysisLock();
     }
   }
 
@@ -1220,10 +1268,15 @@ function updateDisplay(data) {
     updateTechnicalCard(timeframeData.technical);
     updateAICard(timeframeData.ai, data.stratification);
     updateStratificationInsights(data.stratification);
+    // v5.7.0: 高精度テクニカル分析カードを更新
+    // v5.7.9: テクニカル分析のシグナルも渡して、最低限グレードを表示
+    updateEnhancedCard(timeframeData.enhanced, timeframeData.technical);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
     debugLog('[SidePanel] 時間枠のデータなし - カードをリセット');
     resetSignalCards();
+    // v5.7.0: 高精度分析カードもリセット
+    updateEnhancedCard(null);
   }
 
   if (data.mlStats) {
@@ -1342,12 +1395,50 @@ function updateTechSignalCard(tech) {
   }
 }
 
+// AI予測のグレードを計算（確率差と信頼度に基づく）
+function calculateAIGrade(upRate, downRate) {
+  const maxRate = Math.max(upRate, downRate);
+  const diff = Math.abs(upRate - downRate);
+
+  // グレード計算: 最大確率と差の組み合わせ
+  // A+: 80%以上 かつ 差50pt以上
+  // A:  75%以上 かつ 差40pt以上
+  // B+: 70%以上 かつ 差30pt以上
+  // B:  65%以上 かつ 差25pt以上
+  // C+: 60%以上 かつ 差20pt以上
+  // C:  55%以上 または 差15pt以上
+  // D:  50%以上 または 差10pt以上
+  // F:  それ以外
+
+  if (maxRate >= 80 && diff >= 50) return 'A+';
+  if (maxRate >= 75 && diff >= 40) return 'A';
+  if (maxRate >= 70 && diff >= 30) return 'B+';
+  if (maxRate >= 65 && diff >= 25) return 'B';
+  if (maxRate >= 60 && diff >= 20) return 'C+';
+  if (maxRate >= 55 || diff >= 15) return 'C';
+  if (maxRate >= 50 || diff >= 10) return 'D';
+  return 'F';
+}
+
+// v5.8.7: グレードから推奨アクションを取得
+function getRecommendationFromGrade(grade) {
+  // A+, A → 推奨
+  // B+, B → 可
+  // C+, C → 慎重
+  // D, F → 見送り
+  if (grade === 'A+' || grade === 'A') return '推奨';
+  if (grade === 'B+' || grade === 'B') return '可';
+  if (grade === 'C+' || grade === 'C') return '慎重';
+  return '見送り';
+}
+
 // AI予測シグナルカード更新
 function updateAISignalCard(ai) {
   const cardEl = document.getElementById('ai-signal-card');
   const iconEl = document.getElementById('ai-signal-icon');
   const labelEl = document.getElementById('ai-signal-label');
   const confidenceEl = document.getElementById('ai-signal-confidence');
+  const gradeEl = document.getElementById('ai-grade');
 
   if (!iconEl || !labelEl || !confidenceEl) return;
 
@@ -1388,6 +1479,11 @@ function updateAISignalCard(ai) {
       labelEl.textContent = '準備中';
     }
     confidenceEl.textContent = '';
+    // グレードをリセット
+    if (gradeEl) {
+      gradeEl.textContent = '--';
+      gradeEl.setAttribute('data-grade', '');
+    }
     return;
   }
 
@@ -1484,6 +1580,18 @@ function updateAISignalCard(ai) {
   // グラデーションアクセント用の属性を設定
   if (cardEl) {
     cardEl.setAttribute('data-signal-type', dataSignal);
+  }
+
+  // グレードを計算して表示（シグナルが出ている場合のみ）
+  if (gradeEl) {
+    if (dataSignal !== 'wait' && upRate !== undefined && downRate !== undefined) {
+      const grade = calculateAIGrade(upRate, downRate);
+      gradeEl.textContent = grade;
+      gradeEl.setAttribute('data-grade', grade);
+    } else {
+      gradeEl.textContent = '--';
+      gradeEl.setAttribute('data-grade', '');
+    }
   }
 }
 
@@ -1625,20 +1733,6 @@ function updateTechnicalCard(technical) {
           </div>
         </div>
 
-        <!-- 情報エリア -->
-        <div class="tech-compact-info">
-          <div class="tech-compact-row">
-            <span class="tech-compact-label">判定</span>
-            <span class="tech-compact-value ${judgmentClass}" id="tech-judgment">${judgment || '-'}</span>
-          </div>
-          <div class="tech-compact-row">
-            <span class="tech-compact-label">グレード</span>
-            <span class="tech-compact-value">
-              <span class="tech-grade-pill grade-${grade.toLowerCase()}" id="tech-grade">${grade}</span>
-              <span class="tech-grade-text" id="tech-grade-label">${gradeLabel}</span>
-            </span>
-          </div>
-        </div>
       </div>
     `;
 
@@ -1649,9 +1743,6 @@ function updateTechnicalCard(technical) {
     });
   } else {
     // 更新: 既存の要素を滑らかに更新
-    const judgmentEl = detailBox.querySelector('#tech-judgment');
-    const gradeEl = detailBox.querySelector('#tech-grade');
-    const gradeLabelEl = detailBox.querySelector('#tech-grade-label');
     const volaLabelEl = detailBox.querySelector('#vola-label');
 
     // 強度ゲージをアニメーション更新
@@ -1672,31 +1763,6 @@ function updateTechnicalCard(technical) {
         volaLabelEl.className = `gauge-vola-label ${volatilityClass}`;
         volaLabelEl.id = 'vola-label';
         volaLabelEl.classList.remove('value-updating');
-      }, 150);
-    }
-
-    // 判定更新（フェードアニメーション）
-    if (judgmentEl && lastTechValues.judgment !== judgment) {
-      judgmentEl.classList.add('value-updating');
-      setTimeout(() => {
-        judgmentEl.textContent = judgment || '-';
-        judgmentEl.className = `tech-compact-value ${judgmentClass}`;
-        judgmentEl.id = 'tech-judgment';
-        judgmentEl.classList.remove('value-updating');
-      }, 150);
-    }
-
-    // グレード更新
-    if (gradeEl && lastTechValues.grade !== grade) {
-      gradeEl.classList.add('value-updating');
-      gradeLabelEl.classList.add('value-updating');
-      setTimeout(() => {
-        gradeEl.textContent = grade;
-        gradeEl.className = `tech-grade-pill grade-${grade.toLowerCase()}`;
-        gradeEl.id = 'tech-grade';
-        gradeLabelEl.textContent = gradeLabel;
-        gradeEl.classList.remove('value-updating');
-        gradeLabelEl.classList.remove('value-updating');
       }, 150);
     }
   }
@@ -2027,33 +2093,169 @@ function updateStratificationInsights(stratification) {
   insightsContainer.innerHTML = html;
 }
 
+// v5.7.6: 高精度分析結果のロック（エントリー終了まで維持）
+let enhancedAnalysisLock = {
+  isLocked: false,
+  lockedData: null
+};
+
+// v5.7.6: 高精度分析のロックをリセット（取引終了時に呼び出される）
+function resetEnhancedAnalysisLock() {
+  enhancedAnalysisLock.isLocked = false;
+  enhancedAnalysisLock.lockedData = null;
+  // UI要素をリセット
+  const gradeEl = document.getElementById('enhanced-grade');
+  const techRecValueEl = document.getElementById('tech-rec-value');
+  const aiRecValueEl = document.getElementById('ai-rec-value');
+  const aiGradeEl = document.getElementById('ai-grade');
+  const regimeEl = document.getElementById('enhanced-regime');
+  const mtfEl = document.getElementById('enhanced-mtf');
+  if (gradeEl) {
+    gradeEl.textContent = '--';
+    gradeEl.removeAttribute('data-grade');
+  }
+  if (aiGradeEl) {
+    aiGradeEl.textContent = '--';
+    aiGradeEl.removeAttribute('data-grade');
+  }
+  if (techRecValueEl) techRecValueEl.textContent = '--';
+  if (aiRecValueEl) aiRecValueEl.textContent = '--';
+  if (regimeEl) regimeEl.textContent = '--';
+  if (mtfEl) mtfEl.textContent = '--';
+}
+
+// v5.7.7: 高精度分析情報を相場状況カードに表示
+// v5.7.9: テクニカル分析のシグナルも参照して最低限グレードを表示
+function updateEnhancedCard(enhanced, technical = null) {
+  const gradeEl = document.getElementById('enhanced-grade');
+  const techRecValueEl = document.getElementById('tech-rec-value');
+  const regimeEl = document.getElementById('enhanced-regime');
+  const mtfEl = document.getElementById('enhanced-mtf');
+
+  // データがない場合はリセット（ロック中でなければ）
+  if (!enhanced) {
+    if (!enhancedAnalysisLock.isLocked) {
+      if (gradeEl) {
+        gradeEl.textContent = '--';
+        gradeEl.removeAttribute('data-grade');
+      }
+      if (techRecValueEl) {
+        techRecValueEl.textContent = '--';
+      }
+    }
+    return;
+  }
+
+  // 相場状態とMTF一致度は常に更新（NEUTRALでも表示）
+  if (regimeEl) {
+    const regimeMap = {
+      'STRONG_TREND_UP': '強トレンド↑',
+      'STRONG_TREND_DOWN': '強トレンド↓',
+      'WEAK_TREND_UP': '弱トレンド↑',
+      'WEAK_TREND_DOWN': '弱トレンド↓',
+      'RANGE': 'レンジ',
+      'BREAKOUT_UP': 'レンジ上抜け',
+      'BREAKOUT_DOWN': 'レンジ下抜け',
+      'REVERSAL_UP': '上方反転',
+      'REVERSAL_DOWN': '下方反転',
+      // 旧形式との互換性
+      'STRONG_TREND': '強トレンド',
+      'WEAK_TREND': '弱トレンド',
+      'BREAKOUT': 'ブレイク',
+      'REVERSAL': '反転'
+    };
+    const regime = enhanced.regime || '--';
+    regimeEl.textContent = regimeMap[regime] || regime;
+  }
+
+  if (mtfEl) {
+    const mtf = enhanced.mtfAgreement;
+    mtfEl.textContent = mtf !== undefined && mtf !== null ? `${mtf}%` : '--';
+  }
+
+  // v5.8.13: シグナルの有効性を厳密にチェック
+  // テクニカル分析シグナルカードの「見送り」表示と完全に連動させる
+  // シグナルカードは technical.signal (= multiDim.signal) を見ている
+  const validSignals = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
+
+  // テクニカル分析シグナルが有効かどうか（シグナルカードで HIGH/LOW が表示される条件と同じ）
+  const techSignalValid = technical && technical.signal && validSignals.includes(technical.signal);
+
+  // enhanced.signal も確認（バックアップ）
+  const enhancedSignalValid = enhanced.signal && validSignals.includes(enhanced.signal);
+
+  // シグナルカードで「見送り」と表示される場合は、グレードも表示しない
+  // technical.signal が HIGH/LOW でない = シグナルカードが「見送り」
+  const shouldShowGrade = techSignalValid;
+
+  const hasGrade = enhanced.grade && enhanced.grade !== '--';
+
+  // v5.8.5: シグナルが出た時のみグレードを表示
+  // v5.8.13: シグナルカードで「見送り」の場合は表示しない（厳密に連動）
+  // グレードは「シグナルが出た上で、エントリーすべきかどうか」の判断材料
+  if (shouldShowGrade) {
+    // ロック中は更新しない（取引終了まで結果を維持）
+    if (enhancedAnalysisLock.isLocked) {
+      return;
+    }
+
+    // 有効なシグナルが来たらロックして表示
+    enhancedAnalysisLock.isLocked = true;
+    enhancedAnalysisLock.lockedData = enhanced;
+
+    // グレード（タイトル横のバッジ）- グレードがない場合は最低「D」を表示
+    if (gradeEl) {
+      const grade = hasGrade ? enhanced.grade : 'D';
+      gradeEl.textContent = grade;
+      gradeEl.setAttribute('data-grade', grade);
+    }
+
+    // v5.8.7: テクニカル推奨アクション - グレードに基づいて決定
+    if (techRecValueEl) {
+      const grade = hasGrade ? enhanced.grade : 'D';
+      techRecValueEl.textContent = getRecommendationFromGrade(grade);
+    }
+  } else if (!enhancedAnalysisLock.isLocked) {
+    // シグナルがない場合はグレードも表示しない
+    if (gradeEl) {
+      gradeEl.textContent = '--';
+      gradeEl.removeAttribute('data-grade');
+    }
+    if (techRecValueEl) {
+      techRecValueEl.textContent = '--';
+    }
+  }
+}
+
 // ML学習状況更新
 function updateMLStatus(mlStats) {
   if (!mlStats) return;
 
-  const rawDataCount = mlStats.dataCountWithResults || mlStats.dataCount || 0;
+  // DB総件数を優先して表示（dataCount = DB総件数、dataCountWithResults = メモリ上の結果あり件数）
+  // メモリは最大10000件に制限されているが、DBには42000件以上保存されている可能性がある
+  const rawDataCount = mlStats.dataCount || mlStats.dataCountWithResults || 0;
   const learningLevel = mlStats.learningLevel;
 
   // チカチカ防止: データカウントは増加のみ許可（減少は無視）
   // これにより 3179 → 3178 → 3179 のような行ったり来たりを防止
-  const dataCountWithResults = Math.max(highestMLDataCount, rawDataCount);
+  const displayDataCount = Math.max(highestMLDataCount, rawDataCount);
   if (rawDataCount > highestMLDataCount) {
     highestMLDataCount = rawDataCount;
   }
 
   // 値が変わっていない場合は更新をスキップ
-  if (lastMLStats.dataCountWithResults === dataCountWithResults &&
+  if (lastMLStats.dataCount === displayDataCount &&
       lastMLStats.learningLevel === learningLevel) {
     return;
   }
-  lastMLStats = { dataCountWithResults, dataCount: mlStats.dataCount, learningLevel };
+  lastMLStats = { dataCountWithResults: mlStats.dataCountWithResults, dataCount: displayDataCount, learningLevel };
 
   const dataCountEl = document.getElementById('ml-data-count');
   const learningLevelEl = document.getElementById('ml-learning-level');
   const progressBar = document.getElementById('ml-progress-bar');
   const countBadge = document.getElementById('ml-count-badge');
 
-  const countText = dataCountWithResults.toLocaleString();
+  const countText = displayDataCount.toLocaleString();
 
   if (dataCountEl) dataCountEl.textContent = countText;
   if (countBadge) countBadge.textContent = `${countText}件`;
@@ -2061,7 +2263,7 @@ function updateMLStatus(mlStats) {
     learningLevelEl.textContent = learningLevel;
   }
   if (progressBar) {
-    const progress = Math.min(100, (dataCountWithResults / 50000) * 100);
+    const progress = Math.min(100, (displayDataCount / 50000) * 100);
     progressBar.style.width = `${progress}%`;
   }
 }

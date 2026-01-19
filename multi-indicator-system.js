@@ -1453,34 +1453,85 @@ class MultiDimensionalAnalyzer {
     const isCrypto = this.isCryptocurrencyPair(asset);
     const cryptoMultiplier = isCrypto ? 1.5 : 1.0;
 
-    let highThreshold = 15 * volatilityFactor * cryptoMultiplier;
-    let strongThreshold = 50 * volatilityFactor * cryptoMultiplier;
+    // v5.7.10: 閾値を厳格化（勝率向上のため）
+    // 旧: highThreshold = 15, strongThreshold = 50
+    // 新: highThreshold = 25, strongThreshold = 55（シグナル頻度を下げて精度向上）
+    let highThreshold = 25 * volatilityFactor * cryptoMultiplier;
+    let strongThreshold = 55 * volatilityFactor * cryptoMultiplier;
 
     misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎚️ 動的しきい値: ATR=${atrPercent.toFixed(2)}% → volatilityFactor=${volatilityFactor.toFixed(2)}${isCrypto ? ' 🪙仮想通貨×1.5倍' : ''} → HIGH=±${highThreshold.toFixed(1)}, STRONG=±${strongThreshold.toFixed(1)}`);
 
-    // シグナル判定（動的しきい値を使用）
+    // v5.7.10: 指標コンセンサスチェック（勝率向上のため）
+    // 主要指標（MACD, ROC, Stochastic, Sentiment）の方向を確認
+    let highIndicators = 0;
+    let lowIndicators = 0;
+    const indicatorCount = 4;
+
+    if (macdResult.strength > 2) highIndicators++;
+    else if (macdResult.strength < -2) lowIndicators++;
+
+    if (rocResult.strength > 2) highIndicators++;
+    else if (rocResult.strength < -2) lowIndicators++;
+
+    if (stochasticResult.strength > 2) highIndicators++;
+    else if (stochasticResult.strength < -2) lowIndicators++;
+
+    if (sentimentResult.strength > 2) highIndicators++;
+    else if (sentimentResult.strength < -2) lowIndicators++;
+
+    // コンセンサス比率（4指標中何個が同方向か）
+    const consensusRatioHigh = highIndicators / indicatorCount;
+    const consensusRatioLow = lowIndicators / indicatorCount;
+    const hasConsensus = consensusRatioHigh >= 0.5 || consensusRatioLow >= 0.5;
+
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🤝 指標コンセンサス: HIGH=${highIndicators}個 LOW=${lowIndicators}個 / ${indicatorCount}個 → ${hasConsensus ? '✅合意あり' : '❌合意なし'}`);
+
+    // v5.7.10: 逆張りフィルター
+    // ストキャスティクスが過買（>80）でHIGHシグナル、または過売（<20）でLOWシグナルは除外
+    const stochK = stochasticResult.k || 50;
+    const isOverbought = stochK > 80;
+    const isOversold = stochK < 20;
+
+    // v5.7.10: 一貫性フィルター
+    // 期間一貫性が50%未満の場合はシグナル発出を抑制
+    const consistencyOk = segmentedTrend.consistency >= 50;
+
+    misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🔍 品質フィルター: 一貫性=${segmentedTrend.consistency.toFixed(1)}%(${consistencyOk ? '✅' : '❌'}), Stoch K=${stochK.toFixed(1)}(${isOverbought ? '過買' : isOversold ? '過売' : '通常'})`);
+
+    // シグナル判定（動的しきい値 + 品質フィルターを使用）
     let signal, confidence;
 
-    if (normalizedScore > strongThreshold && trendConfidence > 7) {
+    // 品質条件: コンセンサスあり + 一貫性OK
+    const qualityOk = hasConsensus && consistencyOk;
+
+    if (normalizedScore > strongThreshold && trendConfidence > 7 && qualityOk && !isOverbought) {
       signal = 'STRONG_HIGH';
       confidence = Math.min(95, 70 + normalizedScore / 3);
-      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
-    } else if (normalizedScore > highThreshold && trendConfidence > trendStrengthThreshold) {
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_HIGH (score=${normalizedScore.toFixed(2)} > ${strongThreshold.toFixed(1)}, 品質OK)`);
+    } else if (normalizedScore > highThreshold && trendConfidence > trendStrengthThreshold && qualityOk && !isOverbought) {
       signal = 'HIGH';
       confidence = Math.min(85, 60 + normalizedScore / 4);
-      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (normalizedScore=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
-    } else if (normalizedScore < -strongThreshold && trendConfidence > 7) {
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: HIGH (score=${normalizedScore.toFixed(2)} > ${highThreshold.toFixed(1)}, 品質OK)`);
+    } else if (normalizedScore < -strongThreshold && trendConfidence > 7 && qualityOk && !isOversold) {
       signal = 'STRONG_LOW';
       confidence = Math.min(95, 70 + Math.abs(normalizedScore) / 3);
-      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > 7)`);
-    } else if (normalizedScore < -highThreshold && trendConfidence > trendStrengthThreshold) {
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: STRONG_LOW (score=${normalizedScore.toFixed(2)} < -${strongThreshold.toFixed(1)}, 品質OK)`);
+    } else if (normalizedScore < -highThreshold && trendConfidence > trendStrengthThreshold && qualityOk && !isOversold) {
       signal = 'LOW';
       confidence = Math.min(85, 60 + Math.abs(normalizedScore) / 4);
-      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (normalizedScore=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)} かつ trendConfidence=${trendConfidence.toFixed(2)} > ${trendStrengthThreshold})`);
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: LOW (score=${normalizedScore.toFixed(2)} < -${highThreshold.toFixed(1)}, 品質OK)`);
     } else {
       signal = 'NEUTRAL';
       confidence = null;  // 見送りの場合はパーセンテージなし
-      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL (normalizedScore=${normalizedScore.toFixed(2)} が -${highThreshold.toFixed(1)}～${highThreshold.toFixed(1)}の範囲内、または trendConfidence=${trendConfidence.toFixed(2)} <= ${trendStrengthThreshold})`);
+      // 除外理由をログ
+      let reason = [];
+      if (Math.abs(normalizedScore) <= highThreshold) reason.push(`スコア範囲内(±${highThreshold.toFixed(1)})`);
+      if (trendConfidence <= trendStrengthThreshold) reason.push(`トレンド弱(${trendConfidence.toFixed(1)})`);
+      if (!hasConsensus) reason.push('指標合意なし');
+      if (!consistencyOk) reason.push(`一貫性不足(${segmentedTrend.consistency.toFixed(1)}%)`);
+      if (normalizedScore > 0 && isOverbought) reason.push('過買い状態でHIGH除外');
+      if (normalizedScore < 0 && isOversold) reason.push('過売り状態でLOW除外');
+      misLog(`[Multi-Indicator-Timeframe] ${timeframeSeconds}秒 🎯 判定: NEUTRAL → 理由: ${reason.join(', ')}`);
     }
 
     // 🆕 信頼度を一貫性・整合性で調整

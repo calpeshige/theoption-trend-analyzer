@@ -7,7 +7,7 @@
  */
 
 // デバッグモード（本番ではfalse）
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 const debugLog = DEBUG_MODE ? console.log.bind(console) : () => {};
 
 // 最新の分析データをキャッシュ
@@ -133,13 +133,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           downloadType: message.downloadType
         }).then(() => {
           debugLog('[Background] EXECUTE_DOWNLOAD送信成功');
+          sendResponse({ success: true });
         }).catch((error) => {
           console.error('[Background] EXECUTE_DOWNLOAD送信失敗:', error);
+          sendResponse({ success: false, error: error.message });
         });
       } else {
         console.warn('[Background] theoption.comタブが見つかりません');
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
       }
     });
+    return true; // 非同期レスポンス
   }
 
   // 通貨ペア別データ一覧を取得（IndexedDBから）

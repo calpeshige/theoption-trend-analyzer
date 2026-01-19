@@ -20,68 +20,88 @@ class PatternMatchingSystem {
         this.similarityCalculator = new globalScope.SegmentSimilarityCalculator();
     }
 
-    // 類似パターンを検索（段階的マッチング）
+    // 類似パターンを検索（段階的マッチング - メモリ効率版）
     // options: { timeFilterMode, currentHour }
     findSimilarPatterns(currentSituation, timeframe = 15, minSimilarity = 50, maxDataCount = null, options = {}) {
         const timeFilterMode = options.timeFilterMode || 'all';
         const currentHour = options.currentHour ?? new Date().getHours();
-        // データ件数制限の適用
-        let targetData = this.trainingData;
         const totalDataCount = this.trainingData.length;
-        const dataWithResults = this.trainingData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
-
-        // 🔍 デバッグ: maxDataCountの値を確認
-        pmsLog(`[ML Debug] findSimilarPatterns called: maxDataCount=${maxDataCount}, type=${typeof maxDataCount}`);
-        pmsLog(`[ML Debug] trainingData.length=${this.trainingData.length}`);
 
         // maxDataCountが文字列"all"の場合はnullとして扱う
         const effectiveMaxDataCount = (maxDataCount === 'all' || maxDataCount === null || maxDataCount === undefined) ? null : Number(maxDataCount);
 
+        // 段階的検索の設定
+        // 十分なマッチ数（これ以上見つかれば検索を終了）
+        const SUFFICIENT_MATCHES = 20;
+        // 検索段階（最新から順に検索範囲を拡大）
+        // メモリ上のデータは最大5000件なので、それに合わせる
+        const SEARCH_STAGES = [2000, 5000]; // 最大5000件まで
+
+        let targetData = this.trainingData;
+        let usedStage = '全データ';
+        let stageIndex = 0;
+
+        // effectiveMaxDataCountが指定されている場合は段階的検索をスキップ
         if (effectiveMaxDataCount !== null && effectiveMaxDataCount > 0) {
-            // 最新のeffectiveMaxDataCount件を使用
-            targetData = this.trainingData.slice(-effectiveMaxDataCount);
-            const targetDataWithResults = targetData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
-
-            // 🔍 デバッグ: フィルタリング結果を確認
-            pmsLog(`[ML Debug] データ範囲フィルタ適用: 全${totalDataCount}件 → 直近${effectiveMaxDataCount}件 → 実際のtargetData=${targetData.length}件 → 結果あり${targetDataWithResults}件`);
-
-            pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
-            pmsLog(`[ML] 📊 データ範囲: 直近${effectiveMaxDataCount}件指定 → 実際の検索対象=${targetDataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
+            // 指定件数とtrainingData件数の小さい方を使用
+            const useCount = Math.min(effectiveMaxDataCount, totalDataCount);
+            targetData = this.trainingData.slice(-useCount);
+            usedStage = `指定: ${useCount}件`;
         } else {
-            // 🔍 デバッグ: 全期間使用を確認
-            pmsLog(`[ML Debug] データ範囲フィルタなし（全期間）: 全${totalDataCount}件 → 結果あり${dataWithResults}件`);
+            // 段階的検索を実行
+            for (let i = 0; i < SEARCH_STAGES.length; i++) {
+                const stageLimit = SEARCH_STAGES[i];
+                stageIndex = i;
 
-            pmsLog(`[ML] 🔍 findSimilarPatterns開始: timeframe=${timeframe}s, minSimilarity=${minSimilarity}%`);
-            pmsLog(`[ML] 📊 データ範囲: 全期間使用 → 検索対象=${dataWithResults}件（結果記録済み） / 総数=${totalDataCount}件`);
+                if (totalDataCount <= stageLimit) {
+                    // データ総数が段階上限以下なら全データを使用
+                    targetData = this.trainingData;
+                    usedStage = `全データ (${totalDataCount}件)`;
+                } else {
+                    // 最新N件を使用
+                    targetData = this.trainingData.slice(-stageLimit);
+                    usedStage = `段階${i + 1}: 最新${stageLimit}件`;
+                }
+
+                // この段階で十分なマッチがあるかチェック
+                const quickMatches = this.quickCountMatches(targetData, currentSituation, timeframe, minSimilarity, timeFilterMode, currentHour);
+
+                if (quickMatches >= SUFFICIENT_MATCHES) {
+                    console.log(`[ML] ✅ 段階的検索: ${usedStage}で${quickMatches}件マッチ → 十分`);
+                    break;
+                } else if (i < SEARCH_STAGES.length - 1) {
+                    // 最終段階でなければ次の段階へ
+                    console.log(`[ML] 📊 段階的検索: ${usedStage}で${quickMatches}件マッチ → 次の段階へ`);
+                } else {
+                    // 最終段階（10000件）でもマッチが少ない場合
+                    console.log(`[ML] ⚠️ 段階的検索: ${usedStage}で${quickMatches}件マッチ（最大範囲到達）`);
+                }
+            }
         }
 
-        // 全件検索（データ件数制限を適用）
-        pmsLog('[ML] 🔍 全件検索を使用');
+        const dataWithResults = targetData.filter(d => d[`result${timeframe}s`] && !d[`result${timeframe}s`].pending).length;
+        pmsLog(`[ML] 🔍 findSimilarPatterns: ${usedStage}, 結果あり=${dataWithResults}件`);
+
+        // 本検索を実行
         const similarPatterns = [];
-        const allSimilarities = []; // 🔬 診断用：全類似度を記録
+        const allSimilarities = [];
         let totalChecked = 0;
         let passedThreshold = 0;
 
         for (const past of targetData) {
-            // 結果が記録されていないデータはスキップ
             const result = past[`result${timeframe}s`];
             if (!result) continue;
-
-            // pending（未確定）のデータはスキップ
             if (result.pending === true) continue;
 
-            // 類似度を計算（timeframeを渡す）
             let similarity = this.calculateSimilarity(currentSituation, past, timeframe);
 
-            // 時間帯別モードの場合、時間の近さでボーナスを追加
             if (timeFilterMode !== 'all' && past.hour !== undefined) {
                 const hourBonus = this.calculateHourBonus(currentHour, past.hour);
-                // 最大5%のボーナス（類似度が95%を超えないように）
                 similarity = Math.min(100, similarity + hourBonus);
             }
 
             totalChecked++;
-            allSimilarities.push(similarity); // 🔬 診断用
+            allSimilarities.push(similarity);
 
             if (similarity >= minSimilarity) {
                 passedThreshold++;
@@ -89,14 +109,14 @@ class PatternMatchingSystem {
                     pattern: past,
                     similarity: similarity,
                     result: result,
-                    hourMatch: past.hour === currentHour // 同時刻フラグ
+                    hourMatch: past.hour === currentHour
                 });
             }
         }
 
-        pmsLog(`[ML] 🔍 フィルタリング結果: チェック=${totalChecked}件, 閾値通過=${passedThreshold}件, minSimilarity=${minSimilarity}%`);
+        pmsLog(`[ML] 🔍 フィルタリング結果: チェック=${totalChecked}件, 閾値通過=${passedThreshold}件`);
 
-        // 🔬 診断: 類似度の分布を確認（常時出力）
+        // 診断ログ
         if (allSimilarities.length > 0) {
             allSimilarities.sort((a, b) => b - a);
             const above70 = allSimilarities.filter(s => s >= 70).length;
@@ -107,14 +127,10 @@ class PatternMatchingSystem {
             console.log(`[ML診断] 類似度分布: チェック=${totalChecked}件, 最大=${Math.round(allSimilarities[0])}%`);
             console.log(`[ML診断] 閾値別: 70%以上=${above70}件, 60%以上=${above60}件, 50%以上=${above50}件, 40%以上=${above40}件, 30%以上=${above30}件`);
             console.log(`[ML診断] 上位10件: [${allSimilarities.slice(0, 10).map(s => Math.round(s)).join(', ')}]`);
-            pmsLog(`[🔬 診断] 類似度分布: 最大=${Math.round(allSimilarities[0])}%, 70%以上=${above70}件, 60%以上=${above60}件, 50%以上=${above50}件`);
-            pmsLog(`[🔬 診断] 上位10件の類似度:`, allSimilarities.slice(0, 10).map(s => Math.round(s)));
         }
 
-        // 類似度でソート
         similarPatterns.sort((a, b) => b.similarity - a.similarity);
 
-        // 上位5件の類似度をログ出力
         const top5Similarities = similarPatterns.slice(0, 5).map(p => Math.round(p.similarity));
         pmsLog(`[ML] 📊 上位5件の類似度: [${top5Similarities.join(', ')}]`);
 
@@ -329,6 +345,51 @@ class PatternMatchingSystem {
         if (circularDiff === 1) return 3;
         if (circularDiff === 2) return 1;
         return 0;
+    }
+
+    /**
+     * 高速マッチカウント（段階的検索用）
+     *
+     * 完全な類似度計算をせず、閾値を超えるパターンの数だけを素早くカウントする。
+     * 段階的検索で「この範囲に十分なマッチがあるか」を判定するために使用。
+     *
+     * @param {Array} targetData - 検索対象データ
+     * @param {Object} currentSituation - 現在の状況
+     * @param {number} timeframe - タイムフレーム（秒）
+     * @param {number} minSimilarity - 最低類似度閾値
+     * @param {string} timeFilterMode - 時間フィルタモード
+     * @param {number} currentHour - 現在時刻
+     * @returns {number} 閾値を超えるマッチの数
+     */
+    quickCountMatches(targetData, currentSituation, timeframe, minSimilarity, timeFilterMode, currentHour) {
+        let matchCount = 0;
+        const QUICK_CHECK_LIMIT = 100; // 100件超えたら十分と判断して終了
+
+        for (const past of targetData) {
+            const result = past[`result${timeframe}s`];
+            if (!result) continue;
+            if (result.pending === true) continue;
+
+            // 類似度を計算
+            let similarity = this.calculateSimilarity(currentSituation, past, timeframe);
+
+            // 時間帯ボーナス適用
+            if (timeFilterMode !== 'all' && past.hour !== undefined) {
+                const hourBonus = this.calculateHourBonus(currentHour, past.hour);
+                similarity = Math.min(100, similarity + hourBonus);
+            }
+
+            if (similarity >= minSimilarity) {
+                matchCount++;
+
+                // 十分な数が見つかったら早期終了（パフォーマンス最適化）
+                if (matchCount >= QUICK_CHECK_LIMIT) {
+                    return matchCount;
+                }
+            }
+        }
+
+        return matchCount;
     }
 
     // テクニカル指標の時系列比較（動きのパターンで評価）

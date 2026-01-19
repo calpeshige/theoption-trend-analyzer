@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Bubinga専用ALL-IN自動分析システム",
+  "version": "4.9.1",
+  "description": "Bubinga専用ALL-IN自動分析システム（サイドパネル版）",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://bubinga.com/*",
+    "https://api.bubinga.com/*",
+    "https://firestore.googleapis.com/*",
+    "https://us-central1-bubinga-license.cloudfunctions.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://bubinga.com/*"],
+      "js": ["technical-analysis-engine-v2.js", "signal-engine.js", "bubinga-analyzer-v5.js"],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ],
+  "side_panel": {
+    "default_path": "auth.html"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Bubinga専用ALL-IN自動分析システム"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["signal/*.png", "voice/*.wav"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

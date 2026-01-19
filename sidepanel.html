@@ -112,10 +112,33 @@
           <button class="card-header" id="tech-header">
             <div class="card-header-left">
               <span class="card-title">相場状況</span>
+              <div class="dual-grade-badges">
+                <span class="grade-label">T:</span><span class="enhanced-grade-badge" id="enhanced-grade">--</span>
+                <span class="grade-label">AI:</span><span class="ai-grade-badge" id="ai-grade">--</span>
+              </div>
             </div>
             <span class="card-expand-icon">▼</span>
           </button>
           <div class="card-content" id="tech-content">
+            <!-- 高精度分析サマリー -->
+            <div class="enhanced-summary" id="enhanced-summary">
+              <div class="enhanced-summary-row">
+                <span class="enhanced-label">相場</span>
+                <span class="enhanced-value" id="enhanced-regime">--</span>
+              </div>
+              <div class="enhanced-summary-row">
+                <span class="enhanced-label">MTF一致</span>
+                <span class="enhanced-value" id="enhanced-mtf">--</span>
+              </div>
+              <div class="enhanced-summary-row">
+                <span class="enhanced-label">推奨</span>
+                <span class="enhanced-value dual-rec-value">
+                  <span class="rec-label">T:</span><span id="tech-rec-value">--</span>
+                  <span class="rec-label">AI:</span><span id="ai-rec-value">--</span>
+                </span>
+              </div>
+            </div>
+            <!-- 既存の相場状況詳細 -->
             <div class="detail-box" id="tech-detail">
               <p class="detail-text">分析データを待機中...</p>
             </div>

@@ -58,11 +58,36 @@ class DataCollectionSystem {
   // 既存のIndexedDBデータのassetNameを正規化
   // - undefinedや空のassetName → storageKeyから推測して設定
   // - アンダースコア形式 → スラッシュ形式に変換
+  // メモリ効率化: 初回起動時のみ実行し、結果をフラグで記録
   async normalizeExistingAssetNames() {
     if (!this.dbInitialized) return;
 
+    // 既に正規化済みの場合はスキップ
+    const normalizedKey = `theoption_normalized_${this.assetName}`;
+    const alreadyNormalized = localStorage.getItem(normalizedKey);
+    if (alreadyNormalized === 'true') {
+      mlsLog(`[ML Normalize] ✅ 既に正規化済み（スキップ）`);
+      return;
+    }
+
     try {
-      // 全レコードを取得（assetNameフィルタなし）
+      // サンプリングで正規化が必要かチェック（最新100件のみ）
+      const sampleRecords = await this.dbManager.getRecentRecords(this.assetName, 100);
+      const needsNormalization = sampleRecords.some(r =>
+        r.assetName === undefined ||
+        r.assetName === null ||
+        r.assetName === '' ||
+        (typeof r.assetName === 'string' && r.assetName.includes('_') && !r.assetName.includes('/'))
+      );
+
+      if (!needsNormalization) {
+        mlsLog(`[ML Normalize] ✅ サンプルチェック: 正規化不要`);
+        localStorage.setItem(normalizedKey, 'true');
+        return;
+      }
+
+      // 正規化が必要な場合のみ全データを読み込む
+      console.log(`[ML Normalize] 🔄 正規化が必要 - 全データをチェック中...`);
       const allRecords = await this.dbManager.getAllRecords(null);
       mlsLog(`[ML Normalize] 🔍 Checking ${allRecords.length} existing records for assetName format...`);
       mlsLog(`[ML Normalize] 📋 Current assetName: "${this.assetName}"`);
@@ -132,6 +157,9 @@ class DataCollectionSystem {
       // 保存（put操作なので同じtimestampのレコードは上書き）
       const savedCount = await this.dbManager.saveRecords(normalizedRecords);
       mlsLog(`[ML Normalize] ✅ Normalized ${savedCount} records in IndexedDB`);
+
+      // 正規化完了フラグを保存
+      localStorage.setItem(normalizedKey, 'true');
     } catch (e) {
       console.error('[ML Normalize] ❌ Normalization failed:', e);
     }
@@ -215,9 +243,17 @@ class DataCollectionSystem {
   async loadRecentData() {
     if (!this.dbInitialized) return;
     try {
-      const allData = await this.dbManager.getAllRecords(this.assetName);
-      this.trainingData = allData;
-      mlsLog(`[ML] Loaded ${allData.length} records from DB for ${this.assetName}`);
+      // 全件数を取得（統計表示用）
+      const totalCount = await this.dbManager.getCount(this.assetName);
+      this.totalDataCount = totalCount;
+
+      // メモリ効率化: 最大5000件に制限（安定動作のため）
+      // 42000件等の大量データはブラウザをクラッシュさせるため
+      const MAX_MEMORY_LOAD = 5000;
+      const recentData = await this.dbManager.getRecentRecords(this.assetName, MAX_MEMORY_LOAD);
+      this.trainingData = recentData;
+
+      console.log(`[ML] ✅ データロード: 最新${recentData.length}件 (DB総データ: ${totalCount}件)`);
 
       // Workerにもデータを送る
       if (this.patternMatcher) {
@@ -231,15 +267,55 @@ class DataCollectionSystem {
 
       // 🆕 外部統計通知（MachineLearningSystemから設定される）
       // マイグレーション後のUI更新を確実にするため
+      // 総件数を通知（分析対象件数ではなく）
       if (this.onStatsUpdatedExternal) {
-        this.onStatsUpdatedExternal(this.trainingData.length);
+        this.onStatsUpdatedExternal(totalCount);
       }
 
-      return allData;
+      return recentData;
     } catch (e) {
       console.error('[ML] Load Data Failed:', e);
       return [];
     }
+  }
+
+  /**
+   * 段階的にデータを取得（パターンマッチング用）
+   * @param {number} count - 取得件数
+   * @returns {Promise<Array>} データ配列
+   */
+  async loadDataForStage(count) {
+    if (!this.dbInitialized) return this.trainingData;
+
+    // 現在のメモリ上のデータで十分なら追加取得しない
+    if (this.trainingData.length >= count) {
+      return this.trainingData;
+    }
+
+    // 必要な分だけDBから取得
+    try {
+      const data = await this.dbManager.getRecentRecords(this.assetName, count);
+      this.trainingData = data;
+      console.log(`[ML] 📊 段階的取得: ${data.length}件をロード`);
+
+      // Workerにもデータを送る
+      if (this.patternMatcher) {
+        this.patternMatcher.updateWorkerData(this.trainingData);
+      }
+
+      return data;
+    } catch (e) {
+      console.error('[ML] 段階的取得エラー:', e);
+      return this.trainingData;
+    }
+  }
+
+  // データ範囲の設定（段階的検索により全データを使用可能）
+  // この設定は互換性のために残すが、実際の検索はPatternMatchingSystemの
+  // 段階的検索アルゴリズムで効率化される
+  setMaxDataCount(count) {
+    this.maxDataCount = count;
+    console.log(`[ML] データ範囲設定: ${count === 'all' ? '全期間' : count + '件'} (段階的検索で効率化)`);
   }
 
   async setAssetName(assetName) {
@@ -322,7 +398,42 @@ class DataCollectionSystem {
 
     // メモリキャッシュに追加
     this.trainingData.push(situation);
-    console.log(`[ML] ✅ データ追加: 総データ ${this.trainingData.length}件 (価格: ${situation.price})`);
+
+    // DB総件数も更新（UI表示用）
+    this.totalDataCount = (this.totalDataCount || 0) + 1;
+
+    // 時間帯別モードの場合、新データを timeFilteredData にも追加
+    let timeFilterUpdated = false;
+    if (this.timeFilterMode !== 'all' && this.timeFilteredData) {
+      // 新データの時間が現在のフィルタ条件に一致するかチェック
+      const dataHour = situation.hour;
+      const currentHour = new Date().getHours();
+
+      let shouldAdd = false;
+      if (this.timeFilterMode === 'hour') {
+        // 時間帯モード: 現在時刻±2時間
+        const targetHours = window.DBManager?.getHourRangeWithPriority?.(currentHour, 2) || [];
+        shouldAdd = targetHours.includes(dataHour);
+      } else if (this.timeFilterMode === 'session') {
+        // セッションモード: 現在のセッションの時間帯
+        const currentSession = window.DBManager?.getCurrentSession?.(currentHour);
+        const sessions = window.DBManager?.getMarketSessions?.() || {};
+        const sessionInfo = sessions[currentSession];
+        shouldAdd = sessionInfo?.hours?.includes(dataHour) || false;
+      }
+
+      if (shouldAdd) {
+        this.timeFilteredData.push(situation);
+        timeFilterUpdated = true;
+      }
+    }
+
+    console.log(`[ML] ✅ データ追加: メモリ${this.trainingData.length}件, DB総計${this.totalDataCount}件, 時間帯別${this.timeFilteredData?.length || 0}件 (価格: ${situation.price})`);
+
+    // 時間帯別データが更新された場合、UIに通知
+    if (timeFilterUpdated && this.onTimeFilterUpdated) {
+      this.onTimeFilterUpdated(this.getTimeFilterInfo());
+    }
 
     // DB保存（非同期）
     this.saveToStorage(situation);
@@ -417,8 +528,19 @@ class DataCollectionSystem {
     }
   }
 
-  getDataCount() { return this.trainingData.length; }
+  // DB総件数を返す（UIの「収集データ」表示用）
+  // メモリ上のtrainingDataは最大10000件だが、DBにはそれ以上保存されている
+  getDataCount() { return this.totalDataCount || this.trainingData.length; }
   getDataCountWithResults() { return this.trainingData.filter(d => !d.result15s?.pending).length; }
+
+  // DB総件数を非同期で取得して更新
+  async refreshTotalCount() {
+    if (this.dbInitialized) {
+      this.totalDataCount = await this.dbManager.getCount(this.assetName);
+      console.log(`[ML] 📊 DB総件数を更新: ${this.totalDataCount}件`);
+    }
+    return this.totalDataCount || this.trainingData.length;
+  }
 
   // ========================================
   // 時間帯別分析機能
@@ -672,6 +794,14 @@ class MachineLearningSystem {
       }
     };
 
+    // 🆕 時間帯別データ更新通知用コールバック
+    this.dataSystem.onTimeFilterUpdated = (timeFilterInfo) => {
+      mlsLog(`[ML] 🕐 Time filter updated: ${timeFilterInfo.filteredCount} records`);
+      if (this.onTimeFilterUpdated) {
+        this.onTimeFilterUpdated(timeFilterInfo);
+      }
+    };
+
     // 初期化
     this.dataSystem.initDB().then(() => {
       // 初期データをWorkerに送る
@@ -684,7 +814,8 @@ class MachineLearningSystem {
     this.patternMatcher.updateWorkerData(this.dataSystem.trainingData);
 
     // 🆕 初期化完了後に統計を通知（onStatsUpdatedが設定された後のため確実）
-    mlsLog(`[ML] ✅ Initialize complete for ${assetName}, data count: ${this.dataSystem.trainingData.length}`);
+    // totalDataCountはsetAssetName→loadRecentDataで既に設定されている
+    console.log(`[ML] ✅ Initialize complete for ${assetName}, メモリ: ${this.dataSystem.trainingData.length}件, DB総計: ${this.dataSystem.totalDataCount}件`);
     if (this.onStatsUpdated) {
       this.onStatsUpdated(this.getStatistics());
     }

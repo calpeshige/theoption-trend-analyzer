@@ -1,6 +1,6 @@
 /**
  * TheOption Trend Analyzer - Main Script
- * Version: 4.1.4 (バイアス表示版)
+ * Version: 5.7.2 (高精度テクニカル分析)
  *
  * 多次元指標分析 + 機械学習 + シンプルUI + 市場バイアス表示
  */
@@ -17,6 +17,10 @@ if (typeof window.DEBUG_MODE === 'undefined') {
 // データ収集状況など、ユーザーが確認したい情報を出力
 const originalConsoleLog = console.log.bind(console);
 const originalConsoleWarn = console.warn.bind(console);
+// グローバルに保存して他の場所からもアクセス可能に
+window.originalConsoleLog = originalConsoleLog;
+window.originalConsoleWarn = originalConsoleWarn;
+
 window.mlLog = function(...args) {
   originalConsoleLog('[ML]', ...args);
 };
@@ -24,14 +28,15 @@ window.mlWarn = function(...args) {
   originalConsoleWarn('[ML]', ...args);
 };
 
+// 起動時バージョン表示（DEBUG_MODE無効化前に実行）
+originalConsoleLog('[TheOption Analyzer] 🚀 v5.8.0 起動 (AdvancedSignalEngine搭載)');
+
 if (!window.DEBUG_MODE) {
   console.log = () => { };
   console.warn = () => { };
   // console.errorはエラー確認のため残す
 }
 // ========================================
-
-console.log('[TheOption Analyzer] 拡張機能を読み込みました v4.1.4 (バイアス表示版)');
 
 // ========================================
 // ライセンスチェック（非同期）
@@ -411,6 +416,8 @@ function initializeAnalyzer() {
     let patternStratifier = null;  // パターン層別化システム（コンテキスト + ボラ + 連続パターン）
     let techTimeSeriesAnalyzer = null;  // テクニカル指標時系列分析
     let detailedSegmentAnalyzer = null;  // 詳細セグメント分析
+    let enhancedTechAnalysis = null;  // v5.7.0: 高精度テクニカル分析エンジン
+    let advancedSignalEngine = null;  // v5.8.0: 高精度シグナルエンジン（30指標多数決）
     let priceUpdateInterval = null;
     let uiPanel = null;
     let tickData = [];
@@ -651,15 +658,17 @@ function initializeAnalyzer() {
 
     // サイドパネルに分析データを送信
     async function sendAnalysisToSidePanel() {
+      const logFn = window.originalConsoleLog || console.log;
+
       // 安定化期間中はANALYSIS_UPDATEを送信しない（データジャンプ防止）
       if (isStabilizingAfterActivation) {
-        console.log('[TheOption Analyzer] ⏳ 安定化期間中 - ANALYSIS_UPDATE送信スキップ');
+        logFn('[SidePanel送信] ⏳ 安定化期間中 - スキップ');
         return;
       }
 
-      console.log('[TheOption Analyzer] 🔵 sendAnalysisToSidePanel 呼び出し開始');
+      logFn('[SidePanel送信] 🔵 開始');
       if (!chrome.runtime || !chrome.runtime.sendMessage) {
-        console.log('[TheOption Analyzer] ⚠️ chrome.runtime が利用不可');
+        logFn('[SidePanel送信] ⚠️ chrome.runtime が利用不可');
         return;
       }
 
@@ -805,6 +814,29 @@ function initializeAnalyzer() {
               aiSignalValue = mlPred.prediction;
             }
 
+            // v5.7.0: 高精度テクニカル分析結果
+            const enhancedResult = result.enhanced;
+            let enhancedData = null;
+            if (enhancedResult) {
+              // analyze()の戻り値構造に合わせてデータを抽出
+              enhancedData = {
+                signal: enhancedResult.signal || 'NEUTRAL',
+                confidence: enhancedResult.confidence || 0,
+                grade: enhancedResult.grade || '--',
+                recommendation: enhancedResult.recommendation || 'SKIP',
+                reason: enhancedResult.reason || '',
+                regime: enhancedResult.regime || 'N/A',  // 文字列で返される
+                mtfAgreement: enhancedResult.mtfAgreement || 0,  // 直接数値で返される
+                qualityScore: enhancedResult.qualityScore || 0
+              };
+              logFn(`[SidePanel送信] 📊 高精度分析(${tf}s): ${enhancedData.grade} ${enhancedData.regime} MTF:${enhancedData.mtfAgreement}%`);
+            } else {
+              // 現在選択中の時間枠のみログ出力（ノイズ軽減）
+              if (tf == currentTimeframe) {
+                logFn(`[SidePanel送信] ⚠️ 高精度分析データなし(${tf}s)`);
+              }
+            }
+
             timeframesData[tf] = {
               technical: {
                 signal: multiDim.signal || 'NEUTRAL',
@@ -835,6 +867,7 @@ function initializeAnalyzer() {
                 dataCount: mlDataCount,
                 dataCountWithResults: mlDataCountWithResults
               },
+              enhanced: enhancedData,  // v5.7.0: 高精度テクニカル分析
               combined: signals ? {
                 signal: signals.combined?.signal || 'NEUTRAL',
                 confidence: signals.combined?.confidence
@@ -1567,6 +1600,8 @@ function initializeAnalyzer() {
             default:
               console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
           }
+          sendResponse({ success: true });
+          return;
         }
 
         // 通貨ペア別データ一覧を取得（IndexedDBから）
@@ -1768,6 +1803,14 @@ function initializeAnalyzer() {
         console.log('[TheOption Analyzer] ✅ 詳細セグメント分析システム初期化完了');
       } else {
         console.error('[TheOption Analyzer] ❌ DetailedSegmentAnalyzerが見つかりません');
+      }
+
+      // v5.8.0: 高精度シグナルエンジン初期化
+      if (typeof AdvancedSignalEngine !== 'undefined') {
+        advancedSignalEngine = new AdvancedSignalEngine();
+        console.log('[TheOption Analyzer] ✅ AdvancedSignalEngine v1.0 初期化完了（30指標多数決システム）');
+      } else {
+        console.warn('[TheOption Analyzer] ⚠️ AdvancedSignalEngineが見つかりません - 旧ロジックで動作');
         return;
       }
 
@@ -1804,6 +1847,22 @@ function initializeAnalyzer() {
         }
       } else {
         console.warn('[TheOption Analyzer] ⚠️ PatternStratificationSystemが見つかりません（オプション機能）');
+      }
+
+      // v5.7.0: 高精度テクニカル分析エンジン初期化
+      if (typeof EnhancedTechnicalAnalysis !== 'undefined') {
+        enhancedTechAnalysis = new EnhancedTechnicalAnalysis();
+        window.enhancedTechAnalysis = enhancedTechAnalysis;
+        console.log('[TheOption Analyzer] ════════════════════════════════════════');
+        console.log('[TheOption Analyzer] ✅ 高精度テクニカル分析エンジン v5.7.0 初期化完了');
+        console.log('[TheOption Analyzer]    - Multi-timeframe Confluence Analysis');
+        console.log('[TheOption Analyzer]    - Market Regime Detection (5フェーズ)');
+        console.log('[TheOption Analyzer]    - Confluence Scoring System (100点評価)');
+        console.log('[TheOption Analyzer]    - Dynamic Parameter Optimization');
+        console.log('[TheOption Analyzer]    - Entry Quality Filter');
+        console.log('[TheOption Analyzer] ════════════════════════════════════════');
+      } else {
+        console.warn('[TheOption Analyzer] ⚠️ EnhancedTechnicalAnalysisが見つかりません（オプション機能）');
       }
 
       // 保存された設定を復元（保存がなければデフォルト50%を使用）
@@ -2484,6 +2543,18 @@ function initializeAnalyzer() {
                 sendAnalysisToSidePanel({ mlStats: stats });
               };
 
+              // 時間帯別データ更新リスナーを設定
+              mlSystem.onTimeFilterUpdated = (timeFilterInfo) => {
+                console.log('[TheOption Analyzer] 🕐 時間帯別データ更新:', timeFilterInfo);
+                // サイドパネルに時間帯フィルタ情報を送信
+                chrome.runtime.sendMessage({
+                  type: 'TIME_FILTER_UPDATE',
+                  data: { timeFilterInfo }
+                }).catch(() => {
+                  // サイドパネルが開いていない場合は無視
+                });
+              };
+
               mlSystem.initialize(detectedAsset).then(async () => {
                 console.log(`[TheOption Analyzer] 🧠 ${detectedAsset} のMLシステムを初期化完了`);
 
@@ -3002,6 +3073,45 @@ function initializeAnalyzer() {
         return;
       }
 
+      // v5.8.0: AdvancedSignalEngineで高精度シグナル判定
+      let advancedResult = null;
+      if (advancedSignalEngine) {
+        try {
+          advancedSignalEngine.updateData(relevantPrices, relevantTicks, candles);
+          advancedResult = advancedSignalEngine.analyze();
+          console.log(`[TheOption Analyzer] 🎯 AdvancedSignal: ${advancedResult.signal} (${advancedResult.confidence}%) - ${advancedResult.reason}`);
+          console.log(`[TheOption Analyzer]    投票: HIGH=${advancedResult.voting?.highCount} LOW=${advancedResult.voting?.lowCount} NEUTRAL=${advancedResult.voting?.neutralCount}`);
+
+          // 多次元分析とAdvancedSignalEngineの結果を統合
+          // AdvancedSignalEngineの信頼度が60%以上の場合、その結果を優先
+          if (advancedResult.confidence >= 60) {
+            const prevSignal = multiDimResult.signal;
+            const prevConfidence = multiDimResult.confidence;
+
+            // シグナルが一致する場合は信頼度を上げる
+            if (advancedResult.signal === multiDimResult.signal ||
+                (advancedResult.signal === 'HIGH' && (multiDimResult.signal === 'HIGH' || multiDimResult.signal === 'STRONG_HIGH')) ||
+                (advancedResult.signal === 'LOW' && (multiDimResult.signal === 'LOW' || multiDimResult.signal === 'STRONG_LOW'))) {
+              // 両方が同じ方向 → 信頼度UP
+              multiDimResult.confidence = Math.min(95, Math.max(multiDimResult.confidence || 60, advancedResult.confidence));
+              console.log(`[TheOption Analyzer]    ✅ シグナル一致: 信頼度を ${prevConfidence}% → ${multiDimResult.confidence}% に強化`);
+            } else if (multiDimResult.signal === 'NEUTRAL') {
+              // 従来がNEUTRALだがAdvancedが明確なシグナル → Advancedを採用
+              multiDimResult.signal = advancedResult.signal;
+              multiDimResult.confidence = advancedResult.confidence;
+              console.log(`[TheOption Analyzer]    🔄 AdvancedSignal採用: NEUTRAL → ${advancedResult.signal} (${advancedResult.confidence}%)`);
+            } else {
+              // シグナルが矛盾 → NEUTRALに
+              console.log(`[TheOption Analyzer]    ⚠️ シグナル矛盾: MultiDim=${prevSignal} vs Advanced=${advancedResult.signal} → NEUTRAL`);
+              multiDimResult.signal = 'NEUTRAL';
+              multiDimResult.confidence = null;
+            }
+          }
+        } catch (error) {
+          console.error(`[TheOption Analyzer] AdvancedSignalEngineエラー:`, error);
+        }
+      }
+
       // パフォーマンス最適化: 事前計算されたMLデータを使用
       let currentIndicators, atrPercent;
       let techTimeSeries15s, techTimeSeries30s, techTimeSeries60s, techTimeSeries180s, techTimeSeries300s;
@@ -3183,6 +3293,41 @@ function initializeAnalyzer() {
       // 3段階トレンド分析
       const hierarchicalTrend = getHierarchicalTrend(targetTimeframe);
 
+      // v5.7.0: 高精度テクニカル分析
+      let enhancedAnalysis = null;
+      if (enhancedTechAnalysis && relevantPrices.length >= 50) {
+        try {
+          // 価格データを設定（ティック履歴は軽量に最新のみ）
+          enhancedTechAnalysis.setPriceHistory(relevantPrices);
+
+          // 最新のティックのみ追加（パフォーマンス最適化）
+          const latestTicks = relevantTicks.slice(-20);
+          latestTicks.forEach((tick, i) => {
+            enhancedTechAnalysis.updatePrice(tick.price, tick.timestamp || Date.now());
+          });
+
+          // 総合分析を実行（時間枠を渡す）
+          enhancedAnalysis = enhancedTechAnalysis.analyze(targetTimeframe);
+
+          // 高精度分析結果をログ出力（DEBUG_MODE無効でも表示）
+          if (enhancedAnalysis) {
+            const regime = enhancedAnalysis.regime || 'N/A';
+            const mtf = enhancedAnalysis.mtfAgreement || 0;
+            const logFn = window.originalConsoleLog || console.log;
+            if (enhancedAnalysis.signal !== 'NEUTRAL' && enhancedAnalysis.recommendation !== 'SKIP') {
+              // シグナルあり
+              logFn(`[高精度分析] 📊 ${enhancedAnalysis.signal} (${enhancedAnalysis.grade}) - ${enhancedAnalysis.recommendation} | 相場:${regime} MTF:${mtf}%`);
+            } else {
+              // シグナルなし（簡易ログ）
+              logFn(`[高精度分析] 📊 NEUTRAL | 相場:${regime} MTF:${mtf}% | ${enhancedAnalysis.reason || '方向不一致'}`);
+            }
+          }
+        } catch (error) {
+          console.error('[TheOption Analyzer] 高精度テクニカル分析エラー:', error);
+          enhancedAnalysis = null;
+        }
+      }
+
       // 履歴記録
       if (!isTabSwitch) {
         try {
@@ -3203,6 +3348,7 @@ function initializeAnalyzer() {
         ml: mlPredictions,
         mlStats: mlSystem.getStatistics(),
         currentSituation: currentSituation,  // 閾値変更時の再計算用
+        enhanced: enhancedAnalysis,  // v5.7.0: 高精度テクニカル分析結果
         timestamp: Date.now()
       };
       console.log(`[TheOption Analyzer] ✅ ${config.label}の分析結果をキャッシュに保存しました`);
@@ -5175,6 +5321,10 @@ function initializeAnalyzer() {
           return;
         }
 
+        // ファイルサイズと件数をログ
+        const fileSizeMB = (result.blob.size / 1024 / 1024).toFixed(2);
+        console.log(`[JSON Export] ✅ エクスポート完了: ${assetName}, ${result.recordCount}件, ${fileSizeMB}MB`);
+
         // ダウンロード
         const link = document.createElement('a');
         const url = URL.createObjectURL(result.blob);
@@ -5349,8 +5499,17 @@ function initializeAnalyzer() {
       };
     }
 
-    // 単一ファイルの処理
+    // 単一ファイルの処理（ストリーミング対応）
     async function processImportFile(file, dbManager) {
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      console.log(`[JSON Import] ファイル処理開始: ${file.name} (${fileSizeMB}MB)`);
+
+      // 100MB以上のファイルはストリーミング処理
+      if (file.size > 100 * 1024 * 1024) {
+        console.log(`[JSON Import] 大容量ファイル検出 - ストリーミングモードで処理`);
+        return processLargeImportFile(file, dbManager);
+      }
+
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
@@ -5397,6 +5556,112 @@ function initializeAnalyzer() {
 
         reader.onerror = () => reject(reader.error);
         reader.readAsText(file);
+      });
+    }
+
+    // 大容量ファイルのストリーミング処理
+    async function processLargeImportFile(file, dbManager) {
+      return new Promise((resolve, reject) => {
+        const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB チャンク
+        let offset = 0;
+        let buffer = '';
+        let importedCount = 0;
+        let errorCount = 0;
+        let assetName = null;
+        let inArray = false;
+        let headerParsed = false;
+
+        const readChunk = () => {
+          const slice = file.slice(offset, offset + CHUNK_SIZE);
+          const reader = new FileReader();
+
+          reader.onload = async (event) => {
+            try {
+              buffer += event.target.result;
+
+              // ヘッダー部分を解析（最初のチャンクのみ）
+              if (!headerParsed) {
+                const headerMatch = buffer.match(/^\s*\{\s*"(theoption_ml_[^"]+)"\s*:\s*\[/);
+                if (headerMatch) {
+                  const key = headerMatch[1];
+                  assetName = key.replace('theoption_ml_', '').replace(/_/g, '/');
+                  buffer = buffer.substring(headerMatch[0].length);
+                  inArray = true;
+                  headerParsed = true;
+                  console.log(`[JSON Import] ストリーミング: 通貨ペア=${assetName}`);
+                }
+              }
+
+              if (inArray) {
+                // JSONオブジェクトを1つずつ抽出して処理
+                let braceCount = 0;
+                let objectStart = -1;
+                let i = 0;
+
+                while (i < buffer.length) {
+                  const char = buffer[i];
+
+                  if (char === '{') {
+                    if (braceCount === 0) {
+                      objectStart = i;
+                    }
+                    braceCount++;
+                  } else if (char === '}') {
+                    braceCount--;
+                    if (braceCount === 0 && objectStart >= 0) {
+                      // 完全なオブジェクトを発見
+                      const objectStr = buffer.substring(objectStart, i + 1);
+                      try {
+                        const record = JSON.parse(objectStr);
+                        if (!record.assetName) {
+                          record.assetName = assetName;
+                        }
+                        await dbManager.saveRecord(record);
+                        importedCount++;
+
+                        // 進捗ログ（1000件ごと）
+                        if (importedCount % 1000 === 0) {
+                          console.log(`[JSON Import] ストリーミング進捗: ${importedCount}件インポート済み`);
+                        }
+                      } catch (err) {
+                        errorCount++;
+                      }
+                      objectStart = -1;
+                    }
+                  }
+                  i++;
+                }
+
+                // 未処理部分をバッファに残す
+                if (objectStart >= 0) {
+                  buffer = buffer.substring(objectStart);
+                } else {
+                  // 最後のオブジェクト以降のカンマやスペースを削除
+                  buffer = buffer.substring(i).replace(/^[\s,]+/, '');
+                }
+              }
+
+              offset += CHUNK_SIZE;
+
+              if (offset < file.size) {
+                // 次のチャンクを読み込む
+                readChunk();
+              } else {
+                // 完了
+                console.log(`[JSON Import] ストリーミング完了: ${importedCount}件インポート, ${errorCount}件エラー`);
+                resolve({ imported: importedCount, errors: errorCount });
+              }
+            } catch (error) {
+              console.error(`[JSON Import] ストリーミングエラー:`, error);
+              reject(error);
+            }
+          };
+
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(slice);
+        };
+
+        readChunk();
       });
     }
 
@@ -5508,6 +5773,44 @@ function initializeAnalyzer() {
       };
     }
 
+
+    // ========================================
+    // メッセージリスナーを登録（関数定義後）
+    // ========================================
+    console.log('[TheOption Analyzer] 📡 メッセージリスナーを登録中...');
+    if (chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        // ダウンロード実行（インポート/エクスポート）
+        if (message.type === 'EXECUTE_DOWNLOAD') {
+          console.log('[TheOption Analyzer] ダウンロード実行:', message.downloadType);
+          switch (message.downloadType) {
+            case 'ML_DATA':
+              downloadMLDataAsCSV();
+              break;
+            case 'PREDICTIONS':
+              downloadPredictionsAsCSV();
+              break;
+            case 'TRENDS':
+              downloadTrendsAsCSV();
+              break;
+            case 'EXPORT_JSON':
+              exportDataAsJSON();
+              break;
+            case 'IMPORT_JSON':
+              importDataFromJSON();
+              break;
+            default:
+              console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
+          }
+          sendResponse({ success: true });
+          return true;
+        }
+        return false; // 他のリスナーに処理を渡す
+      });
+      console.log('[TheOption Analyzer] ✅ メッセージリスナー登録完了');
+    } else {
+      console.error('[TheOption Analyzer] ❌ chrome.runtime.onMessage が利用できません');
+    }
 
     // ========================================
     // 起動

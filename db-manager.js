@@ -173,6 +173,43 @@ class DBManager {
     }
 
     /**
+     * 最新N件のレコードを取得（メモリ効率版）
+     * @param {string} assetName - 通貨ペア名
+     * @param {number} limit - 取得件数
+     */
+    async getRecentRecords(assetName, limit = 5000) {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const index = store.index('assetName');
+
+            const results = [];
+            // 降順（新しい順）でカーソルを開く
+            const request = index.openCursor(IDBKeyRange.only(assetName), 'prev');
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor && results.length < limit) {
+                    results.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    // 時間順（古い→新しい）に並べ直す
+                    results.reverse();
+                    console.log(`[DB] getRecentRecords: ${assetName} - ${results.length}/${limit}件取得`);
+                    resolve(results);
+                }
+            };
+
+            request.onerror = (event) => {
+                console.error('[DB] getRecentRecords error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
      * 古いデータを削除（数制限）
      * @param {number} maxCount - 最大保持件数
      * @param {string} assetName - 通貨ペア名
