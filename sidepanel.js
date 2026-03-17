@@ -20,13 +20,14 @@ const TIMEFRAME_CONFIGS = {
 
 // 現在の設定
 let currentSettings = {
-  alertSound: false,
+  alertSoundMode: 'off', // 'off' | 'tech' | 'ai' | 'both'
   alertSoundType: '01',
   volume: 'medium',
   fontSize: 'medium',
   similarityThreshold: 70,
   dataLimit: 'all',
-  timeFilterMode: 'all' // 'all' | 'session'
+  timeFilterMode: 'all', // 'all' | 'session'
+  momentumFilterLevel: 2  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
 };
 
 // 状態管理
@@ -44,6 +45,7 @@ let highestMLDataCount = 0;
 // シグナル表示状態の追跡（シグナル消失防止）
 let signalDisplayed = false;  // シグナルが一度表示されたかどうか
 let lastDisplayedSignal = null;  // 最後に表示されたシグナル
+let latestSignal20 = null;  // v5.9.2: 最新の20インジケータ多数決データ
 
 // v5.6.5: AI予測詳細の表示保持用（取引終了までデータを保持）
 let lastValidAICardData = null;  // 最後に有効だったAI予測詳細データ
@@ -69,6 +71,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 初期状態でシグナルカードを「準備中」にする
   resetSignalCardsToWaiting();
 
+  // v5.9.3: Signal20データを2秒ごとにポーリング（確実な更新）
+  startSignal20Polling();
+
+  // v5.9.0: エントリー条件ダッシュボードの詳細展開トグル
+  initCondDetailsToggle();
+
   // 初期データ取得
   chrome.storage.local.get(['sidepanel_asset', 'sidepanel_dataCount'], (result) => {
     if (result.sidepanel_asset) {
@@ -82,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // v5.6.4: 常にアクティブ状態で開始（待機画面を使わない）
   showActiveState();
   updateStatus('connected', 'データ受信中');
+  // v5.10.2: 初回のみ時間枠を同期（以降はselectTimeframeで送信）
+  chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
   requestAnalysisData();
 
   // 定期的にデータを要求
@@ -136,14 +146,14 @@ async function loadMLDataCountForAsset(assetName) {
     if (dataCountEl) dataCountEl.textContent = countText;
     if (countBadge) countBadge.textContent = `${countText}件`;
     if (progressBar) {
-      const progressPercent = Math.min(100, (count / 50000) * 100);
+      const progressPercent = Math.min(100, (count / 25000) * 100);
       progressBar.style.width = `${progressPercent}%`;
     }
 
     // 学習レベルも更新
     const learningLevelEl = document.getElementById('ml-learning-level');
     if (learningLevelEl) {
-      const learningLevel = Math.min(100, Math.round((count / 50000) * 100));
+      const learningLevel = Math.min(100, Math.round((count / 25000) * 100));
       learningLevelEl.textContent = learningLevel;
     }
 
@@ -155,12 +165,17 @@ async function loadMLDataCountForAsset(assetName) {
 
 // 設定読み込み
 function loadSettings() {
-  chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode'], (result) => {
-    if (result.alertSoundEnabled !== undefined) {
-      currentSettings.alertSound = result.alertSoundEnabled;
-      const toggle = document.getElementById('alert-sound-toggle');
-      if (result.alertSoundEnabled) toggle.classList.add('active');
+  chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode', 'momentumFilterLevel'], (result) => {
+    // v5.8.20: alertSoundMode（新キー）を優先、旧alertSoundEnabledからのマイグレーション
+    if (result.alertSoundMode) {
+      currentSettings.alertSoundMode = result.alertSoundMode;
+    } else if (result.alertSoundEnabled !== undefined) {
+      // 旧設定からの移行: ON→'both', OFF→'off'
+      currentSettings.alertSoundMode = result.alertSoundEnabled ? 'both' : 'off';
+      chrome.storage.local.set({ alertSoundMode: currentSettings.alertSoundMode });
     }
+    const modeSelect = document.getElementById('alert-sound-mode');
+    if (modeSelect) modeSelect.value = currentSettings.alertSoundMode;
     if (result.alertVolume) {
       currentSettings.volume = result.alertVolume;
       document.getElementById('volume-select').value = result.alertVolume;
@@ -202,6 +217,16 @@ function loadSettings() {
       notifySettingChange('timeFilterMode', result.timeFilterMode);
     }
 
+    // v5.10.6: モメンタムフィルタ初期化
+    if (result.momentumFilterLevel !== undefined) {
+      currentSettings.momentumFilterLevel = result.momentumFilterLevel;
+    }
+    // 設定画面のselectを初期化
+    const filterSelect = document.getElementById('momentum-filter-select');
+    if (filterSelect) filterSelect.value = String(currentSettings.momentumFilterLevel);
+    // 起動時にコンテンツスクリプトにも通知
+    chrome.runtime.sendMessage({ type: 'SET_MOMENTUM_FILTER', level: currentSettings.momentumFilterLevel });
+
     // v5.6.5: データ範囲のヒントを初期化
     updateDataLimitHint(dataLimit);
   });
@@ -226,11 +251,18 @@ function setupEventListeners() {
   document.getElementById('export-json').addEventListener('click', () => requestDownload('EXPORT_JSON'));
   document.getElementById('import-json').addEventListener('click', () => requestDownload('IMPORT_JSON'));
 
-  // アラート音トグル
-  document.getElementById('alert-sound-toggle').addEventListener('click', (e) => {
-    currentSettings.alertSound = !currentSettings.alertSound;
-    e.currentTarget.classList.toggle('active', currentSettings.alertSound);
-    chrome.storage.local.set({ alertSoundEnabled: currentSettings.alertSound });
+  // v5.10.6: モメンタムフィルタ設定（設定画面内）
+  document.getElementById('momentum-filter-select').addEventListener('change', (e) => {
+    const level = parseInt(e.target.value);
+    currentSettings.momentumFilterLevel = level;
+    chrome.storage.local.set({ momentumFilterLevel: level });
+    chrome.runtime.sendMessage({ type: 'SET_MOMENTUM_FILTER', level: level });
+  });
+
+  // アラート音モード選択
+  document.getElementById('alert-sound-mode').addEventListener('change', (e) => {
+    currentSettings.alertSoundMode = e.target.value;
+    chrome.storage.local.set({ alertSoundMode: e.target.value });
   });
 
   // 音量設定
@@ -274,6 +306,15 @@ function setupEventListeners() {
     }
   });
 
+  // 20インジケータ多数決カードの展開/折りたたみ
+  const indicatorDebugHeader = document.getElementById('indicator-debug-header');
+  const indicatorDebugPanel = document.getElementById('indicator-debug-panel');
+  if (indicatorDebugHeader && indicatorDebugPanel) {
+    indicatorDebugHeader.addEventListener('click', () => {
+      indicatorDebugPanel.classList.toggle('expanded');
+    });
+  }
+
   // 類似度閾値チップ
   document.querySelectorAll('#threshold-chips .setting-chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -297,6 +338,9 @@ function setupEventListeners() {
       changeTimeFilterMode(mode);
     });
   });
+
+  // v5.10.4: データ整理ボタン
+  document.getElementById('ml-trim-btn').addEventListener('click', executeTrimData);
 
   // 通貨ペア別データ状況モーダル
   document.getElementById('ml-detail-btn').addEventListener('click', openAssetDataModal);
@@ -495,13 +539,22 @@ async function loadAssetDataList() {
           <span class="asset-data-summary-label">総データ数</span>
         </div>
       </div>
+      <div class="asset-data-bulk-actions">
+        <button class="bulk-delete-btn" id="bulk-delete-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+          一括削除
+        </button>
+      </div>
       <div class="asset-data-list">
     `;
 
     for (const [assetName, count] of sortedAssets) {
       const isCurrent = assetName === currentAsset;
-      const percent = Math.round((count / 50000) * 100);
+      const percent = Math.round((count / 25000) * 100);
       const barWidth = Math.min(100, (count / maxCount) * 100);
+      const sanitizedId = assetName.replace(/\//g, '-');
 
       // 通貨ペアのアイコンを決定
       let icon = '💱';
@@ -519,21 +572,39 @@ async function loadAssetDataList() {
 
       html += `
         <div class="asset-data-item ${isCurrent ? 'current' : ''}">
-          <div class="asset-data-icon">${icon}</div>
-          <div class="asset-data-info">
-            <span class="asset-data-name">${assetName}${isCurrent ? ' (現在)' : ''}</span>
-            <span class="asset-data-count">${count.toLocaleString()}件</span>
+          <div class="asset-data-row" data-asset="${assetName}">
+            <div class="asset-data-icon">${icon}</div>
+            <div class="asset-data-info">
+              <span class="asset-data-name">${assetName}${isCurrent ? ' (現在)' : ''}</span>
+              <span class="asset-data-count">${count.toLocaleString()}件</span>
+            </div>
+            <div class="asset-data-bar-container">
+              <div class="asset-data-bar" style="width: ${barWidth}%"></div>
+            </div>
+            <span class="asset-data-percent">${percent}%</span>
+            <span class="asset-data-expand-icon">▶</span>
           </div>
-          <div class="asset-data-bar-container">
-            <div class="asset-data-bar" style="width: ${barWidth}%"></div>
+          <div class="asset-hour-detail" id="hour-detail-${sanitizedId}" style="display: none;">
+            <div class="hour-grid-loading">読み込み中...</div>
           </div>
-          <span class="asset-data-percent">${percent}%</span>
         </div>
       `;
     }
 
     html += '</div>';
     contentEl.innerHTML = html;
+
+    // v5.8.19: イベントリスナー設定
+    contentEl.querySelectorAll('.asset-data-row').forEach(row => {
+      row.addEventListener('click', () => {
+        toggleAssetHourDetail(row.dataset.asset);
+      });
+    });
+
+    const bulkBtn = document.getElementById('bulk-delete-btn');
+    if (bulkBtn) {
+      bulkBtn.addEventListener('click', openBulkDeletePanel);
+    }
 
   } catch (error) {
     console.error('[SidePanel] 通貨ペア別データ取得エラー:', error);
@@ -543,6 +614,370 @@ async function loadAssetDataList() {
         <span>データの取得に失敗しました</span>
       </div>
     `;
+  }
+}
+
+// ========================================
+// v5.8.19: 時間帯別データ削除UI
+// ========================================
+
+// 時間からセッションCSSクラスを取得
+function getSessionClassForHour(hour) {
+  if (hour >= 9 && hour <= 15) return 'session-tokyo';
+  if (hour >= 16 && hour <= 20) return 'session-europe';
+  if (hour >= 21 || hour <= 2) return 'session-ny';
+  return 'session-quiet';
+}
+
+// 通貨ペア行をクリックで展開/閉じ
+async function toggleAssetHourDetail(assetName) {
+  const sanitizedId = assetName.replace(/\//g, '-');
+  const detailEl = document.getElementById(`hour-detail-${sanitizedId}`);
+  if (!detailEl) return;
+  const expandIcon = detailEl.parentElement.querySelector('.asset-data-expand-icon');
+
+  if (detailEl.style.display === 'none') {
+    detailEl.style.display = 'block';
+    if (expandIcon) expandIcon.textContent = '▼';
+    detailEl.innerHTML = '<div class="hour-grid-loading">読み込み中...</div>';
+
+    try {
+      // 月別データと時間帯データを並行取得
+      const [monthlyResp, hourlyResp] = await Promise.all([
+        new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: 'GET_MONTHLY_COUNTS', assetName }, (resp) => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(resp);
+          });
+        }),
+        new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: 'GET_HOURLY_COUNTS', assetName }, (resp) => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(resp);
+          });
+        })
+      ]);
+
+      // 月別内訳 + 時間帯グリッドの順で表示
+      detailEl.innerHTML = '';
+      if (monthlyResp?.success && monthlyResp.counts) {
+        const monthDiv = document.createElement('div');
+        monthDiv.className = 'month-breakdown';
+        renderMonthlyBreakdown(monthDiv, assetName, monthlyResp.counts);
+        detailEl.appendChild(monthDiv);
+      }
+      if (!hourlyResp?.error) {
+        const hourDiv = document.createElement('div');
+        renderHourGrid(hourDiv, assetName, hourlyResp.hourlyCounts);
+        detailEl.appendChild(hourDiv);
+      }
+    } catch (error) {
+      console.error('[SidePanel] データ取得エラー:', error);
+      detailEl.innerHTML = '<div class="hour-grid-error">取得に失敗しました</div>';
+    }
+  } else {
+    detailEl.style.display = 'none';
+    if (expandIcon) expandIcon.textContent = '▶';
+  }
+}
+
+// v5.10.4: 月別データ内訳を描画
+function renderMonthlyBreakdown(container, assetName, monthlyCounts) {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const lastMonth = (() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })();
+
+  // 新しい順にソート
+  const sorted = Object.entries(monthlyCounts).sort((a, b) => b[0].localeCompare(a[0]));
+  if (sorted.length === 0) {
+    container.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#999;">データなし</div>';
+    return;
+  }
+
+  const maxCount = Math.max(...sorted.map(([, c]) => c));
+  let html = '<div style="padding:4px 12px 2px;font-size:11px;font-weight:600;color:var(--md-sys-color-on-surface-variant);">月別データ内訳</div>';
+
+  for (const [yearMonth, count] of sorted) {
+    const [y, m] = yearMonth.split('-');
+    const label = `${y}年${parseInt(m)}月`;
+    const freshness = yearMonth === currentMonth ? 'fresh' : yearMonth === lastMonth ? 'recent' : 'old';
+    const barWidth = Math.round((count / maxCount) * 100);
+
+    html += `
+      <div class="month-row" data-asset="${assetName}" data-month="${yearMonth}" data-count="${count}">
+        <span class="month-indicator ${freshness}"></span>
+        <span class="month-label">${label}</span>
+        <span class="month-count">${count.toLocaleString()}件</span>
+        <div class="month-bar-container">
+          <div class="month-bar ${freshness}" style="width:${barWidth}%"></div>
+        </div>
+      </div>
+      <div class="month-delete-form" id="mdf-${assetName.replace(/\//g, '-')}-${yearMonth}" style="display:none;">
+        <span>古い順に</span>
+        <input type="number" min="1" max="${count}" value="${count}" />
+        <span>件</span>
+        <button class="month-delete-btn">削除</button>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+
+  // 月行のクリックで削除フォームをトグル
+  container.querySelectorAll('.month-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const asset = row.dataset.asset;
+      const month = row.dataset.month;
+      const formId = `mdf-${asset.replace(/\//g, '-')}-${month}`;
+      const form = document.getElementById(formId);
+      if (form) {
+        form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+      }
+    });
+  });
+
+  // 削除ボタンのクリック
+  container.querySelectorAll('.month-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const form = btn.closest('.month-delete-form');
+      const input = form.querySelector('input');
+      const deleteCount = parseInt(input.value);
+      if (!deleteCount || deleteCount < 1) return;
+
+      // フォームIDからassetとmonthを復元
+      const formId = form.id; // mdf-EUR-USD-2026-03
+      const parts = formId.replace('mdf-', '').split('-');
+      const yearMonth = `${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+      const assetParts = parts.slice(0, parts.length - 2);
+      const assetNameFromId = assetParts.join('/');
+
+      btn.disabled = true;
+      btn.textContent = '削除中...';
+
+      try {
+        const resp = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({
+            type: 'DELETE_BY_MONTH',
+            assetName: assetNameFromId,
+            yearMonth,
+            count: deleteCount
+          }, (r) => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(r);
+          });
+        });
+
+        if (resp?.success) {
+          highestMLDataCount = 0; // UI更新を許可
+          // 月別データを再取得して再描画
+          const refreshResp = await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({ type: 'GET_MONTHLY_COUNTS', assetName: assetNameFromId }, (r) => {
+              if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+              else resolve(r);
+            });
+          });
+          if (refreshResp?.success) {
+            renderMonthlyBreakdown(container, assetNameFromId, refreshResp.counts);
+          }
+          // 通貨ペアリストも再読み込み
+          loadAssetDataList();
+        }
+      } catch (err) {
+        console.error('[SidePanel] 月別削除エラー:', err);
+      }
+
+      btn.disabled = false;
+      btn.textContent = '削除';
+    });
+  });
+}
+
+// 24時間グリッドを描画
+function renderHourGrid(containerEl, assetName, hourlyCounts) {
+  const targetLabel = assetName || '全通貨ペア';
+
+  let gridHtml = `
+    <div class="hour-grid-header">
+      <label class="hour-select-all">
+        <input type="checkbox" class="hour-select-all-cb" data-asset="${assetName || 'all'}">
+        <span>全選択</span>
+      </label>
+    </div>
+    <div class="hour-grid">
+  `;
+
+  for (let h = 0; h < 24; h++) {
+    const count = hourlyCounts[h] || 0;
+    const hasData = count > 0;
+    const sessionClass = getSessionClassForHour(h);
+
+    gridHtml += `
+      <label class="hour-cell ${sessionClass} ${hasData ? '' : 'no-data'}">
+        <input type="checkbox" class="hour-cb" data-hour="${h}" data-asset="${assetName || 'all'}" ${hasData ? '' : 'disabled'}>
+        <span class="hour-label">${h}時</span>
+        <span class="hour-count">${count.toLocaleString()}</span>
+      </label>
+    `;
+  }
+
+  gridHtml += `
+    </div>
+    <div class="hour-session-legend">
+      <span class="legend-tokyo">東京</span>
+      <span class="legend-europe">欧州</span>
+      <span class="legend-ny">NY</span>
+      <span class="legend-quiet">静穏</span>
+    </div>
+    <div class="hour-grid-actions">
+      <button class="hour-delete-btn" data-asset="${assetName || ''}" disabled>
+        削除 (<span class="hour-delete-count">0</span>件)
+      </button>
+    </div>
+  `;
+
+  containerEl.innerHTML = gridHtml;
+
+  // 全選択チェックボックス
+  const selectAllCb = containerEl.querySelector('.hour-select-all-cb');
+  selectAllCb.addEventListener('change', (e) => {
+    containerEl.querySelectorAll('.hour-cb:not(:disabled)').forEach(cb => {
+      cb.checked = e.target.checked;
+    });
+    updateHourDeleteButtonState(containerEl, hourlyCounts);
+  });
+
+  // 個別チェックボックス
+  containerEl.querySelectorAll('.hour-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      updateHourDeleteButtonState(containerEl, hourlyCounts);
+    });
+  });
+
+  // 削除ボタン
+  const deleteBtn = containerEl.querySelector('.hour-delete-btn');
+  deleteBtn.addEventListener('click', () => {
+    const selectedHours = getSelectedHoursFromContainer(containerEl);
+    if (selectedHours.length > 0) {
+      showDeleteConfirmation(assetName, selectedHours, hourlyCounts);
+    }
+  });
+}
+
+// 選択された時間帯を取得
+function getSelectedHoursFromContainer(containerEl) {
+  const checked = containerEl.querySelectorAll('.hour-cb:checked');
+  return Array.from(checked).map(cb => parseInt(cb.dataset.hour));
+}
+
+// 削除ボタンの状態更新
+function updateHourDeleteButtonState(containerEl, hourlyCounts) {
+  const selectedHours = getSelectedHoursFromContainer(containerEl);
+  const totalSelected = selectedHours.reduce((sum, h) => sum + (hourlyCounts[h] || 0), 0);
+  const deleteBtn = containerEl.querySelector('.hour-delete-btn');
+  const countSpan = containerEl.querySelector('.hour-delete-count');
+  if (deleteBtn) deleteBtn.disabled = selectedHours.length === 0;
+  if (countSpan) countSpan.textContent = totalSelected.toLocaleString();
+}
+
+// 一括削除パネルを開閉
+function openBulkDeletePanel() {
+  const contentEl = document.getElementById('asset-data-content');
+  const existingBulk = document.getElementById('bulk-hour-panel');
+
+  if (existingBulk) {
+    existingBulk.remove();
+    return;
+  }
+
+  chrome.runtime.sendMessage(
+    { type: 'GET_HOURLY_COUNTS', assetName: null },
+    (response) => {
+      if (chrome.runtime.lastError || response?.error) return;
+
+      const panelEl = document.createElement('div');
+      panelEl.id = 'bulk-hour-panel';
+      panelEl.className = 'bulk-hour-panel';
+
+      const bulkActions = contentEl.querySelector('.asset-data-bulk-actions');
+      if (bulkActions && bulkActions.nextSibling) {
+        contentEl.insertBefore(panelEl, bulkActions.nextSibling);
+      } else {
+        contentEl.appendChild(panelEl);
+      }
+
+      panelEl.innerHTML = '<div class="bulk-panel-title">全通貨ペア一括 - 時間帯選択</div>';
+      const gridContainer = document.createElement('div');
+      panelEl.appendChild(gridContainer);
+      renderHourGrid(gridContainer, null, response.hourlyCounts);
+    }
+  );
+}
+
+// 削除確認ダイアログを表示
+function showDeleteConfirmation(assetName, hours, hourlyCounts) {
+  const totalToDelete = hours.reduce((sum, h) => sum + (hourlyCounts[h] || 0), 0);
+  const hourLabels = hours.sort((a, b) => a - b).map(h => `${h}時`).join(', ');
+  const target = assetName || '全通貨ペア';
+
+  const messageEl = document.getElementById('delete-confirm-message');
+  messageEl.textContent = `${target} の ${hourLabels} のデータ (${totalToDelete.toLocaleString()}件) を削除しますか？この操作は取り消せません。`;
+
+  document.getElementById('delete-confirm-overlay').classList.add('active');
+  document.getElementById('delete-confirm-dialog').classList.add('active');
+
+  // ボタンのリスナーをリセット（cloneNode方式）
+  const okBtn = document.getElementById('delete-confirm-ok');
+  const cancelBtn = document.getElementById('delete-confirm-cancel');
+  const overlay = document.getElementById('delete-confirm-overlay');
+
+  const newOkBtn = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+  const newCancelBtn = cancelBtn.cloneNode(true);
+  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+  newCancelBtn.addEventListener('click', closeDeleteConfirmation);
+  overlay.onclick = closeDeleteConfirmation;
+
+  newOkBtn.addEventListener('click', async () => {
+    newOkBtn.disabled = true;
+    newOkBtn.textContent = '削除中...';
+    await executeHourDelete(assetName, hours);
+    closeDeleteConfirmation();
+  });
+}
+
+// 削除確認ダイアログを閉じる
+function closeDeleteConfirmation() {
+  document.getElementById('delete-confirm-overlay').classList.remove('active');
+  document.getElementById('delete-confirm-dialog').classList.remove('active');
+}
+
+// 時間帯別データ削除を実行
+async function executeHourDelete(assetName, hours) {
+  try {
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'DELETE_BY_HOURS', assetName: assetName, hours: hours },
+        (resp) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(resp);
+        }
+      );
+    });
+
+    if (response?.error) throw new Error(response.error);
+
+    console.log(`[SidePanel] 削除完了: ${response.deletedCount}件`);
+
+    // モーダルの内容を更新
+    await loadAssetDataList();
+
+  } catch (error) {
+    console.error('[SidePanel] 削除エラー:', error);
   }
 }
 
@@ -583,6 +1018,7 @@ function selectTimeframe(timeframe) {
   currentTimeframe = timeframe;
   // 時間枠に応じてカウントダウンの最大値をリセット
   lastCountdownTotal = timeframe;
+  lastStatusCountdown = -1;
 
   document.querySelectorAll('.timeframe-chip').forEach(chip => {
     chip.classList.toggle('active', parseInt(chip.dataset.timeframe) === timeframe);
@@ -591,10 +1027,25 @@ function selectTimeframe(timeframe) {
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: timeframe });
 
   // 時間枠切替時はシグナルカードを「準備中」にリセット
-  // 実際のシグナル表示は次のSTATUS_UPDATEで適切なタイミング（prepTime以内）に更新される
   resetSignalCardsToWaiting();
-  signalDisplayed = false;  // シグナル表示状態もリセット
+  // v5.10.3: テクニカルカードも明示的にリセット（前の時間枠の残り時間を消す）
+  const techIconEl = document.getElementById('tech-signal-icon');
+  const techCardEl = document.getElementById('tech-signal-card');
+  const techLabelEl = document.getElementById('tech-signal-label');
+  const techConfidenceEl = document.getElementById('tech-signal-confidence');
+  if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
+  if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
+  if (techLabelEl) techLabelEl.textContent = '準備中';
+  if (techConfidenceEl) techConfidenceEl.textContent = '--';
+  signalDisplayed = false;
   lastDisplayedSignal = null;
+
+  // v5.10.1: 時間枠切替時に多数決パネルもリセット
+  latestSignal20 = null;
+  const dbgSummary = document.getElementById('indicator-debug-summary');
+  const dbgGrid = document.getElementById('indicator-debug-grid');
+  if (dbgSummary) dbgSummary.textContent = '分析待ち...';
+  if (dbgGrid) dbgGrid.innerHTML = '';
 
   // v5.6.6: 時間枠変更時にAI予測詳細のロックも解除
   if (aiPredictionLock.isLocked) {
@@ -754,6 +1205,7 @@ function listenForAnalysisUpdates() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'ANALYSIS_UPDATE') {
       latestAnalysisData = message.data;
+      // v5.10.3: signal20はポーリング専用。ここでは処理しない
       updateDisplay(message.data);
       updateStatus('connected', 'データ受信中');
     }
@@ -761,6 +1213,8 @@ function listenForAnalysisUpdates() {
     if (message.type === 'STATUS_UPDATE') {
       updateRealtimeStatus(message.data);
     }
+
+    // v5.10.3: SIGNAL20_UPDATEは廃止。ポーリング専用に統一
 
     // 時間帯別データ更新を受信
     if (message.type === 'TIME_FILTER_UPDATE' && message.data?.timeFilterInfo) {
@@ -837,10 +1291,10 @@ function resetSignalCards() {
   if (aiLabelEl) aiLabelEl.textContent = '準備中';
   if (aiConfidenceEl) aiConfidenceEl.textContent = '--';
 
-  // テクニカル詳細カードをリセット
+  // テクニカル詳細カードをリセット（v5.8.21: ゲージ削除後はエントリー条件のみ）
   const techDetailBox = document.getElementById('tech-detail');
   if (techDetailBox) {
-    techDetailBox.innerHTML = '<p class="detail-text">分析データを待機中...</p>';
+    techDetailBox.innerHTML = '';
   }
 
   // AI詳細カードをリセット
@@ -857,22 +1311,22 @@ function resetSignalCards() {
     aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
   }
 
+  // 急変警告をリセット
+  const reversalEl = document.getElementById('reversal-alert');
+  if (reversalEl) reversalEl.classList.remove('active');
+
   // チカチカ防止用のキャッシュもリセット
   lastTechSignal = { signal: null, confidence: null };
   lastAISignal = { signal: null, matchCount: null, available: null };
+
+  // v5.8.21: エントリー条件カードをリセット
+  resetEntryConditions();
 }
 
 // シグナルカードを「準備中」状態にリセット（詳細カードはそのまま）
+// v5.10.3: テクニカルカードはポーリングが残り時間を表示するため、ここではAIカードのみリセット
 function resetSignalCardsToWaiting() {
-  // テクニカル分析シグナルカードを準備中に
-  const techCardEl = document.getElementById('tech-signal-card');
-  const techIconEl = document.getElementById('tech-signal-icon');
-  const techLabelEl = document.getElementById('tech-signal-label');
-  const techConfidenceEl = document.getElementById('tech-signal-confidence');
-  if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
-  if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
-  if (techLabelEl) techLabelEl.textContent = '準備中';
-  if (techConfidenceEl) techConfidenceEl.textContent = '--';
+  // v5.10.3: テクニカルカードはポーリングが制御するため触らない
 
   // AI予測シグナルカードを準備中に
   const aiCardEl = document.getElementById('ai-signal-card');
@@ -903,12 +1357,16 @@ function updateSignalCardsFromStatus(signal) {
     if (signal.tech === 'HIGH' || signal.tech === 'STRONG_HIGH') {
       dataSignal = 'high';
       label = 'HIGH';
-      // 星表示に変更（50%以上でシグナル発出、80%+→★5, 70-79%→★4, 60-69%→★3, 50-59%→★2）
-      confidence = signal.techConfidence ? getStarRating(getConfidenceStarLevel(signal.techConfidence)) : '';
+      // ポーリングのlatestSignal20を優先（STATUS_UPDATEのsignal.signal20との不一致を防止）
+      const s20 = latestSignal20 || signal.signal20;
+      const starLevel = s20 ? s20.starLevel : (signal.techConfidence ? getConfidenceStarLevel(signal.techConfidence) : 1);
+      confidence = getStarRating(starLevel);
     } else if (signal.tech === 'LOW' || signal.tech === 'STRONG_LOW') {
       dataSignal = 'low';
       label = 'LOW';
-      confidence = signal.techConfidence ? getStarRating(getConfidenceStarLevel(signal.techConfidence)) : '';
+      const s20 = latestSignal20 || signal.signal20;
+      const starLevel = s20 ? s20.starLevel : (signal.techConfidence ? getConfidenceStarLevel(signal.techConfidence) : 1);
+      confidence = getStarRating(starLevel);
     }
 
     techIconEl.setAttribute('data-signal', dataSignal);
@@ -916,12 +1374,14 @@ function updateSignalCardsFromStatus(signal) {
     techConfidenceEl.textContent = confidence;
     if (techCardEl) techCardEl.setAttribute('data-signal-type', dataSignal);
 
-    // v5.8.4: テクニカルグレードも更新（相場状況カード内）
-    // シグナルにテクニカルグレード情報があれば表示
-    const techGradeEl = document.getElementById('enhanced-grade');
-    if (techGradeEl && signal.techGrade) {
-      techGradeEl.textContent = signal.techGrade;
-      techGradeEl.setAttribute('data-grade', signal.techGrade);
+    // デバッグパネルはポーリング専用（STATUS_UPDATEから更新するとチカチカの原因になる）
+
+    // v5.8.22: STATUS_UPDATEでもテクニカル条件を更新（ANALYSIS_UPDATE時にsignal未確定の場合への対応）
+    const validTechSignals = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
+    if (validTechSignals.includes(signal.tech) && latestEnhancedData && !enhancedAnalysisLock.isLocked) {
+      enhancedAnalysisLock.isLocked = true;
+      enhancedAnalysisLock.lockedData = latestEnhancedData;
+      updateTechConditions(latestEnhancedData, { signal: signal.tech });
     }
   }
 
@@ -973,33 +1433,16 @@ function updateSignalCardsFromStatus(signal) {
     aiConfidenceEl.textContent = confidence;
     if (aiCardEl) aiCardEl.setAttribute('data-signal-type', dataSignal);
 
-    // v5.8.10: AIグレードも更新（相場状況カード内）
-    // AIシグナルが有効な場合のみグレードを表示
+    // v5.8.21: AI条件チェックを更新
     const validAISignals = ['HIGH', 'LOW', 'ENHANCED_HIGH', 'ENHANCED_LOW'];
     const hasValidAISignal = validAISignals.includes(signal.ai);
 
-    const aiGradeEl = document.getElementById('ai-grade');
-    const aiRecValueEl = document.getElementById('ai-rec-value');
-    let aiGrade = null;
-
     if (hasValidAISignal && signal.aiUpRate !== undefined && signal.aiDownRate !== undefined) {
-      aiGrade = calculateAIGrade(signal.aiUpRate, signal.aiDownRate);
-      if (aiGradeEl) {
-        aiGradeEl.textContent = aiGrade;
-        aiGradeEl.setAttribute('data-grade', aiGrade);
-      }
-      if (aiRecValueEl) {
-        aiRecValueEl.textContent = getRecommendationFromGrade(aiGrade);
-      }
-    } else if (!aiPredictionLock.isLocked) {
-      // AIシグナルがない場合はリセット（ロック中は維持）
-      if (aiGradeEl) {
-        aiGradeEl.textContent = '--';
-        aiGradeEl.removeAttribute('data-grade');
-      }
-      if (aiRecValueEl) {
-        aiRecValueEl.textContent = '--';
-      }
+      updateAIConditions({
+        upRate: signal.aiUpRate,
+        downRate: signal.aiDownRate,
+        matchCount: signal.aiMatchCount || 0
+      }, signal.tech);
     }
   }
 
@@ -1021,6 +1464,7 @@ function updateSignalCardsFromStatus(signal) {
 // 円形プログレスリングの周長（2 * π * r = 2 * π * 26 ≈ 163.36）
 const RING_CIRCUMFERENCE = 163.36;
 let lastCountdownTotal = 60; // 直近の合計秒数を記憶
+let lastStatusCountdown = -1; // 前回のSTATUS_UPDATEカウントダウン値（サイクル変更検出用）
 
 // プログレスリング更新
 function updateProgressRing(current, total) {
@@ -1050,6 +1494,7 @@ function updateRealtimeStatus(data) {
   });
 
   // v5.6.5: 取引中フラグを更新
+  const wasInTrading = isInTrading;  // 更新前の値を保存
   if (data.isTrading !== undefined) {
     isInTrading = data.isTrading;
   }
@@ -1062,22 +1507,21 @@ function updateRealtimeStatus(data) {
   }
 
   // シグナルリセット（取引終了時）
-  if (data.signalReset) {
+  // 取引中→非取引の遷移を検出してリセット
+  const tradingJustEnded = data.signalReset || (wasInTrading && !data.isTrading);
+  if (tradingJustEnded) {
     resetSignalCards();
-    signalDisplayed = false;  // シグナル表示状態もリセット
+    signalDisplayed = false;
     lastDisplayedSignal = null;
-    // v5.6.5: 取引終了時にAI予測詳細の保持データもクリア
     lastValidAICardData = null;
     isInTrading = false;
 
-    // v5.6.6: AI予測詳細のロックも解除
     if (aiPredictionLock.isLocked) {
       debugLog('[SidePanel] 🔓 取引終了によりAI予測詳細ロック解除');
       aiPredictionLock.isLocked = false;
       aiPredictionLock.lockedData = null;
     }
 
-    // v5.7.6: 高精度分析のロックも解除
     if (enhancedAnalysisLock.isLocked) {
       debugLog('[SidePanel] 🔓 取引終了により高精度分析ロック解除');
       resetEnhancedAnalysisLock();
@@ -1098,43 +1542,79 @@ function updateRealtimeStatus(data) {
     const tradingDuration = data.tradingDuration || currentTimeframe;
 
     // カウントダウンの最大値を更新
-    // 取引終了（signalReset）時または新しいサイクル開始時にリセット
-    if (data.signalReset || countdown > lastCountdownTotal) {
+    // v5.10.4: サイクル変更検出（カウントダウンが前回より増加 = 新しいサイクル開始）
+    // 通常カウントダウンは減少するので、増加は必ずサイクル切り替わりを意味する
+    const isCycleChange = !isTrading && lastStatusCountdown >= 0 && countdown > lastStatusCountdown;
+    if (data.signalReset || isCycleChange) {
       // 時間枠に応じた最大値を設定
       lastCountdownTotal = currentTimeframe;
 
-      // v5.6.6: 新しいサイクル開始時にAI予測詳細のロックを解除
-      if (aiPredictionLock.isLocked && !data.signalReset) {
-        debugLog('[SidePanel] 🔓 新サイクル開始によりAI予測詳細ロック解除');
+      // v5.10.4: サイクル変更 or signalReset → シグナルカードを完全リセット
+      debugLog('[SidePanel] 🔄 シグナル状態リセット:', data.signalReset ? 'signalReset' : 'サイクル変更');
+      signalDisplayed = false;
+      lastDisplayedSignal = null;
+      resetSignalCards();  // テクニカル・AIカード両方を「準備中」に戻す
+
+      // v5.6.6: AI予測詳細のロックを解除
+      if (aiPredictionLock.isLocked) {
+        debugLog('[SidePanel] 🔓 AI予測詳細ロック解除');
         aiPredictionLock.isLocked = false;
         aiPredictionLock.lockedData = null;
-        signalDisplayed = false;
-        lastDisplayedSignal = null;
       }
     }
+    lastStatusCountdown = isTrading ? -1 : countdown;
     // 取引中の場合は取引時間を使用
     const totalForRing = isTrading ? tradingDuration : lastCountdownTotal;
     const currentForRing = isTrading ? tradingRemaining : countdown;
 
     // シグナルがあるかどうかを判定（HIGH/LOW + 傾向表示 + 統合シグナル）
-    const hasSignal = signal && (
+    // v5.10.3: Signal20がまだ結果を出していない場合はシグナル無効とする
+    // （前の時間枠の結果が引き継がれるのを防止）
+    const hasValidTech = signal && (
       signal.tech === 'HIGH' || signal.tech === 'LOW' ||
-      signal.tech === 'STRONG_HIGH' || signal.tech === 'STRONG_LOW' ||
+      signal.tech === 'STRONG_HIGH' || signal.tech === 'STRONG_LOW'
+    );
+    const hasValidAI = signal && (
       signal.ai === 'HIGH' || signal.ai === 'LOW' ||
       signal.ai === 'TREND_HIGH' || signal.ai === 'TREND_LOW' ||
       signal.ai === 'ENHANCED_HIGH' || signal.ai === 'ENHANCED_LOW'
     );
+    // テクニカルシグナルはlatestSignal20が存在する場合のみ有効
+    const hasSignal = (hasValidTech && latestSignal20 !== null) || hasValidAI;
 
     // アラート音はtheoption-analyzer.jsで再生するため、ここでは再生しない
     // （二重再生防止）
 
-    // シグナルが有効な場合は表示状態を更新
-    if (hasSignal && signal) {
+    // フェーズを決定して表示を変更
+    // v5.10.4: シンプルな3段階フロー: 分析中 → 準備 → 取引中
+    if (isTrading) {
+      // 取引中：判定時間のカウントダウン
+      nextAnalysisEl.textContent = tradingRemaining;
+      if (countdownContainer) {
+        countdownContainer.classList.remove('phase-analyzing', 'phase-ready', 'phase-entry');
+        countdownContainer.classList.add('phase-trading');
+      }
+      if (countdownLabel) countdownLabel.textContent = '取引中';
+      // 取引中はシグナルカードを表示
+      if (signal) {
+        signalDisplayed = true;
+        lastDisplayedSignal = signal;
+        updateSignalCardsFromStatus(signal);
+      } else if (lastDisplayedSignal) {
+        updateSignalCardsFromStatus(lastDisplayedSignal);
+      }
+    } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
+      // 準備：シグナルがあり、残り秒数がprepTime以内
       signalDisplayed = true;
       lastDisplayedSignal = signal;
-
-      // v5.6.6: シグナルが表示された時点でAI予測詳細をロック
-      // これ以降、このサイクルが終わるまでAI予測詳細は更新されない
+      nextAnalysisEl.textContent = countdown;
+      if (countdownContainer) {
+        countdownContainer.classList.remove('phase-analyzing', 'phase-trading', 'phase-entry');
+        countdownContainer.classList.add('phase-ready');
+      }
+      if (countdownLabel) countdownLabel.textContent = '準備';
+      updateSignalCardsFromStatus(signal);
+      // AI予測詳細をロック
       if (!aiPredictionLock.isLocked) {
         aiPredictionLock.isLocked = true;
         aiPredictionLock.lockTime = Date.now();
@@ -1146,63 +1626,35 @@ function updateRealtimeStatus(data) {
         };
         debugLog('[SidePanel] 🔒 AI予測詳細をロック:', aiPredictionLock.lockedData);
       }
-    }
-
-    // フェーズを決定して表示を変更
-    if (isTrading) {
-      // 取引中：判定時間のカウントダウン
-      nextAnalysisEl.textContent = tradingRemaining;
-      if (countdownContainer) {
-        countdownContainer.classList.remove('phase-analyzing', 'phase-ready');
-        countdownContainer.classList.add('phase-trading');
-      }
-      if (countdownLabel) countdownLabel.textContent = '取引中';
-      // 取引中はシグナルカードを表示（保存されたシグナルを使用）
-      if (signal) {
-        updateSignalCardsFromStatus(signal);
-      } else if (lastDisplayedSignal) {
-        // シグナルがない場合は最後に表示されたシグナルを使用
-        updateSignalCardsFromStatus(lastDisplayedSignal);
-      }
-    } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
-      // 準備：シグナルがあり、残り5秒以内
-      nextAnalysisEl.textContent = countdown;
-      if (countdownContainer) {
-        countdownContainer.classList.remove('phase-analyzing', 'phase-trading');
-        countdownContainer.classList.add('phase-ready');
-      }
-      if (countdownLabel) countdownLabel.textContent = '準備';
-      // 準備フェーズでシグナルカードを表示
-      if (signal) {
-        updateSignalCardsFromStatus(signal);
-      }
-    } else if (signalDisplayed && lastDisplayedSignal && countdown > 0) {
-      // シグナルが一度表示された後は、取引終了まで保持（エントリー待機中も含む）
-      nextAnalysisEl.textContent = countdown;
-      if (countdownContainer) {
-        countdownContainer.classList.remove('phase-analyzing', 'phase-trading');
-        countdownContainer.classList.add('phase-ready');
-      }
-      if (countdownLabel) countdownLabel.textContent = 'エントリー';
-      // 保存されたシグナルを表示し続ける
-      updateSignalCardsFromStatus(lastDisplayedSignal);
     } else {
-      // 分析中：デフォルト状態（シグナルがまだ表示されていない場合のみリセット）
+      // 分析中：シグナルなし or prepTime外
       nextAnalysisEl.textContent = countdown;
       if (countdownContainer) {
-        countdownContainer.classList.remove('phase-ready', 'phase-trading');
+        countdownContainer.classList.remove('phase-ready', 'phase-trading', 'phase-entry');
         countdownContainer.classList.add('phase-analyzing');
       }
       if (countdownLabel) countdownLabel.textContent = '分析中';
-      // シグナルがまだ表示されていない場合のみ「準備中」にリセット
-      if (!signalDisplayed) {
-        resetSignalCardsToWaiting();
-      }
     }
 
     // プログレスリング更新
     updateProgressRing(currentForRing, totalForRing);
+
+    // 急変警告の表示/非表示（準備中カウントダウン5秒〜1秒の間のみ）
+    const reversalEl = document.getElementById('reversal-alert');
+    if (reversalEl) {
+      const ra = data.reversalAlert;
+      const isPrepPhase = !isTrading && countdown <= prepTime && countdown > 0 && signalDisplayed;
+      if (ra && ra.detected && isPrepPhase) {
+        reversalEl.classList.add('active');
+        const dirText = ra.direction === 'DROP' ? '急落' : '急騰';
+        reversalEl.querySelector('.reversal-alert-text').textContent = `⚠ ${dirText}検出 (ATR×${ra.atrMultiple})`;
+      } else {
+        reversalEl.classList.remove('active');
+      }
+    }
   }
+
+  // v5.10.3: signal20はポーリング専用。STATUS_UPDATEでは処理しない
 
   // ML統計
   if (data.mlStats) {
@@ -1215,9 +1667,7 @@ function updateRealtimeStatus(data) {
 // 分析データ要求
 // v5.6.4: 常にデータ要求を実行（状態チェック削除）
 function requestAnalysisData() {
-  // まず現在の時間枠をコンテンツスクリプトに通知（同期）
-  chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
-
+  // v5.10.2: TIMEFRAME_CHANGEDはselectTimeframe()でのみ送信（毎回送るとsignal20がリセットされる）
   chrome.runtime.sendMessage({ type: 'GET_ANALYSIS_DATA' }, (response) => {
     // chrome.runtime.lastError をチェックしてエラーを抑制
     if (chrome.runtime.lastError) {
@@ -1271,10 +1721,35 @@ function updateDisplay(data) {
     // v5.7.0: 高精度テクニカル分析カードを更新
     // v5.7.9: テクニカル分析のシグナルも渡して、最低限グレードを表示
     updateEnhancedCard(timeframeData.enhanced, timeframeData.technical);
+    // v5.8.22: ANALYSIS_UPDATEでもAI条件を更新（STATUS_UPDATEより先にAIデータが届く場合への対応）
+    if (timeframeData.ai && timeframeData.ai.available && timeframeData.technical) {
+      const techSig = timeframeData.technical.signal;
+      const validSigs = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
+      if (validSigs.includes(techSig) && timeframeData.ai.upRate !== undefined) {
+        updateAIConditions({
+          upRate: timeframeData.ai.upRate,
+          downRate: timeframeData.ai.downRate,
+          matchCount: timeframeData.ai.matchCount || timeframeData.ai.sampleSize || 0
+        }, techSig);
+      }
+    }
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
-    debugLog('[SidePanel] 時間枠のデータなし - カードをリセット');
-    resetSignalCards();
+    debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
+    // v5.10.3: resetSignalCards()を呼ぶとテクニカルカードの残り時間表示が消えるため
+    // ここでは詳細カードのみリセット（テクニカルカードはポーリングが制御）
+    const techDetailBox = document.getElementById('tech-detail');
+    if (techDetailBox) techDetailBox.innerHTML = '';
+    const probUp = document.getElementById('prob-up');
+    const probDown = document.getElementById('prob-down');
+    const probBarUp = document.getElementById('prob-bar-up');
+    const probBarDown = document.getElementById('prob-bar-down');
+    const aiDetailBox = document.getElementById('ai-detail');
+    if (probUp) probUp.textContent = '上昇 --%';
+    if (probDown) probDown.textContent = '下降 --%';
+    if (probBarUp) probBarUp.style.width = '0%';
+    if (probBarDown) probBarDown.style.width = '0%';
+    if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
     // v5.7.0: 高精度分析カードもリセット
     updateEnhancedCard(null);
   }
@@ -1301,23 +1776,22 @@ function updateDualSignals(timeframeData) {
   updateAISignalCard(ai);
 }
 
-// 星表示ヘルパー関数（5段階）
+// 星表示ヘルパー関数（3段階 - 20インジケータ多数決用）
 function getStarRating(level) {
-  // level: 1-5
-  const filled = Math.min(5, Math.max(1, level));
-  const empty = 5 - filled;
+  // level: 1-3
+  const filled = Math.min(3, Math.max(1, level));
+  const empty = 3 - filled;
   return '★'.repeat(filled) + '☆'.repeat(empty);
 }
 
-// confidence値から星レベルを計算（テクニカル分析用）
-// テクニカル分析のシグナル（HIGH/LOW）は60%以上で発出
-// 案B: 60-64%→★1, 65-69%→★2, 70-79%→★3, 80-89%→★4, 90%+→★5
+// confidence値から星レベルを計算（テクニカル分析用 - 20インジケータ多数決）
+// 13-14個→★1, 15-16個→★2, 17-20個→★3
 function getConfidenceStarLevel(confidence) {
-  if (confidence >= 90) return 5;
-  if (confidence >= 80) return 4;
-  if (confidence >= 70) return 3;
-  if (confidence >= 65) return 2;
-  return 1; // 60-64%（シグナル発出時の最低ライン）
+  // signal20のstarLevelが直接使える場合はそのまま返す
+  // confidence値からの変換（60=★1, 75=★2, 90=★3）
+  if (confidence >= 90) return 3;
+  if (confidence >= 75) return 2;
+  return 1;
 }
 
 // AI予測の星レベルを計算（60%以上のシグナル用）
@@ -1438,7 +1912,6 @@ function updateAISignalCard(ai) {
   const iconEl = document.getElementById('ai-signal-icon');
   const labelEl = document.getElementById('ai-signal-label');
   const confidenceEl = document.getElementById('ai-signal-confidence');
-  const gradeEl = document.getElementById('ai-grade');
 
   if (!iconEl || !labelEl || !confidenceEl) return;
 
@@ -1479,11 +1952,6 @@ function updateAISignalCard(ai) {
       labelEl.textContent = '準備中';
     }
     confidenceEl.textContent = '';
-    // グレードをリセット
-    if (gradeEl) {
-      gradeEl.textContent = '--';
-      gradeEl.setAttribute('data-grade', '');
-    }
     return;
   }
 
@@ -1582,259 +2050,12 @@ function updateAISignalCard(ai) {
     cardEl.setAttribute('data-signal-type', dataSignal);
   }
 
-  // グレードを計算して表示（シグナルが出ている場合のみ）
-  if (gradeEl) {
-    if (dataSignal !== 'wait' && upRate !== undefined && downRate !== undefined) {
-      const grade = calculateAIGrade(upRate, downRate);
-      gradeEl.textContent = grade;
-      gradeEl.setAttribute('data-grade', grade);
-    } else {
-      gradeEl.textContent = '--';
-      gradeEl.setAttribute('data-grade', '');
-    }
-  }
 }
 
-// 相場状況カード更新（案1: デュアルゲージ - 強度+ボラティリティ）
-// 前回の値を保持（アニメーション用）
-let lastTechValues = { strength: 0, grade: 'C', volatility: '中', judgment: '', volaPercent: 50 };
-
+// v5.8.21: 強度・ボラティリティゲージは削除（エントリー条件カードに統合）
+// updateTechnicalCard は呼び出しを維持するが中身は空（互換性）
 function updateTechnicalCard(technical) {
-  const detailBox = document.getElementById('tech-detail');
-
-  if (!detailBox) return;
-
-  // 固定高さのコンテナを常に維持（待機中もデータ表示時と同じ高さ）
-  if (!technical) {
-    detailBox.innerHTML = `
-      <div class="tech-dashboard">
-        <div class="tech-waiting-state">
-          <div class="tech-waiting-icon">📊</div>
-          <div class="tech-waiting-text">分析データを待機中...</div>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  // トレンド情報を解析
-  const trendText = technical.trendDisplayText || '';
-  let strength = 0;
-  let grade = 'C';
-  let gradeLabel = '普通';
-
-  // 強度を抽出 (例: "強度: 40/100")
-  const strengthMatch = trendText.match(/強度[：:]\s*(\d+)/);
-  if (strengthMatch) {
-    strength = parseInt(strengthMatch[1], 10);
-  }
-
-  // グレードを抽出 (例: "C級")
-  const gradeMatch = trendText.match(/([SABCDE])級/);
-  if (gradeMatch) {
-    grade = gradeMatch[1];
-  }
-
-  // グレードラベルの対応表
-  const gradeLabels = {
-    'S': '最強',
-    'A': '強い',
-    'B': 'やや強',
-    'C': '普通',
-    'D': '弱い',
-    'E': '最弱'
-  };
-  gradeLabel = gradeLabels[grade] || '普通';
-
-  // 判定テキストと色クラス
-  let judgmentClass = '';
-  const judgment = technical.overallJudgment || '';
-  if (judgment.includes('上昇') || judgment.includes('HIGH')) {
-    judgmentClass = 'judgment-up';
-  } else if (judgment.includes('下降') || judgment.includes('LOW')) {
-    judgmentClass = 'judgment-down';
-  }
-
-  // ボラティリティを解析（高/中/低 → ゲージ用パーセント変換）
-  const volatilityRaw = technical.volatility || '-';
-  let volatilityLevel = '中';
-  let volatilityClass = 'vola-medium';
-  let volaPercent = 50; // デフォルト中間
-  let volaColor = '#ff9800'; // orange
-
-  if (volatilityRaw === '高い' || volatilityRaw === '非常に高い' || volatilityRaw.includes('高')) {
-    volatilityLevel = '高';
-    volatilityClass = 'vola-high';
-    volaPercent = volatilityRaw === '非常に高い' ? 95 : 80;
-    volaColor = '#f44336'; // red
-  } else if (volatilityRaw === '低い' || volatilityRaw === '非常に低い' || volatilityRaw.includes('低')) {
-    volatilityLevel = '低';
-    volatilityClass = 'vola-low';
-    volaPercent = volatilityRaw === '非常に低い' ? 10 : 25;
-    volaColor = '#4caf50'; // green
-  } else if (volatilityRaw === '-') {
-    volatilityLevel = '-';
-    volatilityClass = 'vola-unknown';
-    volaPercent = 0;
-    volaColor = '#9e9e9e';
-  }
-
-  // 強度に基づく色
-  let strengthColor = '#9e9e9e'; // neutral
-  if (strength >= 70) {
-    strengthColor = '#4caf50'; // green
-  } else if (strength >= 40) {
-    strengthColor = '#ff9800'; // orange
-  } else if (strength > 0) {
-    strengthColor = '#f44336'; // red
-  }
-
-  // 初回レンダリングかどうか（tech-dual-gaugesがあれば既にデータ表示済み）
-  const isFirstRender = !detailBox.querySelector('.tech-dual-gauges');
-
-  if (isFirstRender) {
-    // 初回: HTML構造を作成（デュアルゲージレイアウト）
-    detailBox.innerHTML = `
-      <div class="tech-dashboard">
-        <div class="tech-dual-gauges">
-          <!-- 強度ゲージ -->
-          <div class="tech-gauge-item">
-            <div class="tech-circle-gauge" id="tech-strength-gauge">
-              <svg viewBox="0 0 100 100">
-                <circle class="gauge-bg" cx="50" cy="50" r="42" />
-                <circle class="gauge-fill strength-fill" cx="50" cy="50" r="42"
-                        stroke-dasharray="264"
-                        stroke-dashoffset="264"
-                        style="stroke: ${strengthColor};" />
-              </svg>
-              <div class="gauge-center">
-                <span class="gauge-value" id="strength-value">0</span>
-                <span class="gauge-unit">%</span>
-              </div>
-            </div>
-            <div class="tech-gauge-label">強度</div>
-          </div>
-
-          <!-- ボラティリティゲージ -->
-          <div class="tech-gauge-item">
-            <div class="tech-circle-gauge" id="tech-vola-gauge">
-              <svg viewBox="0 0 100 100">
-                <circle class="gauge-bg" cx="50" cy="50" r="42" />
-                <circle class="gauge-fill vola-fill" cx="50" cy="50" r="42"
-                        stroke-dasharray="264"
-                        stroke-dashoffset="264"
-                        style="stroke: ${volaColor};" />
-              </svg>
-              <div class="gauge-center">
-                <span class="gauge-vola-label ${volatilityClass}" id="vola-label">${volatilityLevel}</span>
-              </div>
-            </div>
-            <div class="tech-gauge-label">ボラ</div>
-          </div>
-        </div>
-
-      </div>
-    `;
-
-    // 初回アニメーション（少し遅延させて開始）
-    requestAnimationFrame(() => {
-      animateStrengthGauge(0, strength, strengthColor);
-      animateVolaGauge(0, volaPercent, volaColor);
-    });
-  } else {
-    // 更新: 既存の要素を滑らかに更新
-    const volaLabelEl = detailBox.querySelector('#vola-label');
-
-    // 強度ゲージをアニメーション更新
-    if (lastTechValues.strength !== strength) {
-      animateStrengthGauge(lastTechValues.strength, strength, strengthColor);
-    }
-
-    // ボラゲージをアニメーション更新
-    if (lastTechValues.volaPercent !== volaPercent) {
-      animateVolaGauge(lastTechValues.volaPercent, volaPercent, volaColor);
-    }
-
-    // ボララベル更新
-    if (volaLabelEl && lastTechValues.volatility !== volatilityLevel) {
-      volaLabelEl.classList.add('value-updating');
-      setTimeout(() => {
-        volaLabelEl.textContent = volatilityLevel;
-        volaLabelEl.className = `gauge-vola-label ${volatilityClass}`;
-        volaLabelEl.id = 'vola-label';
-        volaLabelEl.classList.remove('value-updating');
-      }, 150);
-    }
-  }
-
-  // 値を保存
-  lastTechValues = { strength, grade, volatility: volatilityLevel, judgment, volaPercent };
-}
-
-// 強度ゲージアニメーション関数
-function animateStrengthGauge(fromValue, toValue, color) {
-  const detailBox = document.getElementById('tech-detail');
-  if (!detailBox) return;
-
-  const gaugeFill = detailBox.querySelector('.strength-fill');
-  const gaugeValue = detailBox.querySelector('#strength-value');
-  if (!gaugeFill || !gaugeValue) return;
-
-  const duration = 600; // ms
-  const startTime = performance.now();
-
-  function animate(currentTime) {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-
-    // イージング (ease-out-cubic)
-    const eased = 1 - Math.pow(1 - progress, 3);
-
-    const currentValue = Math.round(fromValue + (toValue - fromValue) * eased);
-    const offset = 264 - (currentValue / 100) * 264;
-
-    gaugeFill.style.strokeDashoffset = offset;
-    gaugeFill.style.stroke = color;
-    gaugeValue.textContent = currentValue;
-
-    if (progress < 1) {
-      requestAnimationFrame(animate);
-    }
-  }
-
-  requestAnimationFrame(animate);
-}
-
-// ボラゲージアニメーション関数
-function animateVolaGauge(fromValue, toValue, color) {
-  const detailBox = document.getElementById('tech-detail');
-  if (!detailBox) return;
-
-  const gaugeFill = detailBox.querySelector('.vola-fill');
-  if (!gaugeFill) return;
-
-  const duration = 600; // ms
-  const startTime = performance.now();
-
-  function animate(currentTime) {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-
-    // イージング (ease-out-cubic)
-    const eased = 1 - Math.pow(1 - progress, 3);
-
-    const currentValue = fromValue + (toValue - fromValue) * eased;
-    const offset = 264 - (currentValue / 100) * 264;
-
-    gaugeFill.style.strokeDashoffset = offset;
-    gaugeFill.style.stroke = color;
-
-    if (progress < 1) {
-      requestAnimationFrame(animate);
-    }
-  }
-
-  requestAnimationFrame(animate);
+  // エントリー条件カードで表示するため、ここでは何もしない
 }
 
 // AI予測詳細カード更新（シグナルはメインカードのみ）
@@ -2099,132 +2320,409 @@ let enhancedAnalysisLock = {
   lockedData: null
 };
 
+// v5.8.21: 最新のenhancedデータを保持（条件判定に使用）
+let latestEnhancedData = null;
+
 // v5.7.6: 高精度分析のロックをリセット（取引終了時に呼び出される）
 function resetEnhancedAnalysisLock() {
   enhancedAnalysisLock.isLocked = false;
   enhancedAnalysisLock.lockedData = null;
-  // UI要素をリセット
-  const gradeEl = document.getElementById('enhanced-grade');
-  const techRecValueEl = document.getElementById('tech-rec-value');
-  const aiRecValueEl = document.getElementById('ai-rec-value');
-  const aiGradeEl = document.getElementById('ai-grade');
-  const regimeEl = document.getElementById('enhanced-regime');
-  const mtfEl = document.getElementById('enhanced-mtf');
-  if (gradeEl) {
-    gradeEl.textContent = '--';
-    gradeEl.removeAttribute('data-grade');
-  }
-  if (aiGradeEl) {
-    aiGradeEl.textContent = '--';
-    aiGradeEl.removeAttribute('data-grade');
-  }
-  if (techRecValueEl) techRecValueEl.textContent = '--';
-  if (aiRecValueEl) aiRecValueEl.textContent = '--';
-  if (regimeEl) regimeEl.textContent = '--';
-  if (mtfEl) mtfEl.textContent = '--';
+  resetEntryConditions();
 }
 
-// v5.7.7: 高精度分析情報を相場状況カードに表示
-// v5.7.9: テクニカル分析のシグナルも参照して最低限グレードを表示
-function updateEnhancedCard(enhanced, technical = null) {
-  const gradeEl = document.getElementById('enhanced-grade');
-  const techRecValueEl = document.getElementById('tech-rec-value');
-  const regimeEl = document.getElementById('enhanced-regime');
-  const mtfEl = document.getElementById('enhanced-mtf');
+// v5.9.0: 条件結果を保持（ダッシュボード更新用）
+let conditionResults = {
+  t1: null, t2: null, t3: null, t4: null,
+  a1: null, a2: null, a3: null, a4: null
+};
 
-  // データがない場合はリセット（ロック中でなければ）
+// v5.9.0: エントリー条件カードをリセット
+function resetEntryConditions() {
+  const techChecks = document.getElementById('tech-checks');
+  const aiChecks = document.getElementById('ai-checks');
+  if (techChecks) {
+    techChecks.querySelectorAll('.entry-check-item').forEach(item => {
+      item.className = 'entry-check-item neutral';
+      item.querySelector('.check-icon').textContent = '―';
+    });
+  }
+  if (aiChecks) {
+    aiChecks.querySelectorAll('.entry-check-item').forEach(item => {
+      item.className = 'entry-check-item neutral';
+      item.querySelector('.check-icon').textContent = '―';
+    });
+  }
+  conditionResults = { t1: null, t2: null, t3: null, t4: null, a1: null, a2: null, a3: null, a4: null };
+  updateCondDashboard();
+}
+
+// v5.9.0: エントリー条件のチェック項目を更新
+function updateCheckItem(containerEl, index, pass) {
+  const items = containerEl.querySelectorAll('.entry-check-item');
+  if (!items[index]) return;
+  items[index].className = `entry-check-item ${pass ? 'pass' : 'fail'}`;
+  items[index].querySelector('.check-icon').textContent = pass ? '✓' : '✗';
+}
+
+// ========================================
+// v5.9.0: ダッシュボードUI
+// ========================================
+
+const RING_CIRCUMFERENCE_COND = 2 * Math.PI * 25; // ≈ 157.08
+
+/**
+ * リングゲージを更新
+ * @param {string} cardId - カード要素のID
+ * @param {number} cleared - クリアした条件数
+ * @param {number} total - 全条件数
+ */
+function updateCondRing(cardId, cleared, total) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const fill = card.querySelector('.cond-ring-fill');
+  if (!fill) return;
+
+  const ratio = total > 0 ? cleared / total : 0;
+  const offset = RING_CIRCUMFERENCE_COND * (1 - ratio);
+  fill.style.strokeDashoffset = offset;
+
+  // 色レベル判定
+  let level = 'neutral';
+  if (total === 0 || cleared === null) {
+    level = 'neutral';
+  } else if (ratio >= 0.75) {
+    level = 'good';
+  } else if (ratio >= 0.5) {
+    level = 'warn';
+  } else if (cleared > 0) {
+    level = 'warn';
+  } else {
+    level = 'bad';
+  }
+  fill.setAttribute('data-level', level);
+}
+
+/**
+ * 一言コメントを生成
+ */
+function generateCondComment() {
+  const r = conditionResults;
+  const hasAny = Object.values(r).some(v => v !== null);
+  if (!hasAny) return '分析待ち';
+
+  // 環境チェック
+  const envCleared = [r.t2, r.a2, r.a3].filter(v => v === true).length;
+  const envTotal = [r.t2, r.a2, r.a3].filter(v => v !== null).length;
+
+  // 方向チェック
+  const dirCleared = [r.t1, r.t3, r.a1, r.a4].filter(v => v === true).length;
+  const dirTotal = [r.t1, r.t3, r.a1, r.a4].filter(v => v !== null).length;
+
+  // タイミング
+  const timingOk = r.t4 === true;
+
+  // v2Regime取得
+  const v2Regime = latestEnhancedData?.v2?.t1?.v2Regime || '';
+
+  // コメント生成
+  if (envTotal > 0 && envCleared === 0) return '環境不安定';
+  if (r.a3 === false && r.a2 === null && r.a1 === null) return 'データ不足';
+  if (dirTotal > 0 && dirCleared === 0) return '方向感なし';
+
+  const parts = [];
+
+  // 局面説明
+  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
+    parts.push(r.t1 ? '順張り局面' : 'トレンド中');
+  } else if (v2Regime === 'RANGE') {
+    parts.push(r.t1 ? 'レンジ反転の兆候' : 'レンジ相場');
+  } else {
+    parts.push('移行期');
+  }
+
+  // 方向
+  if (dirCleared >= 3) {
+    parts.push('条件揃い');
+  } else if (dirCleared >= 2) {
+    parts.push('方向一致');
+  } else {
+    parts.push('方向不明確');
+  }
+
+  // タイミング
+  if (timingOk) {
+    // タイミングOKは特に強調しない（リングで見える）
+  } else if (dirCleared >= 2) {
+    parts[parts.length - 1] += '・タイミング待ち';
+  }
+
+  return parts.join('・');
+}
+
+/**
+ * ダッシュボード全体を更新
+ */
+function updateCondDashboard() {
+  const r = conditionResults;
+
+  // 環境: T2, A2, A3
+  const envItems = [r.t2, r.a2, r.a3];
+  const envCleared = envItems.filter(v => v === true).length;
+  const envTotal = envItems.filter(v => v !== null).length;
+  updateCondRing('cond-env', envCleared, envTotal);
+
+  // 方向: T1, T3, A1, A4
+  const dirItems = [r.t1, r.t3, r.a1, r.a4];
+  const dirCleared = dirItems.filter(v => v === true).length;
+  const dirTotal = dirItems.filter(v => v !== null).length;
+  updateCondRing('cond-dir', dirCleared, dirTotal);
+
+  // タイミング: T4 (1項目なので0 or 1)
+  const timingCleared = r.t4 === true ? 1 : 0;
+  const timingTotal = r.t4 !== null ? 1 : 0;
+  updateCondRing('cond-timing', timingCleared, timingTotal);
+
+  // 一言コメント
+  const commentEl = document.getElementById('cond-comment');
+  if (commentEl) {
+    commentEl.textContent = generateCondComment();
+  }
+}
+
+/**
+ * 詳細展開トグルの初期化
+ */
+function initCondDetailsToggle() {
+  const toggle = document.getElementById('cond-details-toggle');
+  const details = document.getElementById('cond-details');
+  if (toggle && details) {
+    toggle.addEventListener('click', () => {
+      const isHidden = details.style.display === 'none';
+      details.style.display = isHidden ? 'block' : 'none';
+      toggle.textContent = isHidden ? '詳細を閉じる' : '詳細を見る';
+    });
+  }
+}
+
+// v5.8.21: エントリー条件カードを更新（旧updateEnhancedCard置き換え）
+function updateEnhancedCard(enhanced, technical = null) {
+  // enhancedデータを保持
+  if (enhanced) {
+    latestEnhancedData = enhanced;
+  }
+
   if (!enhanced) {
     if (!enhancedAnalysisLock.isLocked) {
-      if (gradeEl) {
-        gradeEl.textContent = '--';
-        gradeEl.removeAttribute('data-grade');
-      }
-      if (techRecValueEl) {
-        techRecValueEl.textContent = '--';
-      }
+      resetEntryConditions();
     }
     return;
   }
 
-  // 相場状態とMTF一致度は常に更新（NEUTRALでも表示）
-  if (regimeEl) {
-    const regimeMap = {
-      'STRONG_TREND_UP': '強トレンド↑',
-      'STRONG_TREND_DOWN': '強トレンド↓',
-      'WEAK_TREND_UP': '弱トレンド↑',
-      'WEAK_TREND_DOWN': '弱トレンド↓',
-      'RANGE': 'レンジ',
-      'BREAKOUT_UP': 'レンジ上抜け',
-      'BREAKOUT_DOWN': 'レンジ下抜け',
-      'REVERSAL_UP': '上方反転',
-      'REVERSAL_DOWN': '下方反転',
-      // 旧形式との互換性
-      'STRONG_TREND': '強トレンド',
-      'WEAK_TREND': '弱トレンド',
-      'BREAKOUT': 'ブレイク',
-      'REVERSAL': '反転'
-    };
-    const regime = enhanced.regime || '--';
-    regimeEl.textContent = regimeMap[regime] || regime;
-  }
-
-  if (mtfEl) {
-    const mtf = enhanced.mtfAgreement;
-    mtfEl.textContent = mtf !== undefined && mtf !== null ? `${mtf}%` : '--';
-  }
-
-  // v5.8.13: シグナルの有効性を厳密にチェック
-  // テクニカル分析シグナルカードの「見送り」表示と完全に連動させる
-  // シグナルカードは technical.signal (= multiDim.signal) を見ている
   const validSignals = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
-
-  // テクニカル分析シグナルが有効かどうか（シグナルカードで HIGH/LOW が表示される条件と同じ）
   const techSignalValid = technical && technical.signal && validSignals.includes(technical.signal);
 
-  // enhanced.signal も確認（バックアップ）
-  const enhancedSignalValid = enhanced.signal && validSignals.includes(enhanced.signal);
-
-  // シグナルカードで「見送り」と表示される場合は、グレードも表示しない
-  // technical.signal が HIGH/LOW でない = シグナルカードが「見送り」
-  const shouldShowGrade = techSignalValid;
-
-  const hasGrade = enhanced.grade && enhanced.grade !== '--';
-
-  // v5.8.5: シグナルが出た時のみグレードを表示
-  // v5.8.13: シグナルカードで「見送り」の場合は表示しない（厳密に連動）
-  // グレードは「シグナルが出た上で、エントリーすべきかどうか」の判断材料
-  if (shouldShowGrade) {
-    // ロック中は更新しない（取引終了まで結果を維持）
-    if (enhancedAnalysisLock.isLocked) {
-      return;
-    }
-
-    // 有効なシグナルが来たらロックして表示
+  if (techSignalValid) {
+    if (enhancedAnalysisLock.isLocked) return;
     enhancedAnalysisLock.isLocked = true;
     enhancedAnalysisLock.lockedData = enhanced;
-
-    // グレード（タイトル横のバッジ）- グレードがない場合は最低「D」を表示
-    if (gradeEl) {
-      const grade = hasGrade ? enhanced.grade : 'D';
-      gradeEl.textContent = grade;
-      gradeEl.setAttribute('data-grade', grade);
-    }
-
-    // v5.8.7: テクニカル推奨アクション - グレードに基づいて決定
-    if (techRecValueEl) {
-      const grade = hasGrade ? enhanced.grade : 'D';
-      techRecValueEl.textContent = getRecommendationFromGrade(grade);
-    }
+    updateTechConditions(enhanced, technical);
   } else if (!enhancedAnalysisLock.isLocked) {
-    // シグナルがない場合はグレードも表示しない
-    if (gradeEl) {
-      gradeEl.textContent = '--';
-      gradeEl.removeAttribute('data-grade');
-    }
-    if (techRecValueEl) {
-      techRecValueEl.textContent = '--';
-    }
+    resetEntryConditions();
   }
+}
+
+// ========================================
+// v5.9.0: エントリー条件v2 判定ロジック
+// ========================================
+
+// v5.9.0: 設定定数
+const V2_CONFIG = {
+  PAYOUT_RATE: 0.80,       // デフォルトペイアウト率
+  EV_MIN: 0.02,            // A1: 最小期待値
+  EV_STRONG: 0.05,         // A4: 不一致でも許容するEV閾値
+  TIE_MAX: 0.25,           // A2: 同値率上限
+  WILSON_Z: 1.64,          // A3: Wilson下限の信頼係数（90%）
+  MIN_SAMPLES: 30,         // A3: 最小サンプル数
+  MTF_THRESHOLD: 0.30,     // T3: 整合スコア閾値
+  MTF_VETO_THRESHOLD: -0.70, // T3: 300秒veto閾値
+  VOL_RANGE_LOW: 0.65,     // T2: ボラ下限
+  VOL_RANGE_HIGH: 1.40,    // T2: レンジ時ボラ上限
+  VOL_TREND_HIGH: 1.80     // T2: トレンド時ボラ上限
+};
+
+// v5.9.0: 最後に計算したAI EVデータを保持（A2/A4条件で参照）
+let lastAIEVData = null;
+
+// v5.9.0: テクニカル側の4条件を判定・表示（v2）
+function updateTechConditions(enhanced, technical) {
+  const techChecks = document.getElementById('tech-checks');
+  if (!techChecks) return;
+
+  const v2 = enhanced.v2;
+  const signal = enhanced.signal || technical?.signal || 'NEUTRAL';
+  const isHigh = signal === 'HIGH' || signal === 'STRONG_HIGH';
+  const isLow = signal === 'LOW' || signal === 'STRONG_LOW';
+
+  // v2データがない場合はフォールバック
+  if (!v2) {
+    debugLog('[EntryCondV2] v2データなし、フォールバック');
+    updateCheckItem(techChecks, 0, false);
+    updateCheckItem(techChecks, 1, true);
+    updateCheckItem(techChecks, 2, false);
+    updateCheckItem(techChecks, 3, false);
+    conditionResults.t1 = false;
+    conditionResults.t2 = true;
+    conditionResults.t3 = false;
+    conditionResults.t4 = false;
+    updateCondDashboard();
+    return;
+  }
+
+  // === T1: 局面適合 ===
+  const { v2Regime, emaSlope, rsi: t1Rsi, bbPosition } = v2.t1;
+  let t1Pass = false;
+  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
+    // トレンド/ブレイク: シグナル方向とEMA傾き方向が一致
+    t1Pass = (isHigh && emaSlope > 0) || (isLow && emaSlope < 0);
+  } else if (v2Regime === 'RANGE') {
+    // レンジ: 反転条件（BB端+オシレーター反転をT4と連動で判定）
+    // HIGHなら下側で反転、LOWなら上側で反転
+    const bbAtLower = bbPosition < 25;
+    const bbAtUpper = bbPosition > 75;
+    const rsiOversold = t1Rsi < 35;
+    const rsiOverbought = t1Rsi > 65;
+    t1Pass = (isHigh && bbAtLower && rsiOversold) || (isLow && bbAtUpper && rsiOverbought);
+  }
+  // TRANSITION → 原則✗
+  updateCheckItem(techChecks, 0, t1Pass);
+
+  // === T2: ボラ適合 ===
+  const { volRatio } = v2.t2;
+  let t2Pass = false;
+  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
+    t2Pass = volRatio >= V2_CONFIG.VOL_RANGE_LOW && volRatio <= V2_CONFIG.VOL_TREND_HIGH;
+  } else {
+    t2Pass = volRatio >= V2_CONFIG.VOL_RANGE_LOW && volRatio <= V2_CONFIG.VOL_RANGE_HIGH;
+  }
+  updateCheckItem(techChecks, 1, t2Pass);
+
+  // === T3: 時間軸整合 ===
+  const { mtfWeightedScore, s180 } = v2.t3;
+  const mtfDirection = mtfWeightedScore > 0 ? 'HIGH' : 'LOW';
+  const mtfDirectionMatch = (isHigh && mtfDirection === 'HIGH') || (isLow && mtfDirection === 'LOW');
+  const mtfAboveThreshold = Math.abs(mtfWeightedScore) >= V2_CONFIG.MTF_THRESHOLD;
+  // veto: 180秒が強逆行の場合は✗（3TF版なのでs180を使用）
+  const vetoActive = (isHigh && s180 <= V2_CONFIG.MTF_VETO_THRESHOLD) ||
+                     (isLow && s180 >= -V2_CONFIG.MTF_VETO_THRESHOLD);
+  // レンジ時はvetoを弱める
+  const vetoApplied = v2Regime === 'RANGE' ? false : vetoActive;
+  const t3Pass = mtfDirectionMatch && mtfAboveThreshold && !vetoApplied;
+  updateCheckItem(techChecks, 2, t3Pass);
+
+  // === T4: エントリートリガー ===
+  const t4 = v2.t4;
+  let t4Pass = false;
+  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
+    // トレンド用: 3つ中2つ成立で✓
+    let trendTriggers = 0;
+    // 1. RSIが50をクロス
+    if ((isHigh && t4.rsiCross50Up) || (isLow && t4.rsiCross50Down)) trendTriggers++;
+    // 2. MACDヒストグラムがゼロ付近 or 3本連続増加
+    if (t4.macdNearZero || t4.macdIncreasing) trendTriggers++;
+    // 3. 終値がEMA9を方向側にブレイク＋EMA9傾きが同方向
+    if ((isHigh && t4.ema9BreakUp && t4.ema9SlopeUp) ||
+        (isLow && t4.ema9BreakDown && t4.ema9SlopeDown)) trendTriggers++;
+    t4Pass = trendTriggers >= 2;
+  } else if (v2Regime === 'RANGE') {
+    // レンジ用: 3つ中2つ成立で✓
+    let rangeTriggers = 0;
+    // 4. BB外側到達後にBB内に回帰
+    if (t4.bbReversion) rangeTriggers++;
+    // 5. RSIが極端域から戻る
+    if ((isLow && t4.rsiFromOverbought) || (isHigh && t4.rsiFromOversold)) rangeTriggers++;
+    // 6. ストキャスティクスが極端域で反転クロス
+    if ((isHigh && t4.stochReversalUp) || (isLow && t4.stochReversalDown)) rangeTriggers++;
+    t4Pass = rangeTriggers >= 2;
+  }
+  updateCheckItem(techChecks, 3, t4Pass);
+
+  // ダッシュボード用に結果を保持
+  conditionResults.t1 = t1Pass;
+  conditionResults.t2 = t2Pass;
+  conditionResults.t3 = t3Pass;
+  conditionResults.t4 = t4Pass;
+  updateCondDashboard();
+}
+
+// v5.9.0: AI側の4条件を判定・表示（v2: EV計算ベース）
+function updateAIConditions(aiData, techSignal) {
+  const aiChecks = document.getElementById('ai-checks');
+  if (!aiChecks) return;
+
+  const upRate = (aiData.upRate || 0) / 100;   // 0-1に正規化
+  const downRate = (aiData.downRate || 0) / 100;
+  const tieRate = Math.max(0, 1 - upRate - downRate);
+  const matchCount = aiData.matchCount || aiData.sampleSize || 0;
+  const r = V2_CONFIG.PAYOUT_RATE;
+
+  // 勝率方向を判定
+  const pWin = Math.max(upRate, downRate);
+  const pLose = Math.min(upRate, downRate);
+  const aiDirection = upRate > downRate ? 'HIGH' : 'LOW';
+
+  // 期待値 EV = p_win * r - p_lose
+  const ev = pWin * r - pLose;
+
+  // 損益分岐勝率 p_BE = (1 - p_tie) / (1 + r)
+  const pBE = (1 - tieRate) / (1 + r);
+
+  // テクニカル方向との一致判定
+  const techIsHigh = techSignal === 'HIGH' || techSignal === 'STRONG_HIGH';
+  const techIsLow = techSignal === 'LOW' || techSignal === 'STRONG_LOW';
+  const directionMatch = (techIsHigh && aiDirection === 'HIGH') || (techIsLow && aiDirection === 'LOW');
+
+  // EVデータを保持（A4のレジーム連動判定で使用）
+  lastAIEVData = { ev, pWin, pLose, tieRate, pBE, directionMatch, matchCount };
+
+  // === A1: 優位性（期待値EV） ===
+  const a1Pass = ev >= V2_CONFIG.EV_MIN;
+  updateCheckItem(aiChecks, 0, a1Pass);
+
+  // === A2: 同値リスク ===
+  // p_tie ≤ 0.25、またはEVが十分なら同値が多くても許容
+  const a2Pass = tieRate <= V2_CONFIG.TIE_MAX || ev >= V2_CONFIG.EV_MIN;
+  updateCheckItem(aiChecks, 1, a2Pass);
+
+  // === A3: 信頼度（Wilson下限） ===
+  let a3Pass = false;
+  if (matchCount >= V2_CONFIG.MIN_SAMPLES) {
+    const z = V2_CONFIG.WILSON_Z;
+    const n = matchCount;
+    const p = pWin;
+    // Wilson score interval lower bound
+    const lb = (p + z * z / (2 * n) - z * Math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)) / (1 + z * z / n);
+    a3Pass = lb >= pBE;
+  }
+  updateCheckItem(aiChecks, 2, a3Pass);
+
+  // === A4: 整合（方向の一致 + EV柔軟判定） ===
+  let a4Pass = false;
+  if (directionMatch) {
+    a4Pass = true;
+  } else if (ev >= V2_CONFIG.EV_STRONG) {
+    // 不一致でもEVが十分かつレンジ局面なら条件付き✓
+    // latestEnhancedDataからv2Regimeを取得
+    const v2Regime = latestEnhancedData?.v2?.t1?.v2Regime;
+    a4Pass = v2Regime === 'RANGE';
+  }
+  updateCheckItem(aiChecks, 3, a4Pass);
+
+  // ダッシュボード用に結果を保持
+  conditionResults.a1 = a1Pass;
+  conditionResults.a2 = a2Pass;
+  conditionResults.a3 = a3Pass;
+  conditionResults.a4 = a4Pass;
+  updateCondDashboard();
 }
 
 // ML学習状況更新
@@ -2236,11 +2734,17 @@ function updateMLStatus(mlStats) {
   const rawDataCount = mlStats.dataCount || mlStats.dataCountWithResults || 0;
   const learningLevel = mlStats.learningLevel;
 
-  // チカチカ防止: データカウントは増加のみ許可（減少は無視）
-  // これにより 3179 → 3178 → 3179 のような行ったり来たりを防止
-  const displayDataCount = Math.max(highestMLDataCount, rawDataCount);
-  if (rawDataCount > highestMLDataCount) {
+  // チカチカ防止: 小さな変動（±10件以内）は無視、大きな減少は反映（トリミング対応）
+  let displayDataCount;
+  if (rawDataCount < highestMLDataCount - 10) {
+    // 大幅減少（トリミング等）→ 即座に反映
     highestMLDataCount = rawDataCount;
+    displayDataCount = rawDataCount;
+  } else {
+    displayDataCount = Math.max(highestMLDataCount, rawDataCount);
+    if (rawDataCount > highestMLDataCount) {
+      highestMLDataCount = rawDataCount;
+    }
   }
 
   // 値が変わっていない場合は更新をスキップ
@@ -2263,9 +2767,65 @@ function updateMLStatus(mlStats) {
     learningLevelEl.textContent = learningLevel;
   }
   if (progressBar) {
-    const progress = Math.min(100, (displayDataCount / 50000) * 100);
+    const progress = Math.min(100, (displayDataCount / 25000) * 100);
     progressBar.style.width = `${progress}%`;
   }
+
+  // v5.10.4: データ鮮度表示
+  const freshnessEl = document.getElementById('ml-freshness');
+  const freshnessStarsEl = document.getElementById('ml-freshness-stars');
+  const freshnessDetailEl = document.getElementById('ml-freshness-detail');
+  if (freshnessEl && mlStats.freshness && mlStats.freshness.total > 0) {
+    freshnessEl.style.display = 'flex';
+    const pct = mlStats.freshness.percent;
+    // 星: 80%+=5, 60%+=4, 40%+=3, 20%+=2, それ以下=1
+    const stars = pct >= 80 ? 5 : pct >= 60 ? 4 : pct >= 40 ? 3 : pct >= 20 ? 2 : 1;
+    freshnessStarsEl.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+    freshnessDetailEl.textContent = `(直近30日: ${pct}%)`;
+  } else if (freshnessEl) {
+    freshnessEl.style.display = 'none';
+  }
+
+  // v5.10.4: 25,000件超過時にデータ整理ボタンを表示（24,500件にトリミング）
+  const trimBtn = document.getElementById('ml-trim-btn');
+  const trimCountEl = document.getElementById('ml-trim-count');
+  if (trimBtn) {
+    const excess = displayDataCount - 24500;
+    if (displayDataCount > 25000) {
+      trimBtn.style.display = 'flex';
+      if (trimCountEl) trimCountEl.textContent = excess.toLocaleString();
+    } else {
+      trimBtn.style.display = 'none';
+    }
+  }
+}
+
+// v5.10.4: データ整理実行（ブロッキングオーバーレイ付き）
+function executeTrimData() {
+  const overlay = document.getElementById('trim-overlay');
+  const trimBtn = document.getElementById('ml-trim-btn');
+  if (!overlay || !trimBtn) return;
+
+  // 画面全体をブロック
+  overlay.style.display = 'flex';
+
+  chrome.runtime.sendMessage({ type: 'TRIM_DATA' }, (response) => {
+    if (chrome.runtime.lastError) {
+      overlay.style.display = 'none';
+      return;
+    }
+
+    if (response && response.success) {
+      // カウンターをリセット
+      highestMLDataCount = 0;
+      trimBtn.style.display = 'none';
+      trimBtn.innerHTML = 'データ整理（<span id="ml-trim-count">0</span>件削除）';
+      debugLog(`[SidePanel] データ整理完了: ${response.totalDeleted}件削除`);
+    }
+
+    // オーバーレイを解除
+    overlay.style.display = 'none';
+  });
 }
 
 // ステータス更新
@@ -2294,5 +2854,103 @@ function playAlertSound(soundType, volume) {
     debugLog('[SidePanel] アラート音再生エラー:', err);
   });
 }
+
+// v5.9.1: デバッグ用20インジケータ結果表示（後で削除）
+let debugPanelCallCount = 0;
+function updateIndicatorDebugPanel(signal20) {
+  debugPanelCallCount++;
+  const panel = document.getElementById('indicator-debug-panel');
+  const grid = document.getElementById('indicator-debug-grid');
+  const summary = document.getElementById('indicator-debug-summary');
+  if (!panel || !grid || !summary) return;
+  if (!signal20) { summary.textContent = `呼出${debugPanelCallCount}回 データなし`; return; }
+
+  // サマリー表示（v5.10.6: フィルタ情報付き）
+  const { signal, rawSignal, highCount, lowCount, neutralCount, starLevel, trendMode, momentumFilter } = signal20;
+  const starStr = starLevel > 0 ? '★'.repeat(starLevel) + '☆'.repeat(3 - starLevel) : '---';
+  const signalLabel = signal === 'HIGH' ? 'HIGH' : signal === 'LOW' ? 'LOW' : 'WAIT';
+  let filterStr = '';
+  if (momentumFilter && momentumFilter.level > 0 && rawSignal && rawSignal !== 'NEUTRAL' && rawSignal !== 'WAIT') {
+    if (!momentumFilter.passed) {
+      filterStr = ` [F:BLOCK ${momentumFilter.score}/${momentumFilter.requiredScore}]`;
+    } else {
+      filterStr = ` [F:PASS]`;
+    }
+  }
+  summary.textContent = `${signalLabel} ${starStr} (H:${highCount} L:${lowCount} N:${neutralCount})${filterStr}`;
+  summary.style.color = signal === 'HIGH' ? 'var(--signal-up)' : signal === 'LOW' ? 'var(--signal-down)' : 'var(--signal-neutral)';
+
+  // 各インジケータの結果をグリッドに表示
+  // indicators は [{id, abbr, signal}, ...] の配列形式
+  const indicators = signal20.indicators || [];
+
+  let html = '';
+  for (const ind of indicators) {
+    const name = ind.abbr || ind.id || '??';
+    const sig = ind.signal;
+    let cls = 'neutral';
+    let label = '--';
+    if (sig === 'HIGH') { cls = 'high'; label = 'H'; }
+    else if (sig === 'LOW') { cls = 'low'; label = 'L'; }
+    else if (sig === 'NEUTRAL') { cls = 'neutral'; label = 'N'; }
+    html += `<div class="indicator-debug-cell ${cls}"><span class="indicator-debug-name">${name}</span><span class="indicator-debug-result">${label}</span></div>`;
+  }
+
+  // トレンドモード表示
+  if (trendMode && trendMode !== 'NONE') {
+    html += `<div class="indicator-debug-trend" style="grid-column: 1 / -1;">トレンド: ${trendMode}</div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+// v5.10.3: Signal20データをポーリングで取得（唯一のデータパス）
+// signal20 + signal20Statusの両方を取得し、デバッグパネルとテクニカルカードを更新
+let signal20PollCount = 0;
+function startSignal20Polling() {
+  setInterval(() => {
+    signal20PollCount++;
+    chrome.runtime.sendMessage({ type: 'GET_SIGNAL20_DATA' }, (response) => {
+      if (chrome.runtime.lastError) return;
+      if (!response) return;
+
+      // signal20データがあればデバッグパネル更新
+      if (response.signal20) {
+        updateIndicatorDebugPanel(response.signal20);
+        // v5.10.4: Signal20がWAIT（ローソク足不足）の場合はnull扱い
+        // WAITの結果でlatestSignal20を設定すると、テクニカルシグナルが誤表示される
+        if (response.signal20.signal !== 'WAIT') {
+          latestSignal20 = response.signal20;
+        } else {
+          latestSignal20 = null;
+        }
+      } else {
+        // signal20がnull → データ収集中
+        latestSignal20 = null;
+      }
+
+      // signal20Statusに基づいてテクニカルカードの残り時間を表示
+      // ※シグナルが表示済みの場合は更新しない（シグナル表示を優先）
+      if (!signalDisplayed && response.signal20Status && !response.signal20Status.ready) {
+        const techCardEl = document.getElementById('tech-signal-card');
+        const techIconEl = document.getElementById('tech-signal-icon');
+        const techLabelEl = document.getElementById('tech-signal-label');
+        const techConfidenceEl = document.getElementById('tech-signal-confidence');
+        if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
+        if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
+        if (techLabelEl) {
+          const sec = response.signal20Status.remainingSec;
+          const min = Math.floor(sec / 60);
+          const s = sec % 60;
+          techLabelEl.textContent = min > 0 ? `あと${min}分${s > 0 ? s + '秒' : ''}` : `あと${s}秒`;
+        }
+        if (techConfidenceEl) {
+          techConfidenceEl.textContent = `${response.signal20Status.candleLabel} ${response.signal20Status.currentCandles}/${response.signal20Status.requiredCandles}本`;
+        }
+      }
+    });
+  }, 2000); // 2秒ごと
+}
+
 
 debugLog('[SidePanel] Material Design 3 スクリプト読み込み完了');

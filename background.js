@@ -66,6 +66,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
 
+  // v5.9.2: 20インジケータ多数決データをサイドパネルに転送
+  if (message.type === 'SIGNAL20_UPDATE') {
+    chrome.runtime.sendMessage(message).catch(() => {});
+  }
+
   // 通貨ペア変更の即時通知
   if (message.type === 'ASSET_UPDATE') {
     // キャッシュの通貨ペア情報を更新（GET_ANALYSIS_DATA で古いデータが返らないように）
@@ -77,6 +82,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage(message).catch(() => {
       // サイドパネルが開いていない場合はエラーを無視
     });
+  }
+
+  // v5.9.3: Signal20データのリクエスト/レスポンス型中継
+  if (message.type === 'GET_SIGNAL20_DATA') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_SIGNAL20_DATA' })
+          .then(response => {
+            sendResponse(response);
+          })
+          .catch(() => {
+            sendResponse(null);
+          });
+      } else {
+        sendResponse(null);
+      }
+    });
+    return true; // 非同期レスポンス
+  }
+
+  // v5.10.4: データ整理リクエスト中継
+  if (message.type === 'TRIM_DATA') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_TRIM_DATA' })
+          .then(response => sendResponse(response))
+          .catch(() => sendResponse({ success: false, error: 'connection failed' }));
+      } else {
+        sendResponse({ success: false, error: 'no tab' });
+      }
+    });
+    return true;
+  }
+
+  // v5.10.4: 月別データ件数/削除の中継
+  if (message.type === 'GET_MONTHLY_COUNTS' || message.type === 'DELETE_BY_MONTH') {
+    const requestType = message.type === 'GET_MONTHLY_COUNTS' ? 'REQUEST_MONTHLY_COUNTS' : 'REQUEST_DELETE_BY_MONTH';
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { ...message, type: requestType })
+          .then(response => sendResponse(response))
+          .catch(() => sendResponse({ success: false }));
+      } else {
+        sendResponse({ success: false });
+      }
+    });
+    return true;
   }
 
   // サイドパネルからのデータ要求
@@ -146,6 +198,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // 非同期レスポンス
   }
 
+  // v5.10.6: モメンタムフィルタ強度変更
+  if (message.type === 'SET_MOMENTUM_FILTER') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'SET_FILTER_LEVEL',
+          level: message.level
+        }).then(response => {
+          sendResponse(response || { success: true });
+        }).catch(error => {
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
+  }
+
   // 通貨ペア別データ一覧を取得（IndexedDBから）
   if (message.type === 'GET_ASSET_DATA_LIST') {
     chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
@@ -180,6 +251,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     });
     return true; // 非同期レスポンスを使用
+  }
+
+  // v5.8.19: 時間帯別件数を取得（IndexedDBから）
+  if (message.type === 'GET_HOURLY_COUNTS') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'REQUEST_HOURLY_COUNTS',
+          assetName: message.assetName
+        })
+          .then(response => sendResponse(response))
+          .catch(() => sendResponse({ error: 'Content script not available' }));
+      } else {
+        sendResponse({ error: 'No TheOption tab' });
+      }
+    });
+    return true;
+  }
+
+  // v5.8.19: 時間帯別データ削除
+  if (message.type === 'DELETE_BY_HOURS') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'REQUEST_DELETE_BY_HOURS',
+          assetName: message.assetName,
+          hours: message.hours
+        })
+          .then(response => sendResponse(response))
+          .catch(() => sendResponse({ error: 'Content script not available' }));
+      } else {
+        sendResponse({ error: 'No TheOption tab' });
+      }
+    });
+    return true;
   }
 });
 

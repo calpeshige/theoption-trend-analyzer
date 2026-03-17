@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Theoption Trading System (開発用)",
-  "version": "5.8.13",
+  "version": "5.10.7",
   "description": "TheOptionのトレーディング画面で多次元指標分析とAI機械学習を統合し、超短期取引(15秒〜5分)の高精度予測を提供します",
   "permissions": [
     "storage",
@@ -40,6 +40,7 @@
         "signal-enhancer-system.js",
         "enhanced-technical-analysis.js",
         "advanced-signal-engine.js",
+        "signal-engine-20.js",
         "theoption-analyzer.js"
       ],
       "run_at": "document_idle"

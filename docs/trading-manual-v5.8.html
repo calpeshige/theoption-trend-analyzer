@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theoption Trading System v5.8 取引マニュアル</title>
+  <style>
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      line-height: 1.8;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      border-bottom: 3px solid #333;
+      padding-bottom: 15px;
+      margin-bottom: 30px;
+    }
+    h2 {
+      background: #f5f5f5;
+      padding: 10px 15px;
+      border-left: 5px solid #333;
+      margin-top: 40px;
+    }
+    h3 {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background: #f5f5f5;
+    }
+    ul, ol {
+      padding-left: 25px;
+    }
+    li {
+      margin: 8px 0;
+    }
+    strong {
+      color: #000;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 30px 0;
+    }
+    .highlight {
+      background: #fffde7;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+    }
+    .warning {
+      background: #ffebee;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+    }
+    @media print {
+      body { padding: 20px; }
+      h2 { page-break-before: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Theoption Trading System v5.8<br>取引マニュアル</h1>
+
+<h2>はじめに</h2>
+<p>v5.8では「高精度テクニカル分析」機能が大幅に強化されました。<br>
+このマニュアルでは、新機能を活用した効果的な取引方法を解説します。</p>
+
+<hr>
+
+<h2>1. 画面の見方</h2>
+
+<h3>シグナルカード</h3>
+<p>画面上部に2つのシグナルカードが表示されます。</p>
+
+<table>
+  <tr><th>カード</th><th>内容</th></tr>
+  <tr><td><strong>テクニカル分析</strong></td><td>複数の指標を組み合わせた総合判断</td></tr>
+  <tr><td><strong>AI予測</strong></td><td>機械学習による予測結果</td></tr>
+</table>
+
+<p><strong>シグナルの種類：</strong></p>
+<ul>
+  <li><strong>HIGH（緑）</strong>: 上昇予測 → HIGHエントリー推奨</li>
+  <li><strong>LOW（赤）</strong>: 下降予測 → LOWエントリー推奨</li>
+  <li><strong>見送り（グレー）</strong>: エントリー非推奨</li>
+</ul>
+
+<h3>相場状況カード</h3>
+<p>シグナルカードの下に詳細情報が表示されます。</p>
+<ul>
+  <li><strong>T: グレード</strong> - テクニカル分析の信頼度（S+〜C）</li>
+  <li><strong>AI: グレード</strong> - AI予測の信頼度（S+〜C）</li>
+  <li><strong>推奨</strong> - 各分析の推奨アクション</li>
+</ul>
+
+<hr>
+
+<h2>2. 基本的なエントリー方法</h2>
+
+<h3>ステップ1: シグナル確認</h3>
+<ol>
+  <li>テクニカル分析カードのシグナルを確認</li>
+  <li>「HIGH」または「LOW」が表示されていることを確認</li>
+  <li>「見送り」の場合はエントリーしない</li>
+</ol>
+
+<h3>ステップ2: グレード確認</h3>
+<p>相場状況カードでグレードを確認します。</p>
+
+<table>
+  <tr><th>グレード</th><th>信頼度</th><th>推奨</th></tr>
+  <tr><td><strong>S+, S</strong></td><td>非常に高い</td><td>積極的にエントリー可</td></tr>
+  <tr><td><strong>A+, A</strong></td><td>高い</td><td>エントリー推奨</td></tr>
+  <tr><td><strong>B+, B</strong></td><td>普通</td><td>慎重にエントリー</td></tr>
+  <tr><td><strong>C</strong></td><td>低い</td><td>エントリー非推奨</td></tr>
+</table>
+
+<h3>ステップ3: エントリー実行</h3>
+<ul>
+  <li>シグナルが「HIGH」→ HIGHでエントリー</li>
+  <li>シグナルが「LOW」→ LOWでエントリー</li>
+</ul>
+
+<hr>
+
+<h2>3. 精度を高めるエントリー条件</h2>
+
+<h3>推奨条件（以下を満たすとき）</h3>
+<ol>
+  <li><strong>テクニカル分析とAI予測が一致している</strong><br>
+    両方とも「HIGH」または両方とも「LOW」</li>
+  <li><strong>グレードがB以上</strong><br>
+    T（テクニカル）: B以上 / AI: B以上</li>
+  <li><strong>推奨アクションが一致</strong><br>
+    T推奨とAI推奨が同じ方向</li>
+</ol>
+
+<div class="highlight">
+<h3>最高精度の条件</h3>
+<p>以下すべてを満たす場合、最も高い精度が期待できます：</p>
+<ul>
+  <li>テクニカル分析: HIGH または LOW（見送り以外）</li>
+  <li>AI予測: 同じ方向（HIGH同士 or LOW同士）</li>
+  <li>Tグレード: A以上</li>
+  <li>AIグレード: A以上</li>
+  <li>推奨アクション: 両方一致</li>
+</ul>
+</div>
+
+<hr>
+
+<h2>4. 見送るべき状況</h2>
+
+<div class="warning">
+<p>以下の場合はエントリーを見送ってください：</p>
+<ol>
+  <li><strong>シグナルカードが「見送り」表示</strong><br>
+    相場が不安定または方向性が不明確</li>
+  <li><strong>テクニカルとAIのシグナルが逆</strong><br>
+    例: テクニカル=HIGH、AI=LOW</li>
+  <li><strong>グレードがC</strong><br>
+    信頼度が低い状態</li>
+  <li><strong>推奨アクションが「見送り」</strong><br>
+    分析結果がエントリー非推奨</li>
+</ol>
+</div>
+
+<hr>
+
+<h2>5. 時間帯別の注意点</h2>
+
+<h3>相場が活発な時間帯（推奨）</h3>
+<ul>
+  <li>9:00〜11:00（東京市場）</li>
+  <li>16:00〜18:00（ロンドン市場開始）</li>
+  <li>22:00〜24:00（NY市場）</li>
+</ul>
+
+<h3>避けるべき時間帯</h3>
+<ul>
+  <li>重要な経済指標発表の前後30分</li>
+  <li>市場の切り替わり時間（不安定になりやすい）</li>
+</ul>
+
+<hr>
+
+<h2>6. 取引のポイントまとめ</h2>
+
+<h3>DO（推奨）</h3>
+<ul>
+  <li>シグナルとグレードを必ず確認してからエントリー</li>
+  <li>テクニカルとAIが一致したときにエントリー</li>
+  <li>グレードB以上を狙う</li>
+  <li>見送りシグナルは素直に見送る</li>
+</ul>
+
+<h3>DON'T（非推奨）</h3>
+<ul>
+  <li>シグナルを無視した感覚トレード</li>
+  <li>グレードCでの無理なエントリー</li>
+  <li>テクニカルとAIが矛盾しているときのエントリー</li>
+  <li>連続負け後の感情的なエントリー</li>
+</ul>
+
+<hr>
+
+<h2>7. よくある質問</h2>
+
+<h3>Q: シグナルが頻繁に変わるのですが？</h3>
+<p>A: 相場が不安定な状態です。シグナルが安定するまで待つことをお勧めします。</p>
+
+<h3>Q: グレードはどのくらいを目安にすべき？</h3>
+<p>A: 最低でもB以上、理想はA以上です。Cの場合は見送りが賢明です。</p>
+
+<h3>Q: テクニカルとAIどちらを優先すべき？</h3>
+<p>A: 両方が一致したときのみエントリーするのが最も安全です。<br>
+どちらか一方だけで判断すると精度が下がります。</p>
+
+<hr>
+
+<h2>8. v5.8の改善点</h2>
+<ul>
+  <li>テクニカル指標の計算精度が向上</li>
+  <li>相場のボラティリティ（変動幅）に応じた自動調整機能</li>
+  <li>シグナルカードと相場状況カードの表示が完全に連動</li>
+  <li>「見送り」時にグレードが表示されない仕様に変更（混乱防止）</li>
+</ul>
+
+<hr>
+
+<p>ご不明点がございましたら、サポートまでお問い合わせください。</p>
+
+<p style="text-align: center; margin-top: 40px; color: #666;">
+<em>Theoption Trading System v5.8.13</em>
+</p>
+
+</body>
+</html>

@@ -29,7 +29,7 @@ window.mlWarn = function(...args) {
 };
 
 // 起動時バージョン表示（DEBUG_MODE無効化前に実行）
-originalConsoleLog('[TheOption Analyzer] 🚀 v5.8.0 起動 (AdvancedSignalEngine搭載)');
+originalConsoleLog('[TheOption Analyzer] 🚀 v5.10.6 起動 (判定時間別インジケーターパラメータ最適化)');
 
 if (!window.DEBUG_MODE) {
   console.log = () => { };
@@ -338,7 +338,7 @@ function initializeAnalyzer() {
     let contextCheckInterval = null;
 
     // アラート音の設定
-    let alertSoundEnabled = false;  // デフォルトOFF
+    let alertSoundMode = 'off';     // 'off' | 'tech' | 'ai' | 'both'
     let alertVolume = 'medium';     // デフォルト: 中
     let alertSoundType = '01';      // デフォルト: サウンド1
 
@@ -354,9 +354,13 @@ function initializeAnalyzer() {
 
     /**
      * アラート音を鳴らす（選択したサウンドファイルを再生）
+     * @param {string} triggerType - 'tech' | 'ai' | 'both' (どのシグナルがトリガーか)
      */
-    function playAlertSound() {
-      if (!alertSoundEnabled) return;
+    function playAlertSound(triggerType = 'both') {
+      if (alertSoundMode === 'off') return;
+      // モードに応じてフィルタリング
+      if (alertSoundMode === 'tech' && triggerType === 'ai') return;
+      if (alertSoundMode === 'ai' && triggerType === 'tech') return;
 
       try {
         const soundFile = `sound/${alertSoundType}.mp3`;
@@ -418,6 +422,9 @@ function initializeAnalyzer() {
     let detailedSegmentAnalyzer = null;  // 詳細セグメント分析
     let enhancedTechAnalysis = null;  // v5.7.0: 高精度テクニカル分析エンジン
     let advancedSignalEngine = null;  // v5.8.0: 高精度シグナルエンジン（30指標多数決）
+    let signalEngine20 = null;  // v5.9.1: 20インジケータ多数決シグナルシステム
+    let latestSignal20Result = null;  // v5.9.2: 最新のsignal20結果（sendAnalysisToSidePanelで使用）
+    let currentFilterLevel = 2;  // v5.10.6: モメンタムフィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let priceUpdateInterval = null;
     let uiPanel = null;
     let tickData = [];
@@ -513,8 +520,15 @@ function initializeAnalyzer() {
         label: '15秒',
         updateInterval: 15,  // 15秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 120,  // 直近2分のデータを使用
-        minDataPoints: 120,  // 最低2分(120秒)のデータが必要
+        dataWindow: 450,  // 30本×15秒=450秒のデータを使用
+        minDataPoints: 450,  // 最低7分30秒(450秒)のデータが必要
+        // v5.10.6: Signal20用設定（15秒足・30本制約）
+        signal20: {
+          candleSize: 15, minCandles: 30, label: '15秒足',
+          params: { ma: [5, 13, 26], macd: [8, 17, 9], ich: [7, 14, 28], adx: 10 },
+          filterParams: { candleCheckCount: 3, atrLookbackShort: 2, atrLookbackLong: 8, rocCount: 2 }
+        },
+        reversal: { lookbackSec: 30 },
         weights: {
           macd: 1.5,
           adx: 1.0,
@@ -528,8 +542,15 @@ function initializeAnalyzer() {
         label: '30秒',
         updateInterval: 30,  // 30秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 300,  // 直近5分のデータを使用（長期MA300秒に対応）
-        minDataPoints: 300,  // 最低5分(300秒)のデータが必要
+        dataWindow: 900,  // 60本×15秒=900秒のデータを使用
+        minDataPoints: 900,  // 最低15分(900秒)のデータが必要
+        // v5.10.6: Signal20用設定（15秒足・60本制約→標準パラメータ使用可能）
+        signal20: {
+          candleSize: 15, minCandles: 60, label: '15秒足',
+          params: { ma: [5, 20, 50], macd: [12, 26, 9], ich: [9, 26, 52], adx: 14 },
+          filterParams: { candleCheckCount: 4, atrLookbackShort: 3, atrLookbackLong: 10, rocCount: 3 }
+        },
+        reversal: { lookbackSec: 45 },
         weights: {
           macd: 1.8,
           adx: 1.2,
@@ -543,8 +564,15 @@ function initializeAnalyzer() {
         label: '60秒',
         updateInterval: 60,  // 60秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 480,  // 直近8分のデータを使用（長期MA480秒に対応）
-        minDataPoints: 480,  // 最低8分(480秒)のデータが必要
+        dataWindow: 1800,  // 30本×60秒=1800秒のデータを使用
+        minDataPoints: 1800,  // 最低30分(1800秒)のデータが必要
+        // v5.10.6: Signal20用設定（1分足・30本制約）
+        signal20: {
+          candleSize: 60, minCandles: 30, label: '1分足',
+          params: { ma: [5, 13, 26], macd: [8, 17, 9], ich: [7, 14, 28], adx: 10 },
+          filterParams: { candleCheckCount: 5, atrLookbackShort: 3, atrLookbackLong: 10, rocCount: 3 }
+        },
+        reversal: { lookbackSec: 120 },
         weights: {
           macd: 2.0,
           adx: 1.5,
@@ -558,8 +586,15 @@ function initializeAnalyzer() {
         label: '3分',
         updateInterval: 180,  // 180秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 540,  // 直近9分のデータを使用（長期MA540秒に対応）
-        minDataPoints: 540,
+        dataWindow: 2700,  // 45本×60秒=2700秒のデータを使用
+        minDataPoints: 2700,  // 最低45分(2700秒)のデータが必要
+        // v5.10.6: Signal20用設定（1分足・45本制約）
+        signal20: {
+          candleSize: 60, minCandles: 45, label: '1分足',
+          params: { ma: [5, 20, 40], macd: [12, 26, 9], ich: [9, 22, 42], adx: 14 },
+          filterParams: { candleCheckCount: 5, atrLookbackShort: 3, atrLookbackLong: 12, rocCount: 4 }
+        },
+        reversal: { lookbackSec: 240 },
         weights: {
           macd: 2.5,  // 長期はトレンド重視
           adx: 2.0,
@@ -573,8 +608,15 @@ function initializeAnalyzer() {
         label: '5分',
         updateInterval: 300,  // 300秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 600,  // 直近10分のデータを使用（長期MA600秒に対応）
-        minDataPoints: 600,
+        dataWindow: 3600,  // 60本×60秒=3600秒のデータを使用
+        minDataPoints: 3600,  // 最低60分(3600秒)のデータが必要
+        // v5.10.6: Signal20用設定（1分足・60本制約→標準パラメータ使用可能）
+        signal20: {
+          candleSize: 60, minCandles: 60, label: '1分足',
+          params: { ma: [5, 20, 50], macd: [12, 26, 9], ich: [9, 26, 52], adx: 14 },
+          filterParams: { candleCheckCount: 5, atrLookbackShort: 3, atrLookbackLong: 15, rocCount: 5 }
+        },
+        reversal: { lookbackSec: 300 },
         weights: {
           macd: 2.5,
           adx: 2.5,  // 最長期はトレンドの強さを最重視
@@ -837,10 +879,23 @@ function initializeAnalyzer() {
               }
             }
 
+            // v5.8.15: 初動検出がSKIPを返した場合、テクニカルシグナルも見送りにする
+            let finalTechSignal = multiDim.signal || 'NEUTRAL';
+            let finalTechConfidence = multiDim.confidence;
+            let earlyMoveOverride = false;
+
+            if (enhancedData && enhancedData.recommendation === 'SKIP') {
+              // 初動検出で見送り判定 → テクニカルシグナルを無効化
+              finalTechSignal = 'NEUTRAL';
+              finalTechConfidence = 0;
+              earlyMoveOverride = true;
+              logFn(`[初動検出] ⛔ テクニカルシグナル上書き: ${multiDim.signal} → NEUTRAL (${enhancedData.reason})`);
+            }
+
             timeframesData[tf] = {
               technical: {
-                signal: multiDim.signal || 'NEUTRAL',
-                confidence: multiDim.confidence,
+                signal: finalTechSignal,
+                confidence: finalTechConfidence,
                 breakdown: multiDim.breakdown,
                 // 詳細分析データを追加
                 trendDisplayText: trendDisplayText,
@@ -854,7 +909,8 @@ function initializeAnalyzer() {
                 reliabilityLevel: reliabilityLevel,
                 reliabilityColor: reliabilityColor,
                 recommendation: recommendation,
-                volatility: volatility
+                volatility: volatility,
+                earlyMoveOverride: earlyMoveOverride  // v5.8.15: 初動検出による上書きフラグ
               },
               ai: {
                 signal: aiSignalValue,
@@ -894,7 +950,8 @@ function initializeAnalyzer() {
             dataCountWithResults: stats.dataCountWithResults,
             learningLevel: learningLevel,
             accuracy: stats.accuracy,
-            status: stats.status
+            status: stats.status,
+            freshness: stats.freshness
           };
         }
 
@@ -1118,10 +1175,20 @@ function initializeAnalyzer() {
           mlStats: mlStats,
           enhancedSignal: enhancedSignal,  // 強化シグナルを追加
           stratification: stratificationResult,  // 層別化結果を追加
-          timeFilterInfo: timeFilterInfo  // 時間帯フィルタ情報を追加
+          timeFilterInfo: timeFilterInfo,  // 時間帯フィルタ情報を追加
+          // v5.9.2: 20インジケータ多数決データを直接含める（グローバル変数から取得）
+          signal20: latestSignal20Result || null
         };
 
-        console.log('[TheOption Analyzer] 📤 サイドパネル送信 mlStats:', mlStats);
+        originalConsoleLog('[TheOption Analyzer] 📤 signal20診断:', {
+          engine: !!signalEngine20,
+          latestResult: !!latestSignal20Result,
+          signal: latestSignal20Result?.signal,
+          starLevel: latestSignal20Result?.starLevel,
+          highCount: latestSignal20Result?.highCount,
+          lowCount: latestSignal20Result?.lowCount,
+          tfResult: !!timeframeResults[currentTimeframe]?.multiDim?.signal20
+        });
 
         // 🔍 診断: AI予測詳細の状態を確認
         const currentTfData = timeframesData[currentTimeframe];
@@ -1147,6 +1214,71 @@ function initializeAnalyzer() {
     }
 
     // サイドパネルにリアルタイムステータスを送信（カウントダウン、データ収集進捗）
+    /**
+     * 急変検出: シグナル方向と逆行する急激な価格変動を検出
+     * priceHistory（1秒tick）を直接使用し、ATRベースの動的閾値で判定
+     * @returns {{ detected: boolean, direction: string, deviationRate: number, atrMultiple: number }}
+     */
+    function detectPriceReversal() {
+      const config = TIMEFRAME_CONFIGS[currentTimeframe];
+      if (!config || !config.reversal) return { detected: false };
+
+      const lookback = config.reversal.lookbackSec;
+      const len = priceHistory.length;
+      if (len < lookback + 10) return { detected: false }; // データ不足
+
+      // 参照期間内の価格を取得
+      const recentPrices = priceHistory.slice(-lookback);
+      const currentPrice = recentPrices[recentPrices.length - 1];
+      const highInWindow = Math.max(...recentPrices);
+      const lowInWindow = Math.min(...recentPrices);
+
+      // ATR計算（直近60秒の1秒ごとの絶対変化量の平均）
+      const atrWindow = Math.min(60, len - 1);
+      let sumAbsChange = 0;
+      for (let i = len - atrWindow; i < len; i++) {
+        sumAbsChange += Math.abs(priceHistory[i] - priceHistory[i - 1]);
+      }
+      const atr1s = sumAbsChange / atrWindow; // 1秒あたりの平均変動
+      const atrForWindow = atr1s * Math.sqrt(lookback); // 参照期間に対するATR（√N補正）
+
+      if (atrForWindow <= 0) return { detected: false };
+
+      // 高値からの下落幅、安値からの上昇幅
+      const dropFromHigh = highInWindow - currentPrice;
+      const riseFromLow = currentPrice - lowInWindow;
+
+      // ATR倍率での乖離判定（閾値: 2.0倍）
+      const atrThreshold = 2.0;
+      const dropMultiple = dropFromHigh / atrForWindow;
+      const riseMultiple = riseFromLow / atrForWindow;
+
+      // 現在のシグナルを取得
+      const currentResult = timeframeResults[currentTimeframe];
+      const signal20Data = currentResult?.multiDim?.signal20;
+      const signalDir = signal20Data?.signal; // 'HIGH', 'LOW', 'NEUTRAL', 'WAIT'
+
+      // シグナルと逆行する急変を検出
+      if (signalDir === 'HIGH' && dropMultiple >= atrThreshold) {
+        return {
+          detected: true,
+          direction: 'DROP', // HIGHシグナルに対して下落
+          deviationRate: ((dropFromHigh / highInWindow) * 100).toFixed(3),
+          atrMultiple: dropMultiple.toFixed(1)
+        };
+      }
+      if (signalDir === 'LOW' && riseMultiple >= atrThreshold) {
+        return {
+          detected: true,
+          direction: 'RISE', // LOWシグナルに対して上昇
+          deviationRate: ((riseFromLow / lowInWindow) * 100).toFixed(3),
+          atrMultiple: riseMultiple.toFixed(1)
+        };
+      }
+
+      return { detected: false };
+    }
+
     function sendStatusToSidePanel(countdown) {
       // 安定化期間中はSTATUS_UPDATEを送信しない（タイマージャンプ防止）
       if (isStabilizingAfterActivation) {
@@ -1195,7 +1327,8 @@ function initializeAnalyzer() {
             dataCountWithResults: stats.dataCountWithResults,
             learningLevel: learningLevel,
             accuracy: stats.accuracy,
-            status: stats.status
+            status: stats.status,
+            freshness: stats.freshness
           };
         }
 
@@ -1216,9 +1349,20 @@ function initializeAnalyzer() {
             const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, cachedStratification);
             // signals.technical.signal は 'HIGH', 'LOW', 'NEUTRAL' など
             // signals.ai.available が true なら signals.ai.signal が 'HIGH', 'LOW' など
+            // v5.8.17: timeframeResultsから高精度分析のグレードを取得
+            const techGrade = currentResult.enhanced?.grade || null;
+
+            // v5.10.4: Signal20がWAITまたは未計算の場合、テクニカルシグナルを無効にする
+            // ローソク足が十分にないのにシグナルが出るのを防止
+            const signal20Data = currentResult.multiDim?.signal20 || null;
+            const signal20Ready = signal20Data && signal20Data.signal !== 'WAIT';
+            const techSignalValue = signal20Ready ? (signals.technical ? signals.technical.signal : null) : 'NEUTRAL';
+            const techConfValue = signal20Ready ? (signals.technical ? signals.technical.confidence : null) : 0;
+
             currentSignal = {
-              tech: signals.technical ? signals.technical.signal : null,
-              techConfidence: signals.technical ? signals.technical.confidence : null,
+              tech: techSignalValue,
+              techConfidence: techConfValue,
+              techGrade: techGrade,  // v5.8.17: テクニカルグレードを追加
               ai: signals.ai && signals.ai.available ? signals.ai.signal : null,
               aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
               aiDiff: signals.ai ? signals.ai.diff : null,
@@ -1226,7 +1370,9 @@ function initializeAnalyzer() {
               // v5.6.5: AI予測詳細データも保持（シグナル表示時に詳細も表示するため）
               aiUpRate: signals.ai ? signals.ai.upRate : null,
               aiDownRate: signals.ai ? signals.ai.downRate : null,
-              aiMatchCount: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.sampleSize || 0
+              aiMatchCount: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.sampleSize || 0,
+              // v5.9.1: 20インジケータ多数決データ
+              signal20: signal20Data
             };
 
             // === 強化シグナルのチェック ===
@@ -1298,6 +1444,8 @@ function initializeAnalyzer() {
             tradingState.remainingTime = 0;
             tradingState.signal = null;  // 保存されたシグナルもクリア
             tradingStatusUpdated = false;  // 取引終了を反映
+            // 取引終了後にカウントダウンキャッシュをリセット（誤エントリータイミング検出防止）
+            lastDisplayedCountdown = -1;
             // シグナルリセットは取引していた時間枠が現在の時間枠と一致する場合のみ
             if (tradingTimeframe === currentTimeframe) {
               signalReset = true;  // シグナルリセットフラグを設定
@@ -1318,25 +1466,62 @@ function initializeAnalyzer() {
           }
         }
 
-        // 取引終了後はシグナルをnullにする
+        // v5.10.4: シグナルはprepTime以内 or 取引中のみ送信（サイクル後半に前の分析結果が表示されるのを防止）
+        const shouldSendSignal = !signalReset && (
+          isTradingForCurrentTimeframe ||
+          (countdown <= prepTime && countdown > 0)
+        );
+
         const statusData = {
           asset: currentAsset,
           dataCount: priceHistory.length,
           countdown: countdown,              // 次のエントリーまでの残り秒数
           prepTime: prepTime,                // 準備時間（5秒）
-          currentSignal: signalReset ? null : currentSignal,  // リセット時はnull
+          currentSignal: shouldSendSignal ? currentSignal : null,
           signalReset: signalReset,          // シグナルリセットフラグ
           isTrading: tradingStatusUpdated,   // 取引中かどうか（更新後の状態を使用）
           tradingRemaining: tradingStatusUpdated ? tradingState.remainingTime : 0,  // 取引残り時間
           techProgress: techProgress,
           aiProgress: aiProgress,
           currentTimeframe: currentTimeframe,
-          mlStats: mlStats
+          mlStats: mlStats,
+          // v5.9.5: signal20データ + 準備状況
+          signal20: latestSignal20Result || null,
+          signal20Status: (() => {
+            const s20Cfg = config.signal20;
+            const s20Candles = generateCandles(priceHistory, s20Cfg.candleSize);
+            const current = s20Candles.length;
+            const required = s20Cfg.minCandles;
+            if (current >= required) return { ready: true };
+            // 残り必要なローソク足数 × candleSize秒 = 残り秒数
+            const remainingCandles = required - current;
+            const remainingSec = remainingCandles * s20Cfg.candleSize;
+            return {
+              ready: false,
+              currentCandles: current,
+              requiredCandles: required,
+              remainingSec: remainingSec,
+              candleLabel: s20Cfg.label
+            };
+          })(),
+          // 急変検出（準備中〜取引中にシグナルと逆行する急変を警告）
+          reversalAlert: shouldSendSignal ? detectPriceReversal() : { detected: false }
         };
 
         // デバッグ: mlStatsが0以外の時のみログ
         if (mlStats && (mlStats.dataCount > 0 || mlStats.dataCountWithResults > 0)) {
           console.log('[TheOption Analyzer] 📤 STATUS_UPDATE mlStats:', mlStats);
+        }
+
+        // 急変検出ログ（シグナル送信中のみ）
+        if (shouldSendSignal && statusData.reversalAlert) {
+          const ra = statusData.reversalAlert;
+          const sig = currentSignal?.tech || 'NONE';
+          if (ra.detected) {
+            console.error(`[REVERSAL] ⚠️ 急変検出! signal=${sig}, ${ra.direction}, 乖離=${ra.deviationRate}%, ATR×${ra.atrMultiple}`);
+          } else {
+            console.error(`[REVERSAL] ✅ 正常 signal=${sig}, lookback=${config.reversal?.lookbackSec}s`);
+          }
         }
 
         chrome.runtime.sendMessage({
@@ -1453,10 +1638,22 @@ function initializeAnalyzer() {
               // 類似度は上位パターンの平均またはconfidenceを使用
               const mlSimilarity = mlPred?.topPatterns?.[0]?.similarity || mlPred?.confidence;
 
+              // v5.8.15: 初動検出がSKIPを返した場合、テクニカルシグナルも見送りにする
+              let finalTechSignal2 = multiDim.signal || 'NEUTRAL';
+              let finalTechConfidence2 = multiDim.confidence;
+              let earlyMoveOverride2 = false;
+              const enhancedResult2 = result.enhanced;
+
+              if (enhancedResult2 && enhancedResult2.recommendation === 'SKIP') {
+                finalTechSignal2 = 'NEUTRAL';
+                finalTechConfidence2 = 0;
+                earlyMoveOverride2 = true;
+              }
+
               timeframesData[tf] = {
                 technical: {
-                  signal: multiDim.signal || 'NEUTRAL',
-                  confidence: multiDim.confidence,
+                  signal: finalTechSignal2,
+                  confidence: finalTechConfidence2,
                   breakdown: multiDim.breakdown,
                   trendDisplayText: trendDisplayText,
                   trendDirection: trendDirection,
@@ -1469,7 +1666,8 @@ function initializeAnalyzer() {
                   reliabilityLevel: reliabilityLevel,
                   reliabilityColor: reliabilityColor,
                   recommendation: recommendation,
-                  volatility: volatility
+                  volatility: volatility,
+                  earlyMoveOverride: earlyMoveOverride2
                 },
                 ai: {
                   signal: result.ml?.status === 'READY' && mlPred ? mlPred.prediction : 'NEUTRAL',
@@ -1509,7 +1707,8 @@ function initializeAnalyzer() {
               dataCountWithResults: stats.dataCountWithResults,
               learningLevel: learningLevel,
               accuracy: stats.accuracy,
-              status: stats.status
+              status: stats.status,
+              freshness: stats.freshness
             };
           }
 
@@ -1566,16 +1765,28 @@ function initializeAnalyzer() {
             lockedPrediction.stratification = null;
           }
 
+          // v5.10.3: 時間枠切替時はsignal20を必ずリセット（前の時間枠の結果を引き継がない）
+          latestSignal20Result = null;
+          originalConsoleLog(`[TheOption Analyzer] 🔄 時間枠切替: signal20リセット → null (${currentTimeframe}秒)`);
+          // 新しい時間枠の結果がtimeframeResultsにあれば復元
+          const switchResult = timeframeResults[currentTimeframe];
+          if (switchResult && switchResult.multiDim && switchResult.multiDim.signal20) {
+            latestSignal20Result = switchResult.multiDim.signal20;
+            originalConsoleLog(`[TheOption Analyzer] 🔄 時間枠切替: signal20復元 ${currentTimeframe}秒 → ${latestSignal20Result.signal} ★${latestSignal20Result.starLevel}`);
+          }
+
           // UI更新
-          const result = timeframeResults[currentTimeframe];
-          if (result) {
+          if (switchResult) {
             updateUI({
               status: 'ACTIVE',
-              multiDim: result.multiDim,
-              ml: result.ml,
-              mlStats: result.mlStats
+              multiDim: switchResult.multiDim,
+              ml: switchResult.ml,
+              mlStats: switchResult.mlStats
             });
           }
+
+          // 時間枠切替後にサイドパネルも更新（signal20含む）
+          sendAnalysisToSidePanel();
         }
 
         // ダウンロード実行
@@ -1601,6 +1812,115 @@ function initializeAnalyzer() {
               console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
           }
           sendResponse({ success: true });
+          return;
+        }
+
+        // v5.10.3: Signal20データ＋準備状況をポーリングで返す（唯一のデータパス）
+        if (message.type === 'REQUEST_SIGNAL20_DATA') {
+          const config = TIMEFRAME_CONFIGS[currentTimeframe];
+          const s20Cfg = config.signal20;
+          const s20Candles = generateCandles(priceHistory, s20Cfg.candleSize);
+          const currentCandleCount = s20Candles.length;
+          const requiredCandleCount = s20Cfg.minCandles;
+
+          // signal20Statusを常に計算して返す
+          let signal20Status;
+          if (currentCandleCount >= requiredCandleCount) {
+            signal20Status = { ready: true };
+          } else {
+            const remainingCandles = requiredCandleCount - currentCandleCount;
+            const remainingSec = remainingCandles * s20Cfg.candleSize;
+            signal20Status = {
+              ready: false,
+              currentCandles: currentCandleCount,
+              requiredCandles: requiredCandleCount,
+              remainingSec: remainingSec,
+              candleLabel: s20Cfg.label
+            };
+          }
+
+          if (latestSignal20Result) {
+            sendResponse({
+              signal20: {
+                signal: latestSignal20Result.signal,
+                rawSignal: latestSignal20Result.rawSignal,
+                indicators: latestSignal20Result.indicators,
+                highCount: latestSignal20Result.highCount,
+                lowCount: latestSignal20Result.lowCount,
+                neutralCount: latestSignal20Result.neutralCount,
+                starLevel: latestSignal20Result.starLevel,
+                trendMode: latestSignal20Result.trendMode,
+                momentumFilter: latestSignal20Result.momentumFilter,
+                timestamp: latestSignal20Result.timestamp
+              },
+              signal20Status: signal20Status
+            });
+          } else {
+            sendResponse({
+              signal20: null,
+              signal20Status: signal20Status
+            });
+          }
+          return;
+        }
+
+        // v5.10.4: 手動データ整理（25,000件にトリミング）
+        if (message.type === 'REQUEST_TRIM_DATA') {
+          (async () => {
+            try {
+              const result = await mlSystem.dataSystem.trimAllAssets();
+              sendResponse({ success: true, ...result });
+            } catch (e) {
+              console.error('[TheOption Analyzer] TRIM_DATA error:', e);
+              sendResponse({ success: false, error: e.message });
+            }
+          })();
+          return true; // 非同期レスポンス
+        }
+
+        // v5.10.4: 月別データ件数を取得
+        if (message.type === 'REQUEST_MONTHLY_COUNTS') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+              const counts = await dbManager.getMonthlyCounts(message.assetName || null);
+              sendResponse({ success: true, counts });
+            } catch (e) {
+              console.error('[TheOption Analyzer] MONTHLY_COUNTS error:', e);
+              sendResponse({ success: false, error: e.message });
+            }
+          })();
+          return true;
+        }
+
+        // v5.10.4: 月別データ削除
+        if (message.type === 'REQUEST_DELETE_BY_MONTH') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+              const deleted = await dbManager.deleteOldestByMonth(
+                message.assetName, message.yearMonth, message.count
+              );
+              // MLシステムのデータを再読み込み
+              if (mlSystem && mlSystem.dataSystem) {
+                await mlSystem.dataSystem.loadRecentData();
+              }
+              sendResponse({ success: true, deleted });
+            } catch (e) {
+              console.error('[TheOption Analyzer] DELETE_BY_MONTH error:', e);
+              sendResponse({ success: false, error: e.message });
+            }
+          })();
+          return true;
+        }
+
+        // v5.10.6: モメンタムフィルタ強度変更（次回のperformAnalysisから自然に適用）
+        if (message.type === 'SET_FILTER_LEVEL') {
+          const level = Math.max(0, Math.min(3, message.level || 0));
+          currentFilterLevel = level;
+          sendResponse({ success: true, level: level });
           return;
         }
 
@@ -1743,6 +2063,60 @@ function initializeAnalyzer() {
           return true; // 非同期レスポンス
         }
 
+        // v5.8.19: 通貨ペアの時間帯別件数を取得
+        if (message.type === 'REQUEST_HOURLY_COUNTS') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+              const assetName = message.assetName || null;
+              const hourlyCounts = await dbManager.getHourlyCountsForAsset(assetName);
+              sendResponse({ hourlyCounts, assetName });
+            } catch (error) {
+              console.error('[TheOption Analyzer] 時間帯別件数取得エラー:', error);
+              sendResponse({ error: error.message });
+            }
+          })();
+          return true;
+        }
+
+        // v5.8.19: 時間帯別データ削除
+        if (message.type === 'REQUEST_DELETE_BY_HOURS') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+
+              const { assetName, hours } = message;
+              const deletedCount = await dbManager.deleteRecordsByHour(assetName || null, hours);
+              console.log(`[TheOption Analyzer] 🗑️ 時間帯別データ削除完了: ${deletedCount}件 (${assetName || '全通貨ペア'}, hours=[${hours.join(',')}])`);
+
+              // ML system reload
+              if (mlSystem && mlSystem.dataSystem) {
+                await mlSystem.dataSystem.loadRecentData();
+                console.log('[TheOption Analyzer] 🔄 ML system reloaded after deletion');
+              }
+
+              // 更新後の件数を返す
+              const totalCount = await dbManager.getCount();
+              const assetList = await dbManager.getAssetList();
+              const assetDataMap = {};
+              assetList.forEach(a => { assetDataMap[a.assetName] = a.count; });
+
+              sendResponse({
+                success: true,
+                deletedCount,
+                totalCount,
+                assetDataMap
+              });
+            } catch (error) {
+              console.error('[TheOption Analyzer] 時間帯別データ削除エラー:', error);
+              sendResponse({ error: error.message });
+            }
+          })();
+          return true;
+        }
+
         return true; // 非同期レスポンス
       });
     }
@@ -1812,6 +2186,14 @@ function initializeAnalyzer() {
       } else {
         console.warn('[TheOption Analyzer] ⚠️ AdvancedSignalEngineが見つかりません - 旧ロジックで動作');
         return;
+      }
+
+      // v5.9.1: 20インジケータ多数決シグナルシステム初期化
+      if (typeof SignalEngine20 !== 'undefined') {
+        signalEngine20 = new SignalEngine20();
+        originalConsoleLog('[TheOption Analyzer] ✅ SignalEngine20 初期化完了（20インジケータ多数決システム）');
+      } else {
+        originalConsoleWarn('[TheOption Analyzer] ⚠️ SignalEngine20が見つかりません - signal-engine-20.jsが読み込まれていない可能性');
       }
 
       // シグナル強化システム初期化（複数時間枠統合 + クラスタリング + ボラティリティ適応）
@@ -1898,33 +2280,32 @@ function initializeAnalyzer() {
       });
 
       // 保存されたアラート音設定を復元（保存がなければデフォルトOFF）
-      chrome.storage.local.get(['alertSoundEnabled', 'alertVolume', 'alertSoundType'], (result) => {
-        if (result.alertSoundEnabled !== undefined) {
-          alertSoundEnabled = result.alertSoundEnabled;
-          console.log(`[TheOption Analyzer] アラート音設定を復元: ${alertSoundEnabled ? 'ON' : 'OFF'}`);
+      chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType'], (result) => {
+        // v5.8.20: alertSoundMode（新キー）を優先、旧alertSoundEnabledからのマイグレーション
+        if (result.alertSoundMode) {
+          alertSoundMode = result.alertSoundMode;
+          console.log(`[TheOption Analyzer] アラート音モードを復元: ${alertSoundMode}`);
+        } else if (result.alertSoundEnabled !== undefined) {
+          alertSoundMode = result.alertSoundEnabled ? 'both' : 'off';
+          chrome.storage.local.set({ alertSoundMode });
+          console.log(`[TheOption Analyzer] アラート音設定を旧形式から移行: ${alertSoundMode}`);
         } else {
-          // 初回起動時はデフォルトOFFをストレージに保存
-          chrome.storage.local.set({ alertSoundEnabled: alertSoundEnabled });
-          console.log(`[TheOption Analyzer] アラート音設定をデフォルト値に設定: OFF`);
+          chrome.storage.local.set({ alertSoundMode });
+          console.log(`[TheOption Analyzer] アラート音モードをデフォルト値に設定: ${alertSoundMode}`);
         }
 
         // 音量設定を復元
         if (result.alertVolume !== undefined) {
           alertVolume = result.alertVolume;
-          console.log(`[TheOption Analyzer] 音量設定を復元: ${alertVolume}`);
         } else {
-          // 初回起動時はデフォルト値をストレージに保存
-          chrome.storage.local.set({ alertVolume: alertVolume });
-          console.log(`[TheOption Analyzer] 音量設定をデフォルト値に設定: ${alertVolume}`);
+          chrome.storage.local.set({ alertVolume });
         }
 
         // アラート音の種類を復元
         if (result.alertSoundType !== undefined) {
           alertSoundType = result.alertSoundType;
-          console.log(`[TheOption Analyzer] アラート音の種類を復元: ${alertSoundType}`);
         } else {
-          chrome.storage.local.set({ alertSoundType: alertSoundType });
-          console.log(`[TheOption Analyzer] アラート音の種類をデフォルト値に設定: ${alertSoundType}`);
+          chrome.storage.local.set({ alertSoundType });
         }
       });
 
@@ -1934,15 +2315,13 @@ function initializeAnalyzer() {
 
         if (changes.alertSoundType?.newValue !== undefined) {
           alertSoundType = changes.alertSoundType.newValue;
-          console.log(`[TheOption Analyzer] アラート音の種類が変更されました: ${alertSoundType}`);
         }
         if (changes.alertVolume?.newValue !== undefined) {
           alertVolume = changes.alertVolume.newValue;
-          console.log(`[TheOption Analyzer] 音量が変更されました: ${alertVolume}`);
         }
-        if (changes.alertSoundEnabled?.newValue !== undefined) {
-          alertSoundEnabled = changes.alertSoundEnabled.newValue;
-          console.log(`[TheOption Analyzer] アラート音設定が変更されました: ${alertSoundEnabled ? 'ON' : 'OFF'}`);
+        if (changes.alertSoundMode?.newValue !== undefined) {
+          alertSoundMode = changes.alertSoundMode.newValue;
+          console.log(`[TheOption Analyzer] アラート音モードが変更されました: ${alertSoundMode}`);
         }
       });
 
@@ -2167,7 +2546,7 @@ function initializeAnalyzer() {
     async function savePriceData(asset, data) {
       const storageKey = `theoption_price_${asset.replace(/[\/\s]/g, '_')}`;
       const dataToSave = {
-        priceHistory: data.priceHistory.slice(-300), // 最新300件（5分）
+        priceHistory: data.priceHistory.slice(-3600), // v5.10.6: 最新3600件（60分）保存（5分判定対応）
         tickData: data.tickData.slice(-300),
         candles: data.candles,
         timestamp: Date.now()
@@ -2623,6 +3002,114 @@ function initializeAnalyzer() {
           lastAssetCheck = now;
         }
 
+        // カウントダウン更新は価格取得の成否に関係なく常に実行
+        {
+          const secondsUntilNext = getSecondsUntilNextTiming(currentTimeframe);
+          const shouldUpdate = lastDisplayedCountdown !== secondsUntilNext || tradingState.isTrading;
+
+          if (shouldUpdate) {
+            // エントリータイミングの検出（サイクル変更 = カウントダウンが増加）
+            const isEntryTiming = !tradingState.isTrading &&
+              lastDisplayedCountdown >= 0 && secondsUntilNext > lastDisplayedCountdown;
+
+            if (isEntryTiming && price) {
+              try {
+                const currentResult = timeframeResults[currentTimeframe];
+                if (currentResult && currentResult.multiDim) {
+                  const cachedStratification = cachedStratificationResults[currentTimeframe];
+                  const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, cachedStratification);
+                  const techSignal = signals.technical ? signals.technical.signal : null;
+                  let aiSignal = signals.ai && signals.ai.available ? signals.ai.signal : null;
+                  let aiStarLevel = null;
+
+                  if (signalEnhancer && currentResult.currentSituation &&
+                      (!signals.ai.available || aiSignal === 'NEUTRAL' ||
+                       aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW')) {
+                    try {
+                      const allPredictions = {};
+                      Object.keys(timeframeResults).forEach(tf => {
+                        const tfResult = timeframeResults[tf];
+                        if (tfResult && tfResult.ml && tfResult.ml.predictions) {
+                          const mlPred = tfResult.ml.predictions[`${tf}s`];
+                          if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
+                            allPredictions[tf] = {
+                              prediction: mlPred.prediction,
+                              upRate: mlPred.upRate || 0,
+                              downRate: mlPred.downRate || 0,
+                              similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
+                              sampleSize: mlPred.sampleSize || 0,
+                              isInsufficient: mlPred.prediction === 'INSUFFICIENT_DATA'
+                            };
+                          }
+                        }
+                      });
+
+                      const enhanced = signalEnhancer.enhance({
+                        situation: currentResult.currentSituation,
+                        predictions: allPredictions,
+                        matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
+                        primaryTimeframe: currentTimeframe,
+                        baseThreshold: currentSimilarityThreshold
+                      });
+
+                      if (enhanced && enhanced.enhanced && enhanced.signal.type !== 'TREND') {
+                        const enhDir = enhanced.signal.direction;
+                        if (enhDir === 'HIGH') {
+                          aiSignal = 'ENHANCED_HIGH';
+                          aiStarLevel = enhanced.signal.starLevel;
+                        } else if (enhDir === 'LOW') {
+                          aiSignal = 'ENHANCED_LOW';
+                          aiStarLevel = enhanced.signal.starLevel;
+                        }
+                      }
+                    } catch (error) {
+                      // エラーは無視
+                    }
+                  }
+
+                  const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
+                  const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW' ||
+                                      aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW' ||
+                                      aiSignal === 'ENHANCED_HIGH' || aiSignal === 'ENHANCED_LOW';
+                  if (hasTechSignal || hasAISignal) {
+                    tradingState.isTrading = true;
+                    tradingState.startTime = Date.now();
+                    tradingState.duration = currentTimeframe;
+                    tradingState.remainingTime = currentTimeframe;
+                    tradingState.timeframe = currentTimeframe;
+                    const techGrade = currentResult.enhanced?.grade || null;
+                    tradingState.signal = {
+                      tech: techSignal,
+                      techConfidence: signals.technical ? signals.technical.confidence : null,
+                      techGrade: techGrade,
+                      ai: aiSignal,
+                      aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
+                      aiStarLevel: aiStarLevel,
+                      aiUpRate: signals.ai ? signals.ai.upRate : null,
+                      aiDownRate: signals.ai ? signals.ai.downRate : null,
+                      aiMatchCount: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.sampleSize || 0,
+                      signal20: currentResult.multiDim?.signal20 || null
+                    };
+                    console.log(`[TheOption Analyzer] 🎯 取引開始: ${currentTimeframe}秒判定 (tech=${techSignal}, ai=${aiSignal})`);
+                    const entryTrigger = (hasTechSignal && hasAISignal) ? 'both' : (hasTechSignal ? 'tech' : 'ai');
+                    playAlertSound(entryTrigger);
+                  }
+                }
+                // エントリータイミング通過後、取引開始しなかった場合は分析結果をクリア
+                if (!tradingState.isTrading) {
+                  timeframeResults[currentTimeframe] = null;
+                }
+              } catch (entryError) {
+                console.error('[TheOption Analyzer] エントリータイミング処理エラー:', entryError);
+              }
+            }
+
+            updateCountdown(secondsUntilNext);
+            lastDisplayedCountdown = secondsUntilNext;
+            sendStatusToSidePanel(secondsUntilNext);
+          }
+        }
+
         if (price) {
           window.theOptionCurrentPrice = price;
 
@@ -2637,7 +3124,7 @@ function initializeAnalyzer() {
 
           // 価格履歴記録
           priceHistory.push(price);
-          if (priceHistory.length > 600) priceHistory.shift();  // 10分間保持（長期MA計算に必要）
+          if (priceHistory.length > 3600) priceHistory.shift();  // v5.9.5: 60分間保持（1分足×40本=40分のSignal20分析に必要）
 
           tickCount++;
 
@@ -2661,121 +3148,6 @@ function initializeAnalyzer() {
                 candles: candles
               });
             }
-          }
-
-          // 全時間枠の並行分析
-          const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
-
-          // TheOption取引時間同期: 次回タイミングまでの秒数を計算
-          const secondsUntilNext = getSecondsUntilNextTiming(currentTimeframe);
-
-          // カウントダウンが変わった時だけUI更新（パフォーマンス最適化）
-          // ただし、取引中は毎秒更新する
-          const shouldUpdate = lastDisplayedCountdown !== secondsUntilNext || tradingState.isTrading;
-
-          if (shouldUpdate) {
-            // エントリータイミングの検出（0秒到達 または サイクル変更）
-            // サイクル変更: 前回1-2秒 → 今回が大きい値（次のサイクルに移行）
-            const isEntryTiming = !tradingState.isTrading && (
-              secondsUntilNext === 0 ||
-              (lastDisplayedCountdown <= 2 && lastDisplayedCountdown > 0 && secondsUntilNext > lastDisplayedCountdown)
-            );
-
-            if (isEntryTiming) {
-              // 現在のシグナルを確認
-              const currentResult = timeframeResults[currentTimeframe];
-              if (currentResult && currentResult.multiDim) {
-                // キャッシュされた層別化結果を使用
-                const cachedStratification = cachedStratificationResults[currentTimeframe];
-                const signals = getCurrentTimeframeSignal(currentResult.multiDim, currentResult.ml, cachedStratification);
-                const techSignal = signals.technical ? signals.technical.signal : null;
-                let aiSignal = signals.ai && signals.ai.available ? signals.ai.signal : null;
-                let aiStarLevel = null;
-
-                // === 強化シグナルのチェック（エントリー時も適用） ===
-                if (signalEnhancer && currentResult.currentSituation &&
-                    (!signals.ai.available || aiSignal === 'NEUTRAL' ||
-                     aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW')) {
-                  try {
-                    // 全時間枠の予測を収集
-                    const allPredictions = {};
-                    Object.keys(timeframeResults).forEach(tf => {
-                      const tfResult = timeframeResults[tf];
-                      if (tfResult && tfResult.ml && tfResult.ml.predictions) {
-                        const mlPred = tfResult.ml.predictions[`${tf}s`];
-                        if (mlPred && (mlPred.upRate !== undefined || mlPred.downRate !== undefined)) {
-                          allPredictions[tf] = {
-                            prediction: mlPred.prediction,
-                            upRate: mlPred.upRate || 0,
-                            downRate: mlPred.downRate || 0,
-                            similarity: mlPred.topPatterns?.[0]?.similarity || mlPred.confidence || 0,
-                            sampleSize: mlPred.sampleSize || 0,
-                            isInsufficient: mlPred.prediction === 'INSUFFICIENT_DATA'
-                          };
-                        }
-                      }
-                    });
-
-                    // シグナル強化を実行
-                    const enhanced = signalEnhancer.enhance({
-                      situation: currentResult.currentSituation,
-                      predictions: allPredictions,
-                      matchedPatterns: currentResult.ml?.predictions?.[`${currentTimeframe}s`]?.topPatterns || [],
-                      primaryTimeframe: currentTimeframe,
-                      baseThreshold: currentSimilarityThreshold
-                    });
-
-                    // 強化シグナルがあり、TRENDでない場合は適用
-                    if (enhanced && enhanced.enhanced && enhanced.signal.type !== 'TREND') {
-                      const enhDir = enhanced.signal.direction;
-                      if (enhDir === 'HIGH') {
-                        aiSignal = 'ENHANCED_HIGH';
-                        aiStarLevel = enhanced.signal.starLevel;
-                      } else if (enhDir === 'LOW') {
-                        aiSignal = 'ENHANCED_LOW';
-                        aiStarLevel = enhanced.signal.starLevel;
-                      }
-                    }
-                  } catch (error) {
-                    // エラーは無視
-                  }
-                }
-
-                // HIGH/LOWシグナルがある場合のみ取引状態を開始（STRONG_HIGH/STRONG_LOW、TREND_HIGH/TREND_LOW、ENHANCED_HIGH/ENHANCED_LOWも含む）
-                const hasTechSignal = techSignal === 'HIGH' || techSignal === 'LOW' || techSignal === 'STRONG_HIGH' || techSignal === 'STRONG_LOW';
-                const hasAISignal = aiSignal === 'HIGH' || aiSignal === 'LOW' ||
-                                    aiSignal === 'TREND_HIGH' || aiSignal === 'TREND_LOW' ||
-                                    aiSignal === 'ENHANCED_HIGH' || aiSignal === 'ENHANCED_LOW';
-                if (hasTechSignal || hasAISignal) {
-                  tradingState.isTrading = true;
-                  tradingState.startTime = Date.now();
-                  tradingState.duration = currentTimeframe;
-                  tradingState.remainingTime = currentTimeframe;
-                  tradingState.timeframe = currentTimeframe;
-                  // 取引開始時のシグナルを保存（取引中に保持するため）
-                  tradingState.signal = {
-                    tech: techSignal,
-                    techConfidence: signals.technical ? signals.technical.confidence : null,
-                    ai: aiSignal,
-                    aiConfidence: signals.ai && signals.ai.available ? signals.ai.confidence : null,
-                    aiStarLevel: aiStarLevel
-                  };
-                  console.log(`[TheOption Analyzer] 🎯 取引開始: ${currentTimeframe}秒判定 (シグナル: tech=${techSignal}, ai=${aiSignal})`);
-                  // エントリータイミング（0秒）でアラート音を再生（2回目）
-                  console.log(`[TheOption Analyzer] 🔔 エントリータイミング: アラート音を再生`);
-                  playAlertSound();
-                } else {
-                  console.log(`[TheOption Analyzer] ⏭️ 見送り: シグナルなし (tech=${techSignal}, ai=${aiSignal})`);
-                }
-              } else {
-                console.log(`[TheOption Analyzer] ⏭️ 見送り: 分析結果なし`);
-              }
-            }
-
-            updateCountdown(secondsUntilNext);
-            lastDisplayedCountdown = secondsUntilNext;
-            // サイドパネルにもステータスを送信
-            sendStatusToSidePanel(secondsUntilNext);
           }
 
           // パフォーマンス最適化: 15秒ごとにMLデータ収集（全判定時間のデータを1回だけ計算）
@@ -2982,9 +3354,7 @@ function initializeAnalyzer() {
         const now = Date.now();
         // ロックの有効期限チェック（次のエントリータイミングまで）
         if (now < lockedPrediction.cycleEndTime) {
-          console.log(`[TheOption Analyzer] 🔒 予測値ロック中: ${config.label} (残り${Math.ceil((lockedPrediction.cycleEndTime - now) / 1000)}秒)`);
-          // ロック中はテクニカル分析のみ更新し、ML予測は保持
-          // UIの更新のためにsendAnalysisToSidePanelは呼ぶが、ML予測は変更しない
+          // ロック中はSignal20もML予測も変更しない（チカチカ防止）
           return;
         } else {
           // ロック期限切れ - ロックを解除
@@ -3110,6 +3480,44 @@ function initializeAnalyzer() {
         } catch (error) {
           console.error(`[TheOption Analyzer] AdvancedSignalEngineエラー:`, error);
         }
+      }
+
+      // v5.9.5: 20インジケータ多数決シグナル（判定時間別のローソク足で分析）
+      // v5.10.4: Signal20の多数決が確定しない限り、テクニカルシグナルは出さない
+      let signal20Result = null;
+      let signal20Decided = false;  // Signal20がHIGH/LOWを確定したかどうか
+      const s20Config = config.signal20;
+      const signal20Candles = generateCandles(priceHistory, s20Config.candleSize);
+      originalConsoleLog(`[TheOption Analyzer] 🔍 Signal20チェック: engine=${!!signalEngine20}, ${s20Config.label}=${signal20Candles.length}本/${s20Config.minCandles}本必要 (priceHistory=${priceHistory.length})`);
+      if (signalEngine20 && signal20Candles.length >= s20Config.minCandles) {
+        try {
+          signalEngine20.setCandles(signal20Candles);
+          if (s20Config.params) signalEngine20.setParams(s20Config.params);
+          if (s20Config.filterParams) signalEngine20.setFilterParams(s20Config.filterParams);
+          signalEngine20.setFilterLevel(currentFilterLevel);
+          signal20Result = signalEngine20.analyze();
+          const filterInfo = signal20Result.momentumFilter;
+          // 20インジケータの詳細データを常に保持（デバッグパネル用）
+          multiDimResult.signal20 = signal20Result;
+          latestSignal20Result = signal20Result;  // グローバル変数にも保存（sendAnalysisToSidePanel後に送信）
+          // 20インジケータの結果でテクニカルシグナルを上書き
+          if (signal20Result.signal !== 'WAIT') {
+            multiDimResult.signal = signal20Result.signal;
+            // starLevelに基づいてconfidenceを設定（UI側で星表示に変換）
+            multiDimResult.confidence = signal20Result.starLevel > 0 ? 60 + (signal20Result.starLevel - 1) * 15 : null;
+            signal20Decided = true;
+          }
+        } catch (error) {
+          console.error(`[TheOption Analyzer] SignalEngine20エラー:`, error);
+        }
+      }
+
+      // v5.10.4: Signal20の多数決が未確定（WAIT or ローソク足不足）の場合、テクニカルシグナルをNEUTRALに強制
+      // 多数決が出てからでないとシグナルを出してはいけない
+      if (!signal20Decided) {
+        multiDimResult.signal = 'NEUTRAL';
+        multiDimResult.confidence = 0;
+        originalConsoleLog(`[TheOption Analyzer] ⏳ Signal20未確定 → テクニカルシグナルをNEUTRALに強制`);
       }
 
       // パフォーマンス最適化: 事前計算されたMLデータを使用
@@ -3399,8 +3807,9 @@ function initializeAnalyzer() {
 
         // テクニカルのみ、AIのみ、または両方でアラート音を再生
         if (hasTechSignal || hasAISignal) {
-          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType} - アラート音を再生`);
-          playAlertSound();
+          const triggerType = (hasTechSignal && hasAISignal) ? 'both' : (hasTechSignal ? 'tech' : 'ai');
+          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType} - アラート音(${triggerType})`);
+          playAlertSound(triggerType);
 
           // v5.6.6: シグナルが出たら予測値をロック（次のサイクルまで変更しない）
           // これにより、シグナル表示後にパーセンテージが変動することを防ぐ
@@ -4177,9 +4586,9 @@ function initializeAnalyzer() {
     // ダミーローソク足生成
     // ========================================
 
-    function generateCandles(prices) {
+    // v5.9.5: candleSizeを引数で指定可能に（デフォルト10秒足、Signal20用に15秒足/1分足を使い分け）
+    function generateCandles(prices, candleSize = 10) {
       const candles = [];
-      const candleSize = 10;
 
       for (let i = 0; i < prices.length; i += candleSize) {
         const segment = prices.slice(i, i + candleSize);
@@ -4431,8 +4840,8 @@ function initializeAnalyzer() {
       const patternCount = mlStats.optimizationStats?.segmentPatterns || 0;
       const diversityScore = Math.min(100, (patternCount / 2) * 100);
 
-      // データ量充足度（50,000件で満点）
-      const dataSufficiency = Math.min(100, (indexedData / 50000) * 100);
+      // データ量充足度（25,000件で満点）
+      const dataSufficiency = Math.min(100, (indexedData / 25000) * 100);
 
       // サンプルサイズスコア（100件で満点）
       const sampleScore = Math.min(100, sampleSize);

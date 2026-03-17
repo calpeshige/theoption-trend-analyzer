@@ -105,42 +105,86 @@
         </div>
       </section>
 
+      <!-- 急変検出アラート（20インジケータ多数決カードの上） -->
+      <div class="reversal-alert" id="reversal-alert">
+        <span class="reversal-alert-icon">⚠</span>
+        <span class="reversal-alert-text">急変検出</span>
+      </div>
+
+      <!-- 20インジケータ多数決カード -->
+      <section class="indicator-debug-panel" id="indicator-debug-panel">
+        <button class="indicator-debug-header" id="indicator-debug-header">
+          <div class="indicator-debug-header-left">
+            <span class="indicator-debug-title">20インジケータ多数決</span>
+            <span class="indicator-debug-summary" id="indicator-debug-summary">分析待ち...</span>
+          </div>
+          <span class="indicator-debug-expand-icon">▼</span>
+        </button>
+        <div class="indicator-debug-grid" id="indicator-debug-grid">
+          <!-- JSで動的に生成 -->
+        </div>
+      </section>
+
       <!-- 分析詳細セクション -->
       <section class="analysis-section">
-        <!-- 相場状況カード -->
+        <!-- v5.9.0: エントリー条件ダッシュボード -->
         <article class="analysis-card" id="tech-card">
           <button class="card-header" id="tech-header">
             <div class="card-header-left">
-              <span class="card-title">相場状況</span>
-              <div class="dual-grade-badges">
-                <span class="grade-label">T:</span><span class="enhanced-grade-badge" id="enhanced-grade">--</span>
-                <span class="grade-label">AI:</span><span class="ai-grade-badge" id="ai-grade">--</span>
-              </div>
+              <span class="card-title">エントリー条件</span>
             </div>
             <span class="card-expand-icon">▼</span>
           </button>
           <div class="card-content" id="tech-content">
-            <!-- 高精度分析サマリー -->
-            <div class="enhanced-summary" id="enhanced-summary">
-              <div class="enhanced-summary-row">
-                <span class="enhanced-label">相場</span>
-                <span class="enhanced-value" id="enhanced-regime">--</span>
+            <!-- 3カードダッシュボード -->
+            <div class="cond-dashboard" id="cond-dashboard">
+              <div class="cond-card" id="cond-env">
+                <svg class="cond-ring" viewBox="0 0 60 60">
+                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
+                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
+                </svg>
+                <div class="cond-card-label">環境</div>
               </div>
-              <div class="enhanced-summary-row">
-                <span class="enhanced-label">MTF一致</span>
-                <span class="enhanced-value" id="enhanced-mtf">--</span>
+              <div class="cond-card" id="cond-dir">
+                <svg class="cond-ring" viewBox="0 0 60 60">
+                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
+                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
+                </svg>
+                <div class="cond-card-label">方向</div>
               </div>
-              <div class="enhanced-summary-row">
-                <span class="enhanced-label">推奨</span>
-                <span class="enhanced-value dual-rec-value">
-                  <span class="rec-label">T:</span><span id="tech-rec-value">--</span>
-                  <span class="rec-label">AI:</span><span id="ai-rec-value">--</span>
-                </span>
+              <div class="cond-card" id="cond-timing">
+                <svg class="cond-ring" viewBox="0 0 60 60">
+                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
+                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
+                </svg>
+                <div class="cond-card-label">タイミング</div>
               </div>
             </div>
-            <!-- 既存の相場状況詳細 -->
-            <div class="detail-box" id="tech-detail">
-              <p class="detail-text">分析データを待機中...</p>
+            <!-- 一言コメント -->
+            <div class="cond-comment" id="cond-comment">分析待ち</div>
+            <!-- 詳細（折りたたみ） -->
+            <div class="cond-details-toggle" id="cond-details-toggle">詳細を見る</div>
+            <div class="cond-details" id="cond-details" style="display:none;">
+              <div class="entry-conditions" id="entry-conditions">
+                <div class="entry-col">
+                  <div class="entry-col-header">テクニカル</div>
+                  <div class="entry-checks" id="tech-checks">
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">局面適合</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">ボラ適合</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">時間軸整合</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">トリガー</span></div>
+                  </div>
+                </div>
+                <div class="entry-col">
+                  <div class="entry-col-header">AI予測</div>
+                  <div class="entry-checks" id="ai-checks">
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">優位性</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">同値リスク</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">信頼度</span></div>
+                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">整合</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </article>
@@ -193,7 +237,7 @@
               <div class="ml-stat-item">
                 <span class="ml-stat-label">収集データ</span>
                 <span class="ml-stat-value" id="ml-data-count">0</span>
-                <span class="ml-stat-unit">/ 50,000件</span>
+                <span class="ml-stat-unit">/ 25,000件</span>
               </div>
               <div class="ml-stat-item">
                 <span class="ml-stat-label">学習レベル</span>
@@ -206,8 +250,16 @@
             </div>
             <div class="ml-progress-labels">
               <span>0</span>
-              <span>50K</span>
+              <span>25K</span>
             </div>
+            <div class="ml-freshness" id="ml-freshness" style="display: none;">
+              <span class="ml-freshness-label">データ鮮度:</span>
+              <span class="ml-freshness-stars" id="ml-freshness-stars"></span>
+              <span class="ml-freshness-detail" id="ml-freshness-detail"></span>
+            </div>
+            <button class="ml-trim-btn" id="ml-trim-btn" style="display: none;">
+              データ整理（<span id="ml-trim-count">0</span>件削除）
+            </button>
             <button class="ml-detail-btn" id="ml-detail-btn">
               <span>📊</span> 通貨ペア別データ状況
             </button>
@@ -342,9 +394,12 @@
             <span class="setting-item-label">アラート音</span>
             <span class="setting-item-description">シグナル発生時に通知音を再生</span>
           </div>
-          <button class="toggle-switch" id="alert-sound-toggle">
-            <span class="toggle-thumb"></span>
-          </button>
+          <select class="select-input" id="alert-sound-mode">
+            <option value="off">OFF</option>
+            <option value="tech">テクニカルのみ</option>
+            <option value="ai">AI予測のみ</option>
+            <option value="both">両方</option>
+          </select>
         </div>
         <!-- 音量設定 -->
         <div class="setting-item">
@@ -393,6 +448,19 @@
             <option value="large">大</option>
           </select>
         </div>
+        <!-- モメンタムフィルタ設定 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">モメンタムフィルタ</span>
+            <span class="setting-item-description">トレンド終息時のシグナルを抑制</span>
+          </div>
+          <select class="select-input" id="momentum-filter-select">
+            <option value="0">OFF</option>
+            <option value="1">弱</option>
+            <option value="2" selected>中</option>
+            <option value="3">強</option>
+          </select>
+        </div>
       </div>
     </aside>
   </div>
@@ -434,6 +502,28 @@
       </div>
     </div>
   </aside>
+
+  <!-- 削除確認ダイアログ -->
+  <div class="delete-confirm-overlay" id="delete-confirm-overlay"></div>
+  <div class="delete-confirm-dialog" id="delete-confirm-dialog">
+    <div class="delete-confirm-icon">&#9888;&#65039;</div>
+    <h3 class="delete-confirm-title">データ削除の確認</h3>
+    <p class="delete-confirm-message" id="delete-confirm-message">
+      選択した時間帯のデータを削除しますか？この操作は取り消せません。
+    </p>
+    <div class="delete-confirm-actions">
+      <button class="delete-confirm-cancel" id="delete-confirm-cancel">キャンセル</button>
+      <button class="delete-confirm-ok" id="delete-confirm-ok">削除する</button>
+    </div>
+  </div>
+
+  <!-- データ整理中ブロッキングオーバーレイ -->
+  <div id="trim-overlay" style="display: none;">
+    <div class="trim-overlay-content">
+      <div class="trim-spinner"></div>
+      <div class="trim-overlay-text">データ整理中...</div>
+    </div>
+  </div>
 
   <script src="sidepanel.js"></script>
 </body>

@@ -55,6 +55,36 @@ class DataCollectionSystem {
     }
   }
 
+  // v5.10.4: 手動データ整理（全通貨ペアを24,500件にトリミング）
+  async trimAllAssets() {
+    if (!this.dbInitialized) return { totalDeleted: 0, details: [] };
+    const MAX_PER_ASSET = 24500;
+    const details = [];
+    let totalDeleted = 0;
+    try {
+      const assetList = await this.dbManager.getAssetList();
+      console.error('[ML] trimAllAssets開始:', assetList.length, '通貨ペア');
+      for (const { assetName, count } of assetList) {
+        console.error(`[ML] チェック: ${assetName} = ${count}件`);
+        if (count > MAX_PER_ASSET) {
+          const deleted = await this.dbManager.pruneRecords(MAX_PER_ASSET, assetName);
+          totalDeleted += deleted;
+          details.push({ assetName, before: count, after: count - deleted, deleted });
+          console.error(`[ML] トリミング完了: ${assetName} ${count}→${count - deleted}件 (${deleted}件削除)`);
+        }
+      }
+      // DB総件数とメモリデータを更新
+      if (totalDeleted > 0) {
+        this.totalDataCount = await this.dbManager.getCount(this.assetName);
+        await this.loadRecentData();
+      }
+      console.error(`[ML] trimAllAssets完了: 合計${totalDeleted}件削除`);
+    } catch (e) {
+      console.error('[ML] trimAllAssets error:', e);
+    }
+    return { totalDeleted, details };
+  }
+
   // 既存のIndexedDBデータのassetNameを正規化
   // - undefinedや空のassetName → storageKeyから推測して設定
   // - アンダースコア形式 → スラッシュ形式に変換
@@ -272,6 +302,19 @@ class DataCollectionSystem {
         this.onStatsUpdatedExternal(totalCount);
       }
 
+      // v5.10.4: 鮮度キャッシュ更新（直近30日のデータ割合）
+      try {
+        const since30d = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const recent30d = await this.dbManager.getRecordCountSince(since30d, this.assetName);
+        this.cachedFreshness = {
+          recent30d,
+          total: totalCount,
+          percent: totalCount > 0 ? Math.round((recent30d / totalCount) * 100) : 0
+        };
+      } catch (e) {
+        // 鮮度計算エラーは無視
+      }
+
       return recentData;
     } catch (e) {
       console.error('[ML] Load Data Failed:', e);
@@ -449,11 +492,7 @@ class DataCollectionSystem {
     if (!this.dbInitialized) return;
     try {
       await this.dbManager.saveRecord(record);
-
-      // 定期的に古いデータを削除（例: 1%の確率で実行）
-      if (Math.random() < 0.01) {
-        this.dbManager.pruneRecords(50000, this.assetName);
-      }
+      this.totalDataCount++;
     } catch (e) {
       console.error('[ML] Save Error:', e);
     }
@@ -870,14 +909,15 @@ class MachineLearningSystem {
   getStatistics() {
     const count = this.dataSystem.getDataCountWithResults();
     const totalCount = this.dataSystem.getDataCount();
-    // 学習レベル: 50,000件で100%（UIの最大件数表示と一致）
-    const learningLevel = Math.min(100, Math.round((totalCount / 50000) * 100));
+    // 学習レベル: 25,000件で100%（UIの最大件数表示と一致）
+    const learningLevel = Math.min(100, Math.round((totalCount / 25000) * 100));
     return {
       dataCount: totalCount,
       dataCountWithResults: count,
       learningLevel: learningLevel,
       status: count > 100 ? 'READY' : 'COLLECTING',
-      accuracy: 0 // 計算コスト高いため省略
+      accuracy: 0, // 計算コスト高いため省略
+      freshness: this.dataSystem.cachedFreshness || null
     };
   }
 

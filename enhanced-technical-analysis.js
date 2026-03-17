@@ -1,5 +1,5 @@
 /**
- * Enhanced Technical Analysis System v1.1.0
+ * Enhanced Technical Analysis System v1.2.0
  *
  * 高精度テクニカル分析エンジン
  * - Multi-timeframe Confluence Analysis (MTF)
@@ -8,6 +8,8 @@
  * - Dynamic Parameter Optimization
  * - Entry Quality Filter
  * - Dynamic Volatility Thresholds (v5.8.13)
+ * - Early Move Detection (v5.8.14) - 初動検出システム
+ * - Momentum Direction Analysis (v5.8.14) - モメンタム方向分析
  */
 
 // デバッグモード（本番ではfalse）
@@ -77,6 +79,23 @@ class EnhancedTechnicalAnalysis {
       lastUpdate: 0,
       history: []             // ATR履歴（移動平均用）
     };
+
+    // v5.8.14→v5.9.0: 初動検出・モメンタム方向分析用の指標履歴（履歴を50に拡張）
+    this.indicatorHistory = {
+      rsi: [],          // RSI履歴
+      stochK: [],       // Stochastic %K履歴
+      macdHist: [],     // MACDヒストグラム履歴
+      momentum: [],     // モメンタム履歴
+      maxLength: 50     // v5.9.0: 保持する最大期間（10→50）
+    };
+
+    // v5.9.0: ADX履歴（パーセンタイル計算用）
+    this.adxHistory = [];
+    this.adxHistoryMax = 200;
+
+    // v5.9.0: BB幅履歴（中央値計算用）
+    this.bbWidthHistory = [];
+    this.bbWidthHistoryMax = 50;
   }
 
   // ========================================
@@ -206,6 +225,367 @@ class EnhancedTechnicalAnalysis {
     return dynamicThresholds;
   }
 
+  // ========================================
+  // 初動検出システム (v5.8.14)
+  // ========================================
+
+  /**
+   * 指標履歴を更新
+   * @param {string} indicatorName - 指標名（rsi, stochK, macdHist, momentum）
+   * @param {number} value - 指標値
+   */
+  updateIndicatorHistory(indicatorName, value) {
+    if (value === null || value === undefined || isNaN(value)) return;
+
+    const history = this.indicatorHistory[indicatorName];
+    if (!history) return;
+
+    history.push(value);
+    if (history.length > this.indicatorHistory.maxLength) {
+      history.shift();
+    }
+  }
+
+  /**
+   * 初動検出（ニュートラルゾーンからの離脱を検出）
+   * @param {number} currentValue - 現在の指標値
+   * @param {Array} history - 指標の履歴
+   * @param {Object} zones - ゾーン定義 { neutral: {low, high}, extreme: {low, high} }
+   * @returns {Object} { type: 'EARLY_HIGH'|'EARLY_LOW'|'OVEREXTENDED'|'NEUTRAL', strength: 0-100 }
+   */
+  detectEarlyMove(currentValue, history, zones) {
+    if (!history || history.length < 2) {
+      return { type: 'NEUTRAL', strength: 0, reason: '履歴不足' };
+    }
+
+    const prevValue = history[history.length - 2];
+    const { neutral, extreme } = zones;
+
+    // 1. 極端ゾーンに入った場合 = 動きすぎ（見送り推奨）
+    if (currentValue <= extreme.low) {
+      return {
+        type: 'OVEREXTENDED_LOW',
+        strength: 0,
+        reason: `極端な売られすぎ (${currentValue.toFixed(1)})`
+      };
+    }
+    if (currentValue >= extreme.high) {
+      return {
+        type: 'OVEREXTENDED_HIGH',
+        strength: 0,
+        reason: `極端な買われすぎ (${currentValue.toFixed(1)})`
+      };
+    }
+
+    // 2. ニュートラルゾーンから離脱する動き = 初動
+    const wasInNeutral = prevValue >= neutral.low && prevValue <= neutral.high;
+
+    if (wasInNeutral) {
+      // ニュートラルから上に離脱 → 上昇の初動
+      if (currentValue > neutral.high) {
+        const strength = Math.min(100, (currentValue - neutral.high) * 10);
+        return {
+          type: 'EARLY_HIGH',
+          strength,
+          reason: `ニュートラルから上昇離脱 (${prevValue.toFixed(1)}→${currentValue.toFixed(1)})`
+        };
+      }
+      // ニュートラルから下に離脱 → 下落の初動
+      if (currentValue < neutral.low) {
+        const strength = Math.min(100, (neutral.low - currentValue) * 10);
+        return {
+          type: 'EARLY_LOW',
+          strength,
+          reason: `ニュートラルから下落離脱 (${prevValue.toFixed(1)}→${currentValue.toFixed(1)})`
+        };
+      }
+    }
+
+    // 3. ニュートラルゾーン内での動き = 方向の兆候
+    if (currentValue >= neutral.low && currentValue <= neutral.high) {
+      const direction = currentValue - prevValue;
+      if (Math.abs(direction) > 2) {
+        if (direction > 0) {
+          return { type: 'HINT_HIGH', strength: 30, reason: 'ニュートラル内で上昇傾向' };
+        } else {
+          return { type: 'HINT_LOW', strength: 30, reason: 'ニュートラル内で下落傾向' };
+        }
+      }
+    }
+
+    // 4. ニュートラル外だが極端ではない = トレンド継続中
+    if (currentValue > neutral.high && currentValue < extreme.high) {
+      return { type: 'TREND_HIGH', strength: 50, reason: '上昇トレンド継続中' };
+    }
+    if (currentValue < neutral.low && currentValue > extreme.low) {
+      return { type: 'TREND_LOW', strength: 50, reason: '下落トレンド継続中' };
+    }
+
+    return { type: 'NEUTRAL', strength: 0, reason: '明確なシグナルなし' };
+  }
+
+  // ========================================
+  // モメンタム方向分析 (v5.8.14)
+  // ========================================
+
+  /**
+   * モメンタム方向を検出（加速/減速/反転の判定）
+   * @param {Array} values - 指標値の履歴（最低3期間必要）
+   * @returns {Object} { direction: string, strength: number, isAccelerating: boolean }
+   */
+  detectMomentumDirection(values) {
+    if (!values || values.length < 3) {
+      return {
+        direction: 'UNKNOWN',
+        strength: 0,
+        isAccelerating: false,
+        reason: '履歴不足'
+      };
+    }
+
+    // 直近の変化を計算
+    const changes = [];
+    for (let i = 1; i < values.length; i++) {
+      changes.push(values[i] - values[i - 1]);
+    }
+
+    const recentChange = changes[changes.length - 1];
+    const prevChange = changes.length >= 2 ? changes[changes.length - 2] : 0;
+
+    // 変化の加速度
+    const acceleration = recentChange - prevChange;
+
+    // 方向と強度を判定
+    let direction = 'STABLE';
+    let strength = Math.abs(recentChange) * 10;
+    let isAccelerating = false;
+    let reason = '';
+
+    if (recentChange > 0.5) {
+      // 上昇中
+      if (acceleration > 0.3) {
+        direction = 'ACCELERATING_UP';
+        isAccelerating = true;
+        strength = Math.min(100, strength * 1.5);
+        reason = '上昇加速中';
+      } else if (acceleration < -0.3) {
+        direction = 'DECELERATING_UP';
+        isAccelerating = false;
+        strength = Math.max(20, strength * 0.5);
+        reason = '上昇減速中（反転の兆候）';
+      } else {
+        direction = 'RISING';
+        reason = '上昇中';
+      }
+    } else if (recentChange < -0.5) {
+      // 下落中
+      if (acceleration < -0.3) {
+        direction = 'ACCELERATING_DOWN';
+        isAccelerating = true;
+        strength = Math.min(100, strength * 1.5);
+        reason = '下落加速中';
+      } else if (acceleration > 0.3) {
+        direction = 'DECELERATING_DOWN';
+        isAccelerating = false;
+        strength = Math.max(20, strength * 0.5);
+        reason = '下落減速中（反転の兆候）';
+      } else {
+        direction = 'FALLING';
+        reason = '下落中';
+      }
+    } else {
+      direction = 'STABLE';
+      strength = 0;
+      reason = '横ばい';
+    }
+
+    // 反転検出: 前回と今回の変化が逆方向
+    const isReversal = (prevChange > 0.5 && recentChange < -0.5) ||
+                       (prevChange < -0.5 && recentChange > 0.5);
+
+    if (isReversal) {
+      direction = recentChange > 0 ? 'REVERSAL_UP' : 'REVERSAL_DOWN';
+      strength = Math.min(100, Math.abs(recentChange - prevChange) * 15);
+      reason = recentChange > 0 ? '下落→上昇に反転' : '上昇→下落に反転';
+    }
+
+    return {
+      direction,
+      strength: Math.round(strength),
+      isAccelerating,
+      isReversal,
+      recentChange,
+      acceleration,
+      reason
+    };
+  }
+
+  /**
+   * 総合的な初動・モメンタム分析を実行
+   * @param {Object} indicators - 計算済み指標
+   * @returns {Object} 分析結果
+   */
+  analyzeEarlyMoveAndMomentum(indicators) {
+    // 指標履歴を更新
+    if (indicators.rsi) this.updateIndicatorHistory('rsi', indicators.rsi);
+    if (indicators.stochastic?.k) this.updateIndicatorHistory('stochK', indicators.stochastic.k);
+    if (indicators.macd?.histogram) this.updateIndicatorHistory('macdHist', indicators.macd.histogram);
+    if (indicators.momentum !== undefined) this.updateIndicatorHistory('momentum', indicators.momentum);
+
+    // RSI初動検出
+    const rsiEarlyMove = this.detectEarlyMove(
+      indicators.rsi || 50,
+      this.indicatorHistory.rsi,
+      {
+        neutral: { low: 45, high: 55 },
+        extreme: { low: 25, high: 75 }
+      }
+    );
+
+    // Stochastic初動検出
+    const stochEarlyMove = this.detectEarlyMove(
+      indicators.stochastic?.k || 50,
+      this.indicatorHistory.stochK,
+      {
+        neutral: { low: 40, high: 60 },
+        extreme: { low: 15, high: 85 }
+      }
+    );
+
+    // RSIモメンタム方向
+    const rsiMomentum = this.detectMomentumDirection(this.indicatorHistory.rsi);
+
+    // MACDヒストグラムモメンタム方向
+    const macdMomentum = this.detectMomentumDirection(this.indicatorHistory.macdHist);
+
+    // 総合判定
+    const analysis = {
+      rsi: {
+        earlyMove: rsiEarlyMove,
+        momentum: rsiMomentum
+      },
+      stochastic: {
+        earlyMove: stochEarlyMove
+      },
+      macd: {
+        momentum: macdMomentum
+      },
+      summary: this.summarizeEarlyMoveAnalysis(rsiEarlyMove, stochEarlyMove, rsiMomentum, macdMomentum)
+    };
+
+    etaLog(`[EarlyMove] RSI: ${rsiEarlyMove.type}(${rsiEarlyMove.strength}) Stoch: ${stochEarlyMove.type}(${stochEarlyMove.strength})`);
+    etaLog(`[Momentum] RSI: ${rsiMomentum.direction} MACD: ${macdMomentum.direction}`);
+
+    return analysis;
+  }
+
+  /**
+   * 初動・モメンタム分析の総合判定
+   */
+  summarizeEarlyMoveAnalysis(rsiEarlyMove, stochEarlyMove, rsiMomentum, macdMomentum) {
+    let signal = 'NEUTRAL';
+    let confidence = 0;
+    let reasons = [];
+
+    // 極端ゾーンチェック（見送り判定）
+    if (rsiEarlyMove.type === 'OVEREXTENDED_HIGH' || stochEarlyMove.type === 'OVEREXTENDED_HIGH') {
+      return {
+        signal: 'SKIP',
+        confidence: 0,
+        reason: '指標が極端な買われすぎ - 反落リスク高',
+        details: reasons
+      };
+    }
+    if (rsiEarlyMove.type === 'OVEREXTENDED_LOW' || stochEarlyMove.type === 'OVEREXTENDED_LOW') {
+      return {
+        signal: 'SKIP',
+        confidence: 0,
+        reason: '指標が極端な売られすぎ - 反発リスク高',
+        details: reasons
+      };
+    }
+
+    // 初動検出によるシグナル
+    let highScore = 0;
+    let lowScore = 0;
+
+    // RSI初動
+    if (rsiEarlyMove.type === 'EARLY_HIGH' || rsiEarlyMove.type === 'HINT_HIGH') {
+      highScore += rsiEarlyMove.strength;
+      reasons.push(`RSI: ${rsiEarlyMove.reason}`);
+    } else if (rsiEarlyMove.type === 'EARLY_LOW' || rsiEarlyMove.type === 'HINT_LOW') {
+      lowScore += rsiEarlyMove.strength;
+      reasons.push(`RSI: ${rsiEarlyMove.reason}`);
+    }
+
+    // Stochastic初動
+    if (stochEarlyMove.type === 'EARLY_HIGH' || stochEarlyMove.type === 'HINT_HIGH') {
+      highScore += stochEarlyMove.strength;
+      reasons.push(`Stoch: ${stochEarlyMove.reason}`);
+    } else if (stochEarlyMove.type === 'EARLY_LOW' || stochEarlyMove.type === 'HINT_LOW') {
+      lowScore += stochEarlyMove.strength;
+      reasons.push(`Stoch: ${stochEarlyMove.reason}`);
+    }
+
+    // モメンタム方向による補正
+    if (rsiMomentum.direction.includes('UP') && rsiMomentum.isAccelerating) {
+      highScore += 30;
+      reasons.push(`RSIモメンタム: ${rsiMomentum.reason}`);
+    } else if (rsiMomentum.direction.includes('DOWN') && rsiMomentum.isAccelerating) {
+      lowScore += 30;
+      reasons.push(`RSIモメンタム: ${rsiMomentum.reason}`);
+    }
+
+    // 減速中は逆方向のヒント
+    if (rsiMomentum.direction === 'DECELERATING_UP') {
+      lowScore += 20;
+      reasons.push('RSI上昇減速 - 反落の兆候');
+    } else if (rsiMomentum.direction === 'DECELERATING_DOWN') {
+      highScore += 20;
+      reasons.push('RSI下落減速 - 反発の兆候');
+    }
+
+    // MACDモメンタム
+    if (macdMomentum.direction.includes('UP') && macdMomentum.isAccelerating) {
+      highScore += 25;
+      reasons.push(`MACDモメンタム: ${macdMomentum.reason}`);
+    } else if (macdMomentum.direction.includes('DOWN') && macdMomentum.isAccelerating) {
+      lowScore += 25;
+      reasons.push(`MACDモメンタム: ${macdMomentum.reason}`);
+    }
+
+    // 反転シグナル（強い）
+    if (rsiMomentum.isReversal || macdMomentum.isReversal) {
+      const reversalDir = rsiMomentum.direction === 'REVERSAL_UP' || macdMomentum.direction === 'REVERSAL_UP' ? 'HIGH' : 'LOW';
+      if (reversalDir === 'HIGH') {
+        highScore += 40;
+      } else {
+        lowScore += 40;
+      }
+      reasons.push('反転シグナル検出');
+    }
+
+    // 最終判定
+    if (highScore > lowScore && highScore >= 50) {
+      signal = 'HIGH';
+      confidence = Math.min(100, highScore);
+    } else if (lowScore > highScore && lowScore >= 50) {
+      signal = 'LOW';
+      confidence = Math.min(100, lowScore);
+    } else {
+      signal = 'NEUTRAL';
+      confidence = 0;
+    }
+
+    return {
+      signal,
+      confidence,
+      reason: reasons.length > 0 ? reasons[0] : '明確なシグナルなし',
+      details: reasons,
+      scores: { high: highScore, low: lowScore }
+    };
+  }
+
   /**
    * 価格データを更新
    * @param {number} price - 現在価格
@@ -265,7 +645,7 @@ class EnhancedTechnicalAnalysis {
   analyzeTimeframe(seconds) {
     const data = this.getDataForTimeframe(seconds);
     if (!data || data.length < 20) {
-      return { signal: 'NEUTRAL', confidence: 0, indicators: {} };
+      return { signal: 'NEUTRAL', confidence: 0, indicators: {}, earlyMoveAnalysis: null };
     }
 
     const indicators = {
@@ -277,6 +657,9 @@ class EnhancedTechnicalAnalysis {
       stochastic: this.calculateStochastic(data, 14, 3, 3),
       momentum: this.calculateMomentum(data, 10)
     };
+
+    // v5.8.14: 初動検出・モメンタム分析
+    const earlyMoveAnalysis = this.analyzeEarlyMoveAndMomentum(indicators);
 
     // 各指標のシグナルを取得
     const signals = {
@@ -292,14 +675,15 @@ class EnhancedTechnicalAnalysis {
     // デバッグ用: 各指標のシグナル状態をログ
     etaLog(`[TF ${seconds}s] RSI:${signals.rsi} MACD:${signals.macd} MA:${signals.ma} BB:${signals.bb} ADX:${signals.adx} Stoch:${signals.stochastic} Mom:${signals.momentum}`);
 
-    // 総合シグナルを計算
-    const { signal, confidence } = this.aggregateSignals(signals);
+    // v5.8.14: 初動検出の結果を考慮した総合シグナル
+    const { signal, confidence } = this.aggregateSignalsWithEarlyMove(signals, earlyMoveAnalysis);
 
     return {
       signal,
       confidence,
       indicators,
-      signals
+      signals,
+      earlyMoveAnalysis
     };
   }
 
@@ -1754,6 +2138,36 @@ class EnhancedTechnicalAnalysis {
       const mtf = this.analyzeMultiTimeframeLite();
       etaLog('analyzeMultiTimeframeLite() 完了:', (performance.now() - mtfStart).toFixed(2), 'ms');
 
+      // v5.8.14: 初動検出結果を取得（60秒タイムフレームから）
+      const tf60Result = mtf.timeframes?.[60];
+      const earlyMoveAnalysis = tf60Result?.earlyMoveAnalysis;
+      const earlyMoveSummary = earlyMoveAnalysis?.summary;
+
+      // v5.8.14: 初動検出ログ（常に表示）
+      if (earlyMoveSummary) {
+        const logFn = window.originalConsoleLog || console.log;
+        const rsiInfo = earlyMoveAnalysis.rsi?.earlyMove;
+        const stochInfo = earlyMoveAnalysis.stochastic?.earlyMove;
+        logFn(`[初動検出] RSI: ${rsiInfo?.type || 'N/A'}(${rsiInfo?.strength || 0}) | Stoch: ${stochInfo?.type || 'N/A'}(${stochInfo?.strength || 0}) | 判定: ${earlyMoveSummary.signal} | 理由: ${earlyMoveSummary.reason || '-'}`);
+      }
+
+      // v5.8.14: 初動検出がSKIP（極端ゾーン）を返した場合 → 見送り
+      if (earlyMoveSummary?.signal === 'SKIP') {
+        const logFn = window.originalConsoleLog || console.log;
+        logFn(`[初動検出] 🚫 見送り判定: ${earlyMoveSummary.reason}`);
+        return {
+          signal: 'NEUTRAL',
+          confidence: 0,
+          grade: '--',
+          reason: earlyMoveSummary.reason,
+          recommendation: 'SKIP',
+          regime: regime.regime,
+          mtfAgreement: mtf.confluence.directionAgreement,
+          earlyMoveSkip: true,
+          earlyMoveReason: earlyMoveSummary.reason
+        };
+      }
+
       // 予測方向の決定
       const direction = mtf.confluence.dominantDirection;
       etaLog('direction:', direction, 'agreement:', mtf.confluence.directionAgreement);
@@ -1771,23 +2185,58 @@ class EnhancedTechnicalAnalysis {
         };
       }
 
+      // v5.8.14: 初動検出と従来シグナルの方向が逆の場合 → 見送り
+      if (earlyMoveSummary && earlyMoveSummary.signal !== 'NEUTRAL') {
+        if ((direction === 'HIGH' && earlyMoveSummary.signal === 'LOW') ||
+            (direction === 'LOW' && earlyMoveSummary.signal === 'HIGH')) {
+          const logFn = window.originalConsoleLog || console.log;
+          logFn(`[初動検出] ⚠️ 従来シグナル(${direction})と初動(${earlyMoveSummary.signal})が逆方向 → 見送り`);
+          return {
+            signal: 'NEUTRAL',
+            confidence: 0,
+            grade: '--',
+            reason: `従来(${direction})と初動(${earlyMoveSummary.signal})が逆方向`,
+            recommendation: 'SKIP',
+            regime: regime.regime,
+            mtfAgreement: mtf.confluence.directionAgreement,
+            earlyMoveConflict: true
+          };
+        }
+      }
+
       // エントリー品質評価（キャッシュを再利用）
       etaLog('evaluateEntryQuality() 開始');
       const qualityStart = performance.now();
       const quality = this.evaluateEntryQuality(direction, regime, mtf);
       etaLog('evaluateEntryQuality() 完了:', (performance.now() - qualityStart).toFixed(2), 'ms');
 
+      // v5.8.14: 初動検出が一致している場合は信頼度を強化
+      let finalConfidence = quality.confluenceScore.total;
+      let finalGrade = quality.confluenceScore.grade;
+      if (earlyMoveSummary && earlyMoveSummary.signal === direction) {
+        const boost = Math.round(earlyMoveSummary.confidence * 0.2);
+        finalConfidence = Math.min(100, finalConfidence + boost);
+        const logFn = window.originalConsoleLog || console.log;
+        logFn(`[初動検出] ✅ 従来と初動が一致(${direction}) → 信頼度+${boost}% (${quality.confluenceScore.total}→${finalConfidence})`);
+      }
+
       etaLog('analyze() 完了:', (performance.now() - startTime).toFixed(2), 'ms', '推奨:', quality.recommendation);
+
+      // v5.9.0: エントリー条件v2用データを生成
+      const v2Data = this.buildV2ConditionData(regime, mtf, earlyMoveAnalysis, direction);
 
       return {
         signal: direction,
-        confidence: quality.confluenceScore.total,
-        grade: quality.confluenceScore.grade,
+        confidence: finalConfidence,
+        grade: finalGrade,
         recommendation: quality.recommendation,
         reason: quality.reason,
         regime: regime.regime,
         mtfAgreement: mtf.confluence.directionAgreement,
-        qualityScore: quality.qualityScore
+        qualityScore: quality.qualityScore,
+        earlyMoveAnalysis: earlyMoveSummary,
+        volatilityRegime: this.volatilityState.regime,
+        v2: v2Data
       };
     } catch (error) {
       etaLog('analyze() エラー:', error.message, error.stack);
@@ -1799,6 +2248,183 @@ class EnhancedTechnicalAnalysis {
         recommendation: 'SKIP'
       };
     }
+  }
+
+  // ========================================
+  // v5.9.0: エントリー条件v2用データ生成
+  // ========================================
+
+  /**
+   * v2条件判定に必要な全データを一括生成
+   */
+  buildV2ConditionData(regime, mtf, earlyMoveAnalysis, direction) {
+    const data = this.priceHistory;
+    if (!data || data.length < 50) return null;
+
+    // --- T1: 局面適合用データ ---
+    const adxValue = regime.details?.adx || 0;
+    // ADX履歴を更新してパーセンタイルを計算
+    this.adxHistory.push(adxValue);
+    if (this.adxHistory.length > this.adxHistoryMax) this.adxHistory.shift();
+    const adxPct = this.calculatePercentile(this.adxHistory, adxValue);
+
+    // EMA傾き正規化: slope = (EMA20_now - EMA20_5ago) / (ATR14 + ε)
+    const ema20Now = this.calculateEMA(data, 20);
+    const ema20_5ago = data.length >= 25 ? this.calculateEMA(data.slice(0, -5), 20) : ema20Now;
+    const atr14 = this.volatilityState.currentATR || 0.0001;
+    const emaSlope = (ema20Now - ema20_5ago) / (atr14 + 0.00001);
+
+    // BB幅拡大率
+    const bb = this.calculateBollingerBands(data, 20, 2);
+    const bbWidth = bb?.bandwidth || 0;
+    this.bbWidthHistory.push(bbWidth);
+    if (this.bbWidthHistory.length > this.bbWidthHistoryMax) this.bbWidthHistory.shift();
+    const medianBBWidth = this.calculateMedian(this.bbWidthHistory);
+    const bbExpansionRatio = medianBBWidth > 0 ? bbWidth / medianBBWidth : 1.0;
+    const bbPosition = bb ? ((data[data.length - 1] - bb.lower) / (bb.upper - bb.lower)) * 100 : 50;
+
+    // v2レジーム分類
+    let v2Regime = 'TRANSITION';
+    if (bbExpansionRatio >= 1.30 && (bbPosition < 10 || bbPosition > 90)) {
+      v2Regime = 'BREAKOUT';
+    } else if (adxPct >= 0.70 && Math.abs(emaSlope) >= 0.25) {
+      v2Regime = 'TREND';
+    } else if (adxPct <= 0.40 && bbExpansionRatio <= 1.10) {
+      v2Regime = 'RANGE';
+    }
+
+    // --- T2: ボラ適合用データ ---
+    const medianATR = this.calculateMedian(this.volatilityState.history.slice(-50));
+    const volRatio = medianATR > 0 ? atr14 / medianATR : 1.0;
+
+    // --- T3: 時間軸整合用データ ---
+    // 各TFの方向スコア s_tf = (vH - vL) / 7
+    const tfScores = {};
+    for (const [tf, result] of Object.entries(mtf.timeframes)) {
+      if (!result.signals) { tfScores[tf] = 0; continue; }
+      let vH = 0, vL = 0;
+      for (const sig of Object.values(result.signals)) {
+        if (sig === 'HIGH') vH++;
+        else if (sig === 'LOW') vL++;
+      }
+      tfScores[tf] = (vH - vL) / 7;
+    }
+    // 重み付き整合スコア（3TF版: 30, 60, 180）
+    const s30 = tfScores['30'] || 0;
+    const s60 = tfScores['60'] || 0;
+    const s180 = tfScores['180'] || 0;
+    const mtfWeightedScore = 0.30 * s30 + 0.40 * s60 + 0.30 * s180;
+
+    // --- T4: エントリートリガー用データ ---
+    const rsi = regime.details?.rsi || 50;
+    const stoch = this.calculateStochastic(data, 14, 3, 3);
+    const macd = this.calculateMACD(data);
+    const ema9 = this.calculateEMA(data, 9);
+    const currentPrice = data[data.length - 1];
+    const prevPrice = data.length >= 2 ? data[data.length - 2] : currentPrice;
+
+    // RSI 50クロス判定
+    const rsiHistory = this.indicatorHistory.rsi;
+    const rsiPrev = rsiHistory.length >= 2 ? rsiHistory[rsiHistory.length - 2] : rsi;
+    const rsiCross50Up = rsiPrev <= 50 && rsi > 50;
+    const rsiCross50Down = rsiPrev >= 50 && rsi < 50;
+
+    // MACDヒストグラム連続増加/ゼロ付近判定
+    const macdHist = macd?.histogram || 0;
+    const macdHistory = this.indicatorHistory.macdHist;
+    let macdIncreasing = false;
+    let macdNearZero = Math.abs(macdHist) < atr14 * 0.5;
+    if (macdHistory.length >= 3) {
+      const h = macdHistory;
+      macdIncreasing = (h[h.length - 1] > h[h.length - 2]) && (h[h.length - 2] > h[h.length - 3]);
+    }
+
+    // EMA9ブレイク判定
+    const ema9BreakUp = prevPrice <= ema9 && currentPrice > ema9;
+    const ema9BreakDown = prevPrice >= ema9 && currentPrice < ema9;
+    // EMA9傾き
+    const ema9Prev = data.length >= 3 ? this.calculateEMA(data.slice(0, -1), 9) : ema9;
+    const ema9SlopeUp = ema9 > ema9Prev;
+    const ema9SlopeDown = ema9 < ema9Prev;
+
+    // BB回帰判定（レンジ用）
+    const bbUpper = bb?.upper || currentPrice;
+    const bbLower = bb?.lower || currentPrice;
+    const prevBBExceeded = prevPrice > bbUpper || prevPrice < bbLower;
+    const nowInsideBB = currentPrice <= bbUpper && currentPrice >= bbLower;
+    const bbReversion = prevBBExceeded && nowInsideBB;
+
+    // RSI極端域からの戻り判定（レンジ用）
+    const rsiFromOverbought = rsiPrev > 70 && rsi <= 70;
+    const rsiFromOversold = rsiPrev < 30 && rsi >= 30;
+
+    // ストキャスティクス極端域反転クロス判定（レンジ用）
+    const stochK = stoch?.k || 50;
+    const stochD = stoch?.d || 50;
+    const stochHistory = this.indicatorHistory.stochK;
+    const stochPrev = stochHistory.length >= 2 ? stochHistory[stochHistory.length - 2] : stochK;
+    const stochReversalUp = stochPrev < 20 && stochK > stochD;
+    const stochReversalDown = stochPrev > 80 && stochK < stochD;
+
+    return {
+      // T1: 局面適合
+      t1: {
+        adxPct,
+        emaSlope,
+        bbExpansionRatio,
+        bbPosition,
+        v2Regime,  // 'TREND' | 'BREAKOUT' | 'RANGE' | 'TRANSITION'
+        rsi
+      },
+      // T2: ボラ適合
+      t2: {
+        volRatio,
+        medianATR
+      },
+      // T3: 時間軸整合
+      t3: {
+        tfScores,
+        mtfWeightedScore,
+        s30, s60, s180
+      },
+      // T4: エントリートリガー
+      t4: {
+        // トレンド用
+        rsiCross50Up, rsiCross50Down,
+        macdIncreasing, macdNearZero, macdHist,
+        ema9BreakUp, ema9BreakDown,
+        ema9SlopeUp, ema9SlopeDown,
+        // レンジ用
+        bbReversion,
+        rsiFromOverbought, rsiFromOversold,
+        stochReversalUp, stochReversalDown,
+        // 共通
+        rsi, stochK, stochD
+      }
+    };
+  }
+
+  /**
+   * 配列内での値のパーセンタイル（0〜1）を計算
+   */
+  calculatePercentile(arr, value) {
+    if (!arr || arr.length === 0) return 0.5;
+    const sorted = [...arr].sort((a, b) => a - b);
+    let count = 0;
+    for (const v of sorted) {
+      if (v < value) count++;
+    }
+    return count / sorted.length;
+  }
+
+  /**
+   * 配列の中央値を計算
+   */
+  calculateMedian(arr) {
+    if (!arr || arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
 
   /**
@@ -2349,6 +2975,101 @@ class EnhancedTechnicalAnalysis {
     }
 
     return { signal: 'NEUTRAL', confidence: 50 };
+  }
+
+  /**
+   * v5.8.14: 初動検出を考慮したシグナル集計
+   * 従来のシグナル集計に初動検出・モメンタム分析の結果を統合
+   */
+  aggregateSignalsWithEarlyMove(signals, earlyMoveAnalysis) {
+    // 基本のシグナル集計
+    let highCount = 0, lowCount = 0;
+    const total = Object.keys(signals).length;
+
+    for (const signal of Object.values(signals)) {
+      if (signal === 'HIGH') highCount++;
+      else if (signal === 'LOW') lowCount++;
+    }
+
+    // 初動検出の結果を取得
+    const earlyMoveSummary = earlyMoveAnalysis?.summary;
+
+    // 初動検出がSKIP（極端ゾーン）を返した場合 → 見送り
+    if (earlyMoveSummary?.signal === 'SKIP') {
+      etaLog(`[aggregateWithEarlyMove] SKIP: ${earlyMoveSummary.reason}`);
+      return {
+        signal: 'NEUTRAL',
+        confidence: 0,
+        reason: earlyMoveSummary.reason,
+        skipped: true
+      };
+    }
+
+    // 従来のシグナル判定
+    let baseSignal = 'NEUTRAL';
+    let baseConfidence = 50;
+
+    if (highCount > lowCount && highCount >= total * 0.43) {
+      baseSignal = 'HIGH';
+      baseConfidence = Math.round((highCount / total) * 100);
+    } else if (lowCount > highCount && lowCount >= total * 0.43) {
+      baseSignal = 'LOW';
+      baseConfidence = Math.round((lowCount / total) * 100);
+    }
+
+    // 初動検出のシグナルと信頼度
+    const earlyMoveSignal = earlyMoveSummary?.signal || 'NEUTRAL';
+    const earlyMoveConfidence = earlyMoveSummary?.confidence || 0;
+
+    // シグナルの統合ロジック
+    let finalSignal = baseSignal;
+    let finalConfidence = baseConfidence;
+    let reason = '';
+
+    // Case 1: 両方が同じ方向 → 強化
+    if (baseSignal === earlyMoveSignal && baseSignal !== 'NEUTRAL') {
+      finalConfidence = Math.min(100, baseConfidence + Math.round(earlyMoveConfidence * 0.3));
+      reason = `従来+初動一致 (${earlyMoveSummary?.reason || ''})`;
+      etaLog(`[aggregateWithEarlyMove] 強化: ${finalSignal} conf=${finalConfidence}`);
+    }
+    // Case 2: 従来がNEUTRALだが初動が明確 → 初動を採用
+    else if (baseSignal === 'NEUTRAL' && earlyMoveSignal !== 'NEUTRAL' && earlyMoveConfidence >= 60) {
+      finalSignal = earlyMoveSignal;
+      finalConfidence = earlyMoveConfidence;
+      reason = `初動検出優先 (${earlyMoveSummary?.reason || ''})`;
+      etaLog(`[aggregateWithEarlyMove] 初動優先: ${finalSignal} conf=${finalConfidence}`);
+    }
+    // Case 3: 従来と初動が逆方向 → 信頼度を下げる
+    else if (baseSignal !== 'NEUTRAL' && earlyMoveSignal !== 'NEUTRAL' && baseSignal !== earlyMoveSignal) {
+      // 初動が強い場合は見送り
+      if (earlyMoveConfidence >= 70) {
+        finalSignal = 'NEUTRAL';
+        finalConfidence = 30;
+        reason = `従来と初動が逆方向 - 見送り推奨`;
+        etaLog(`[aggregateWithEarlyMove] 逆方向のため見送り`);
+      } else {
+        // 初動が弱い場合は従来を維持だが信頼度を下げる
+        finalConfidence = Math.max(30, baseConfidence - 20);
+        reason = `従来シグナル（初動は逆方向）`;
+        etaLog(`[aggregateWithEarlyMove] 従来維持だが信頼度低下: ${finalSignal} conf=${finalConfidence}`);
+      }
+    }
+    // Case 4: その他 → 従来のまま
+    else {
+      reason = highCount > 0 || lowCount > 0 ? '従来シグナル' : '明確なシグナルなし';
+    }
+
+    etaLog(`[aggregateWithEarlyMove] Final: ${finalSignal} conf=${finalConfidence} (base=${baseSignal}/${baseConfidence}, early=${earlyMoveSignal}/${earlyMoveConfidence})`);
+
+    return {
+      signal: finalSignal,
+      confidence: finalConfidence,
+      reason,
+      baseSignal,
+      baseConfidence,
+      earlyMoveSignal,
+      earlyMoveConfidence
+    };
   }
 }
 

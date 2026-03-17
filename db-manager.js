@@ -214,14 +214,15 @@ class DBManager {
      * @param {number} maxCount - 最大保持件数
      * @param {string} assetName - 通貨ペア名
      */
-    async pruneRecords(maxCount = 50000, assetName = null) {
+    async pruneRecords(maxCount = 25000, assetName = null) {
         if (!this.db) await this.init();
 
         const count = await this.getCount(assetName);
+        console.error(`[DB] pruneRecords: asset=${assetName}, count=${count}, max=${maxCount}`);
         if (count <= maxCount) return 0;
 
         const deleteCount = count - maxCount;
-        console.log(`[DB] Pruning ${deleteCount} records...`);
+        console.error(`[DB] Pruning ${deleteCount} records for ${assetName}...`);
 
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.storeName], 'readwrite');
@@ -246,11 +247,12 @@ class DBManager {
             };
 
             transaction.oncomplete = () => {
-                console.log(`[DB] Pruned ${deleted} records`);
+                console.error(`[DB] Pruned ${deleted}/${deleteCount} records for ${assetName}`);
                 resolve(deleted);
             };
 
             transaction.onerror = (event) => {
+                console.error('[DB] Prune error:', event.target.error);
                 reject(event.target.error);
             };
         });
@@ -361,6 +363,91 @@ class DBManager {
     }
 
     /**
+     * 特定の通貨ペアの指定時間帯のレコードを削除
+     * @param {string|null} assetName - 通貨ペア名（nullで全通貨ペア）
+     * @param {number[]} hours - 削除する時間帯の配列 (例: [10, 11, 12])
+     * @returns {Promise<number>} 削除件数
+     */
+    async deleteRecordsByHour(assetName, hours) {
+        if (!this.db) await this.init();
+        if (!hours || hours.length === 0) return 0;
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+            const hourIndex = store.index('hour');
+            let deletedCount = 0;
+
+            for (const hour of hours) {
+                const request = hourIndex.openCursor(IDBKeyRange.only(hour));
+
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        if (!assetName || cursor.value.assetName === assetName) {
+                            cursor.delete();
+                            deletedCount++;
+                        }
+                        cursor.continue();
+                    }
+                };
+
+                request.onerror = (event) => {
+                    console.error('[DB] Delete by hour cursor error:', event.target.error);
+                };
+            }
+
+            transaction.oncomplete = () => {
+                console.log(`[DB] Deleted ${deletedCount} records for hours [${hours.join(',')}]${assetName ? ` (${assetName})` : ' (all assets)'}`);
+                resolve(deletedCount);
+            };
+
+            transaction.onerror = (event) => {
+                console.error('[DB] Delete by hour transaction error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    /**
+     * 通貨ペアの時間帯別レコード件数を取得
+     * @param {string|null} assetName - 通貨ペア名（nullで全通貨ペア合算）
+     * @returns {Promise<Object>} { 0: count, 1: count, ..., 23: count }
+     */
+    async getHourlyCountsForAsset(assetName = null) {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const hourlyCounts = {};
+            for (let h = 0; h < 24; h++) hourlyCounts[h] = 0;
+
+            let request;
+            if (assetName) {
+                const index = store.index('assetName');
+                request = index.openCursor(IDBKeyRange.only(assetName));
+            } else {
+                request = store.openCursor();
+            }
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    const hour = cursor.value.hour !== undefined
+                        ? cursor.value.hour
+                        : new Date(cursor.value.timestamp).getHours();
+                    hourlyCounts[hour]++;
+                    cursor.continue();
+                }
+            };
+
+            transaction.oncomplete = () => resolve(hourlyCounts);
+            transaction.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    /**
      * 市場セッションの定義
      */
     static getMarketSessions() {
@@ -402,6 +489,95 @@ class DBManager {
             hours.push(before, after);
         }
         return hours;
+    }
+
+    /**
+     * 指定タイムスタンプ以降のレコード数を取得
+     */
+    async getRecordCountSince(sinceTimestamp, assetName = null) {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const index = store.index('timestamp');
+            const range = IDBKeyRange.lowerBound(sinceTimestamp);
+            let count = 0;
+            const request = index.openCursor(range);
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    if (!assetName || cursor.value.assetName === assetName) {
+                        count++;
+                    }
+                    cursor.continue();
+                }
+            };
+            transaction.oncomplete = () => resolve(count);
+            transaction.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    /**
+     * 通貨ペアの月別レコード件数を取得
+     * @returns {Promise<Object>} { "2026-03": count, "2026-02": count, ... }
+     */
+    async getMonthlyCounts(assetName = null) {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readonly');
+            const store = transaction.objectStore(this.storeName);
+            const months = {};
+            let request;
+            if (assetName) {
+                const index = store.index('assetName');
+                request = index.openCursor(IDBKeyRange.only(assetName));
+            } else {
+                request = store.openCursor();
+            }
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    const d = new Date(cursor.value.timestamp);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    months[key] = (months[key] || 0) + 1;
+                    cursor.continue();
+                }
+            };
+            transaction.oncomplete = () => resolve(months);
+            transaction.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    /**
+     * 指定月の古いレコードをN件削除
+     * @param {string} assetName - 通貨ペア
+     * @param {string} yearMonth - "2026-03" 形式
+     * @param {number} deleteCount - 削除件数
+     */
+    async deleteOldestByMonth(assetName, yearMonth, deleteCount) {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+            const index = store.index('timestamp');
+            let deleted = 0;
+            const request = index.openCursor(); // 古い順
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor && deleted < deleteCount) {
+                    const rec = cursor.value;
+                    const d = new Date(rec.timestamp);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    if ((!assetName || rec.assetName === assetName) && key === yearMonth) {
+                        cursor.delete();
+                        deleted++;
+                    }
+                    cursor.continue();
+                }
+            };
+            transaction.oncomplete = () => resolve(deleted);
+            transaction.onerror = (event) => reject(event.target.error);
+        });
     }
 
     /**
