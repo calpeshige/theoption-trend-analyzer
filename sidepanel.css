@@ -1706,29 +1706,29 @@ body {
   text-align: center;
   transition: color 0.3s ease, background 0.3s ease;
 }
-.market-regime-section {
+.market-momentum-section {
   padding: 12px 16px 8px;
 }
 
-.market-regime-row {
+.market-momentum-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-.market-regime-icon {
+.market-momentum-icon {
   font-size: 18px;
   line-height: 1;
 }
 
-.market-regime-label {
+.market-momentum-label {
   font-size: 14px;
   font-weight: 700;
   color: var(--md-sys-color-on-surface);
 }
 
-.market-strength-bar {
+.market-momentum-bar {
   height: 4px;
   background: var(--md-sys-color-surface-variant, #e0e0e0);
   border-radius: 2px;
@@ -1736,7 +1736,7 @@ body {
   margin-bottom: 8px;
 }
 
-.market-strength-fill {
+.market-momentum-fill {
   height: 100%;
   width: 0%;
   border-radius: 2px;
@@ -1744,33 +1744,11 @@ body {
   transition: width 0.6s ease, background 0.4s ease;
 }
 
-
-.market-history {
-  padding: 0 16px;
-  max-height: 60px;
-  overflow-y: auto;
-}
-
-.market-history-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
+.market-price-position {
+  font-size: 12px;
+  font-weight: 500;
   color: var(--md-sys-color-on-surface-variant);
-  padding: 2px 0;
-}
-
-.market-history-time {
-  font-size: 10px;
-  color: var(--md-sys-color-on-surface-variant);
-  opacity: 0.7;
-  min-width: 36px;
-}
-
-.market-history-arrow {
-  font-size: 10px;
-  color: var(--md-sys-color-on-surface-variant);
-  opacity: 0.5;
+  margin-bottom: 4px;
 }
 
 .market-forecast {
@@ -1783,6 +1761,14 @@ body {
   font-weight: 500;
   color: var(--md-sys-color-on-surface);
   line-height: 1.5;
+}
+
+.market-last-updated {
+  font-size: 10px;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.6;
+  margin-top: 4px;
+  text-align: right;
 }
 
 

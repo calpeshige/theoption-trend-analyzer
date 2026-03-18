@@ -2322,10 +2322,7 @@ function updateStratificationInsights(stratification) {
 
 let latestEnhancedData = null;
 
-// 局面変遷ログ（最大5件保持）
-let marketRegimeHistory = [];
-let lastRegimeLabel = null;
-let lastRegimeChangeTime = 0; // レジーム変更のデバウンス用
+let lastMomentumValue = null; // 前回のモメンタム値（加速/減速判定用）
 let pendingMarketData = null; // 次回更新用のデータをバッファ
 let marketOverviewInitialized = false; // 初回更新済みフラグ
 let marketOverviewTimerId = null; // setIntervalのID
@@ -2404,270 +2401,168 @@ function updateMarketOverview(enhanced, technical, forceUpdate = false) {
   }
   marketOverviewInitialized = true;
 
-  // デバッグ
-  const intervalSec = getMarketOverviewIntervalSec();
-  console.log(`[マーケット概況] 更新実行 (${currentTimeframe}秒判定, ${intervalSec}秒間隔) |`,
-    'v2:', v2 ? 'あり' : 'なし',
-    '| technical:', technical ? `isTrending=${technical.isTrending}, strength=${technical.totalStrength}, dir=${technical.trendDirection}` : 'なし');
+  // モメンタム・価格位置・ボラティリティを抽出
+  let momentum = 0;       // -1〜+1
+  let bbPosition = 50;    // 0〜100（ボリンジャーバンド内の位置）
+  let volRatio = 1.0;
+  let volLabel = '通常';
+  let volClass = 'vol-normal';
+  let macdIncreasing = null;
 
-  // v2がある場合: フル表示
-  if (v2 && v2.t1 && v2.t2 && v2.t3) {
-    const { v2Regime, emaSlope, rsi, bbPosition } = v2.t1;
-    const { volRatio } = v2.t2;
-    const { s30, s60, s180, mtfWeightedScore } = v2.t3;
-    const t4 = v2.t4;
-
-    // 1. 相場局面
-    const regimeInfo = getRegimeInfo(v2Regime, emaSlope);
-    const regimeIconEl = document.getElementById('market-regime-icon');
-    const regimeLabelEl = document.getElementById('market-regime-label');
-    const strengthFill = document.getElementById('market-strength-fill');
-
-    if (regimeIconEl) regimeIconEl.textContent = regimeInfo.icon;
-    if (regimeLabelEl) {
-      regimeLabelEl.textContent = regimeInfo.label;
-      regimeLabelEl.style.color = regimeInfo.color;
-    }
-    if (strengthFill) {
-      let strength = 0;
-      if (v2Regime.startsWith('STRONG_TREND')) {
-        strength = Math.min(100, 60 + Math.abs(emaSlope) * 40);
-      } else if (v2Regime.startsWith('WEAK_TREND')) {
-        strength = Math.min(50, 20 + Math.abs(emaSlope) * 30);
-      } else if (v2Regime.startsWith('BREAKOUT')) {
-        strength = 80;
-      } else if (v2Regime.startsWith('REVERSAL')) {
-        strength = 50;
-      }
-      // RANGE は 0（デフォルト）
-      strengthFill.style.width = `${strength}%`;
-      strengthFill.style.background = regimeInfo.color;
-    }
-
-    // ボラティリティバッジ（ヘッダーに表示）
-    const volBadgeV2 = document.getElementById('market-volatility-badge');
-    if (volBadgeV2) {
-      const volLabel = volRatio < 0.65 ? '非常に静穏' : volRatio < 0.85 ? '静穏' : volRatio > 1.4 ? '非常に活発' : volRatio > 1.1 ? '活発' : '通常';
-      const volClass = volRatio < 0.65 ? 'vol-very-low' : volRatio < 0.85 ? 'vol-low' : volRatio > 1.4 ? 'vol-very-high' : volRatio > 1.1 ? 'vol-high' : 'vol-normal';
-      volBadgeV2.textContent = volLabel;
-      volBadgeV2.className = `market-volatility-badge ${volClass}`;
-    }
-
-    // 2. 変遷ログ（デバウンス付き: 10秒以内の変更は無視）
-    const now = Date.now();
-    if (regimeInfo.label !== lastRegimeLabel && lastRegimeLabel !== null) {
-      if (now - lastRegimeChangeTime >= 10000) {
-        const dateNow = new Date();
-        const timeStr = `${dateNow.getHours()}:${String(dateNow.getMinutes()).padStart(2, '0')}`;
-        marketRegimeHistory.unshift({ time: timeStr, from: lastRegimeLabel, to: regimeInfo.label });
-        if (marketRegimeHistory.length > 5) marketRegimeHistory.pop();
-        lastRegimeLabel = regimeInfo.label;
-        lastRegimeChangeTime = now;
-      }
-    } else {
-      lastRegimeLabel = regimeInfo.label;
-      if (lastRegimeChangeTime === 0) lastRegimeChangeTime = now;
-    }
-
-    const historyEl = document.getElementById('market-history');
-    if (historyEl) {
-      if (marketRegimeHistory.length === 0) {
-        historyEl.innerHTML = '';
-      } else {
-        historyEl.innerHTML = marketRegimeHistory.map(h =>
-          `<div class="market-history-item"><span class="market-history-time">${h.time}</span>${h.from} <span class="market-history-arrow">\u2192</span> ${h.to}</div>`
-        ).join('');
-      }
-    }
-
-    // 3. 短期予測文
-    const forecast = generateForecast(v2Regime, emaSlope, rsi, bbPosition, volRatio, mtfWeightedScore, t4);
-    const forecastEl = document.getElementById('market-forecast-text');
-    if (forecastEl) forecastEl.textContent = forecast;
-    return;
-  }
-
-  // v2がない場合: technicalデータからフォールバック表示
-  if (technical) {
-    const regimeIconEl = document.getElementById('market-regime-icon');
-    const regimeLabelEl = document.getElementById('market-regime-label');
-    const strengthFill = document.getElementById('market-strength-fill');
-    const forecastEl = document.getElementById('market-forecast-text');
+  if (v2 && v2.t1 && v2.t2) {
+    momentum = v2.t1.emaSlope || 0;
+    bbPosition = v2.t1.bbPosition ?? 50;
+    volRatio = v2.t2.volRatio || 1.0;
+    macdIncreasing = v2.t4?.macdIncreasing ?? null;
+  } else if (technical) {
     const breakdown = technical.breakdown || {};
+    momentum = breakdown.momentum?.score ?? 0;
+    // フォールバック: bbPositionがない場合はRSIから推定
+    bbPosition = breakdown.rsi?.value ?? 50;
+    // ボラティリティ文字列→ratioに変換
+    const volStr = technical.volatility || 'NORMAL';
+    const ratioMap = { 'VERY_LOW': 0.5, 'LOW': 0.75, 'MODERATE': 1.0, 'NORMAL': 1.0, 'HIGH': 1.3, 'VERY_HIGH': 1.6, 'EXTREME': 2.0 };
+    volRatio = ratioMap[volStr] || 1.0;
+  }
 
-    // breakdownからRSI値を取得
-    const rsiValue = breakdown.rsi?.value ?? null;
-    // breakdownからADX（トレンド強度の補助指標）を取得
-    const adxValue = breakdown.adx?.adx ?? null;
-    // breakdownからモメンタムを取得
-    const momentumScore = breakdown.momentum?.score ?? 0;
+  // ボラティリティバッジ
+  if (volRatio < 0.65) { volLabel = '非常に静穏'; volClass = 'vol-very-low'; }
+  else if (volRatio < 0.85) { volLabel = '静穏'; volClass = 'vol-low'; }
+  else if (volRatio > 1.4) { volLabel = '非常に活発'; volClass = 'vol-very-high'; }
+  else if (volRatio > 1.1) { volLabel = '活発'; volClass = 'vol-high'; }
+  const volBadge = document.getElementById('market-volatility-badge');
+  if (volBadge) {
+    volBadge.textContent = volLabel;
+    volBadge.className = `market-volatility-badge ${volClass}`;
+  }
 
-    // トレンド判定の補強: isTrending + totalStrength に加えて
-    // ADX > 20 かつ totalStrength > 25 ならトレンドと見なす（閾値が厳しすぎる問題への対策）
-    let effectiveIsTrending = technical.isTrending;
-    let effectiveDir = technical.trendDirection || '中立';
-    const strength = technical.totalStrength || 0;
+  // モメンタム方向・アイコン・ラベル
+  const absMom = Math.abs(momentum);
+  let momIcon, momLabel, momColor;
+  if (momentum > 0.5)       { momIcon = '⬆'; momLabel = '上方向に強い勢い'; momColor = '#2e7d32'; }
+  else if (momentum > 0.2)  { momIcon = '⬆'; momLabel = '上方向に勢いあり'; momColor = '#2e7d32'; }
+  else if (momentum > 0.08) { momIcon = '↗'; momLabel = 'やや上方向'; momColor = '#4caf50'; }
+  else if (momentum < -0.5) { momIcon = '⬇'; momLabel = '下方向に強い勢い'; momColor = '#c62828'; }
+  else if (momentum < -0.2) { momIcon = '⬇'; momLabel = '下方向に勢いあり'; momColor = '#c62828'; }
+  else if (momentum < -0.08){ momIcon = '↘'; momLabel = 'やや下方向'; momColor = '#e53935'; }
+  else                      { momIcon = '➡'; momLabel = '方向感なし'; momColor = '#757575'; }
 
-    if (!effectiveIsTrending && strength >= 25 && adxValue !== null && adxValue > 20) {
-      // スコアからは「レンジ」だが、ADXとstrengthが十分 → トレンドとして扱う
-      effectiveIsTrending = true;
-      // 方向はmomentumやbreakdownから推定
-      if (momentumScore > 0.5) effectiveDir = '上昇';
-      else if (momentumScore < -0.5) effectiveDir = '下降';
-      else if (breakdown.direction?.score > 0) effectiveDir = '上昇';
-      else if (breakdown.direction?.score < 0) effectiveDir = '下降';
-    }
+  // 勢いの変化（前回モメンタムとの比較）
+  let changeLabel = '';
+  if (lastMomentumValue !== null) {
+    const diff = absMom - Math.abs(lastMomentumValue);
+    if (diff > 0.03) changeLabel = '（加速中）';
+    else if (diff < -0.03) changeLabel = '（減速中）';
+    else changeLabel = '（横ばい）';
+  }
+  lastMomentumValue = momentum;
 
-    // 方向が確定していないトレンドはレンジとして扱う
-    if (effectiveIsTrending && effectiveDir !== '上昇' && effectiveDir !== '下降') {
-      effectiveIsTrending = false;
-    }
+  // モメンタム表示
+  const momIconEl = document.getElementById('market-momentum-icon');
+  const momLabelEl = document.getElementById('market-momentum-label');
+  const momFill = document.getElementById('market-momentum-fill');
+  if (momIconEl) momIconEl.textContent = momIcon;
+  if (momLabelEl) {
+    momLabelEl.textContent = `${momLabel}${changeLabel}`;
+    momLabelEl.style.color = momColor;
+  }
+  if (momFill) {
+    const barWidth = Math.min(100, absMom * 100);
+    momFill.style.width = `${barWidth}%`;
+    momFill.style.background = momColor;
+  }
 
-    if (effectiveIsTrending) {
-      const isUp = effectiveDir === '上昇';
-      const color = isUp ? '#2e7d32' : '#c62828';
-      if (regimeIconEl) regimeIconEl.textContent = isUp ? '📈' : '📉';
-      if (regimeLabelEl) { regimeLabelEl.textContent = `${effectiveDir}トレンド`; regimeLabelEl.style.color = color; }
-      if (strengthFill) { strengthFill.style.width = `${strength}%`; strengthFill.style.background = color; }
-    } else {
-      if (regimeIconEl) regimeIconEl.textContent = '\u2194';
-      if (regimeLabelEl) { regimeLabelEl.textContent = 'レンジ相場'; regimeLabelEl.style.color = '#757575'; }
-      if (strengthFill) { strengthFill.style.width = '0%'; strengthFill.style.background = '#757575'; }
-    }
+  // 価格位置
+  let posText;
+  if (bbPosition > 95)      posText = '直近の値幅を上に突破';
+  else if (bbPosition > 75) posText = '直近の値幅の上限付近';
+  else if (bbPosition > 60) posText = '直近の値幅のやや上寄り';
+  else if (bbPosition >= 40) posText = '直近の値幅の中央付近';
+  else if (bbPosition >= 25) posText = '直近の値幅のやや下寄り';
+  else if (bbPosition >= 5)  posText = '直近の値幅の下限付近';
+  else                       posText = '直近の値幅を下に突破';
 
-    // ボラティリティバッジ（ヘッダーに表示）
-    const volBadge = document.getElementById('market-volatility-badge');
-    if (volBadge && technical.volatility) {
-      const volMap = { 'VERY_LOW': '非常に静穏', 'LOW': '静穏', 'MODERATE': '通常', 'NORMAL': '通常', 'HIGH': '活発', 'VERY_HIGH': '非常に活発', 'EXTREME': '非常に活発' };
-      const classMap = { 'VERY_LOW': 'vol-very-low', 'LOW': 'vol-low', 'MODERATE': 'vol-normal', 'NORMAL': 'vol-normal', 'HIGH': 'vol-high', 'VERY_HIGH': 'vol-very-high', 'EXTREME': 'vol-very-high' };
-      volBadge.textContent = volMap[technical.volatility] || technical.volatility;
-      volBadge.className = `market-volatility-badge ${classMap[technical.volatility] || 'vol-normal'}`;
-    }
+  const posEl = document.getElementById('market-price-position');
+  if (posEl) posEl.textContent = posText;
 
-    // 予測文（technicalからの詳細版）
-    if (forecastEl) {
-      const parts = [];
-      if (effectiveIsTrending) {
-        if (strength >= 70) {
-          parts.push(`${effectiveDir}トレンドが明確。この方向が継続する可能性が高い`);
-        } else if (strength >= 40) {
-          parts.push(`緩やかな${effectiveDir}傾向。トレンドが強まるか注視`);
-        } else {
-          parts.push(`弱い${effectiveDir}傾向。方向感が出きっていない`);
-        }
-        // RSIの過熱判定
-        if (rsiValue !== null) {
-          if (effectiveDir === '上昇' && rsiValue > 70) {
-            parts.push(`過熱圏(RSI${Math.round(rsiValue)})に入っており反落の可能性`);
-          } else if (effectiveDir === '下降' && rsiValue < 30) {
-            parts.push(`売られすぎ圏(RSI${Math.round(rsiValue)})で反発の可能性`);
-          }
-        }
-      } else {
-        parts.push('レンジ相場。方向感が出にくい状態');
-        if (adxValue !== null && adxValue > 15) {
-          parts.push('ただしトレンドが出始める兆候あり');
-        }
-      }
-      forecastEl.textContent = parts.join('。') + '。';
-    }
+  // 予測文
+  const forecastEl = document.getElementById('market-forecast-text');
+  if (forecastEl) {
+    forecastEl.textContent = generateMarketForecast(momentum, bbPosition, volRatio, macdIncreasing);
+  }
 
-    // 変遷ログ（デバウンス付き: 10秒以内の変更は無視）
-    const label = effectiveIsTrending ? `${effectiveDir}トレンド` : 'レンジ相場';
-    const now = Date.now();
-    if (label !== lastRegimeLabel && lastRegimeLabel !== null) {
-      if (now - lastRegimeChangeTime >= 10000) {
-        const dateNow = new Date();
-        const timeStr = `${dateNow.getHours()}:${String(dateNow.getMinutes()).padStart(2, '0')}`;
-        marketRegimeHistory.unshift({ time: timeStr, from: lastRegimeLabel, to: label });
-        if (marketRegimeHistory.length > 5) marketRegimeHistory.pop();
-        lastRegimeLabel = label;
-        lastRegimeChangeTime = now;
-      }
-      // 10秒以内の変更はlastRegimeLabelを更新しない → フリッカー防止
-    } else {
-      lastRegimeLabel = label;
-      if (lastRegimeChangeTime === 0) lastRegimeChangeTime = now;
-    }
-
-    const historyEl = document.getElementById('market-history');
-    if (historyEl && marketRegimeHistory.length > 0) {
-      historyEl.innerHTML = marketRegimeHistory.map(h =>
-        `<div class="market-history-item"><span class="market-history-time">${h.time}</span>${h.from} <span class="market-history-arrow">\u2192</span> ${h.to}</div>`
-      ).join('');
-    }
+  // 最終更新時刻
+  const updatedEl = document.getElementById('market-last-updated');
+  if (updatedEl) {
+    const now = new Date();
+    updatedEl.textContent = `最終更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
   }
 }
 
-function getRegimeInfo(regime, emaSlope) {
-  const regimeMap = {
-    'STRONG_TREND_UP':   { icon: '📈', label: '強い上昇トレンド', color: '#2e7d32' },
-    'STRONG_TREND_DOWN': { icon: '📉', label: '強い下降トレンド', color: '#c62828' },
-    'WEAK_TREND_UP':     { icon: '📈', label: '上昇トレンド', color: '#2e7d32' },
-    'WEAK_TREND_DOWN':   { icon: '📉', label: '下降トレンド', color: '#c62828' },
-    'RANGE':             { icon: '↔', label: 'レンジ相場', color: '#757575' },
-    'BREAKOUT_UP':       { icon: '🚀', label: '上方ブレイクアウト', color: '#2e7d32' },
-    'BREAKOUT_DOWN':     { icon: '💥', label: '下方ブレイクアウト', color: '#c62828' },
-    'REVERSAL_UP':       { icon: '🔄', label: '反転上昇', color: '#2e7d32' },
-    'REVERSAL_DOWN':     { icon: '🔄', label: '反転下降', color: '#c62828' },
-  };
-  return regimeMap[regime] || { icon: '↔', label: 'レンジ相場', color: '#757575' };
-}
-
-
-function generateForecast(regime, emaSlope, rsi, bbPosition, volRatio, mtfScore, t4) {
+/**
+ * モメンタム・価格位置ベースの予測文を生成
+ */
+function generateMarketForecast(momentum, bbPosition, volRatio, macdIncreasing) {
   const parts = [];
+  const isUp = momentum > 0.08;
+  const isDown = momentum < -0.08;
+  const isStrong = Math.abs(momentum) > 0.3;
+  const isNeutral = !isUp && !isDown;
 
-  if (regime === 'TREND' || regime === 'BREAKOUT') {
-    const dir = emaSlope > 0 ? '上昇' : '下降';
-    const strength = Math.abs(emaSlope);
+  const isUpperZone = bbPosition > 75;
+  const isLowerZone = bbPosition < 25;
+  const isBreakUp = bbPosition > 95;
+  const isBreakDown = bbPosition < 5;
+  const isMid = bbPosition >= 25 && bbPosition <= 75;
 
-    if (dir === '上昇' && rsi > 70) {
-      parts.push(`${dir}が続いているが過熱圏(RSI${Math.round(rsi)})に入っており、反落の可能性が高まっている`);
-    } else if (dir === '下降' && rsi < 30) {
-      parts.push(`${dir}が続いているが売られすぎ圏(RSI${Math.round(rsi)})に入っており、反発の可能性が高まっている`);
-    } else if (strength > 0.5) {
-      if (t4 && t4.macdIncreasing) {
-        parts.push(`${dir}の勢いが増しており、この方向が継続する見込み`);
-      } else {
-        parts.push(`${dir}トレンドが明確だが、勢いはやや鈍化の兆し`);
-      }
+  // 上方向に勢いがある場合
+  if (isUp) {
+    if (isBreakUp) {
+      if (isStrong) parts.push('上方向の勢いが強く、値幅を超える動きが続く可能性がある。ただし急激な戻しにも注意');
+      else if (macdIncreasing === false) parts.push('値幅の上限付近で勢いが弱まっている。押し戻される可能性が高まっている');
+      else parts.push('上方向の勢いは維持されているが、値幅の上限付近で膠着しやすい');
+    } else if (isUpperZone) {
+      if (macdIncreasing === false) parts.push('値幅の上限付近で勢いが弱まっている。押し戻される可能性が高まっている');
+      else parts.push('上方向の勢いは維持されているが、値幅の上限付近で膠着しやすい');
+    } else if (isLowerZone) {
+      if (isStrong) parts.push('下限付近から反発の勢いが出ている。上方向への転換の兆し');
+      else parts.push('下限付近で上方向への動きが弱い。反発が続くか不透明');
     } else {
-      parts.push(`緩やかな${dir}傾向。トレンドが強まるか反転するか、まだ判断しにくい`);
-    }
-
-    if (dir === '上昇' && bbPosition > 90) {
-      parts.push('ボリンジャーバンド上限を超えており、一旦押し戻される場面がありそう');
-    } else if (dir === '下降' && bbPosition < 10) {
-      parts.push('ボリンジャーバンド下限を超えており、一旦戻される場面がありそう');
-    }
-
-  } else if (regime === 'RANGE') {
-    if (bbPosition > 75 && rsi > 60) {
-      parts.push('レンジ上限付近。ここから下落に転じやすいポイント');
-    } else if (bbPosition < 25 && rsi < 40) {
-      parts.push('レンジ下限付近。ここから上昇に転じやすいポイント');
-    } else {
-      parts.push('レンジの中間帯にいるため、方向感が出にくい状態');
-    }
-    if (volRatio > 1.2) {
-      parts.push('ボラティリティが拡大中でレンジを抜ける可能性あり');
-    }
-
-  } else {
-    if (Math.abs(mtfScore) > 0.3) {
-      const mtfDir = mtfScore > 0 ? '上昇' : '下降';
-      parts.push(`方向感が定まっていないが、${mtfDir}方向に傾きつつある`);
-    } else {
-      parts.push('方向感が定まらず、しばらく不安定な値動きが続きそう');
+      if (macdIncreasing) parts.push('上方向の勢いが強まっている。このまま上限に向かう展開が見込まれる');
+      else if (macdIncreasing === false) parts.push('上方向への動きが鈍化している。方向感が失われつつある');
+      else parts.push('緩やかに上方向へ推移。方向感がはっきり出るか注視');
     }
   }
-
-  if (volRatio > 1.8) {
-    parts.push('ボラティリティが非常に高く、急変動に注意');
-  } else if (volRatio < 0.5) {
-    parts.push('値動きが極端に小さく、同値リスクが高い');
+  // 下方向に勢いがある場合
+  else if (isDown) {
+    if (isBreakDown) {
+      if (isStrong) parts.push('下方向の勢いが強く、値幅を超える動きが続く可能性がある。ただし急激な戻しにも注意');
+      else if (macdIncreasing) parts.push('値幅の下限付近で勢いが弱まっている。反発の可能性が高まっている');
+      else parts.push('下方向の勢いは維持されているが、値幅の下限付近で膠着しやすい');
+    } else if (isLowerZone) {
+      if (macdIncreasing) parts.push('値幅の下限付近で勢いが弱まっている。反発の可能性が高まっている');
+      else parts.push('下方向の勢いは維持されているが、値幅の下限付近で膠着しやすい');
+    } else if (isUpperZone) {
+      if (isStrong) parts.push('上限付近から反落の勢いが出ている。下方向への転換の兆し');
+      else parts.push('上限付近で下方向への動きが弱い。反落が続くか不透明');
+    } else {
+      if (macdIncreasing === false) parts.push('下方向の勢いが強まっている。このまま下限に向かう展開が見込まれる');
+      else if (macdIncreasing) parts.push('下方向への動きが鈍化している。方向感が失われつつある');
+      else parts.push('緩やかに下方向へ推移。方向感がはっきり出るか注視');
+    }
   }
+  // 方向感なし
+  else {
+    if (isBreakUp) parts.push('値幅を上に超えたが勢いが伴っていない。すぐに戻される可能性がある');
+    else if (isBreakDown) parts.push('値幅を下に超えたが勢いが伴っていない。すぐに戻される可能性がある');
+    else if (isUpperZone) parts.push('値幅の上限付近で方向感がない。ここから下に押し戻されやすい位置');
+    else if (isLowerZone) parts.push('値幅の下限付近で方向感がない。ここから上に反発しやすい位置');
+    else parts.push('方向感が出にくい状態。明確な動きが出るまで様子見が無難');
+  }
+
+  // ボラティリティ補足
+  if (volRatio > 1.8) parts.push('値動きが非常に大きく、急変動に注意');
+  else if (volRatio < 0.5) parts.push('値動きが極端に小さく、同値リスクが高い');
 
   return parts.join('。') + '。';
 }
@@ -2679,16 +2574,21 @@ function resetMarketOverview() {
   marketOverviewRemaining = 0;
   marketOverviewTargetTime = 0;
   pendingMarketData = null;
+  lastMomentumValue = null;
   const countdownEl = document.getElementById('market-countdown');
   if (countdownEl) { countdownEl.textContent = ''; }
-  const regimeLabel = document.getElementById('market-regime-label');
-  const regimeIcon = document.getElementById('market-regime-icon');
-  const strengthFill = document.getElementById('market-strength-fill');
+  const momLabel = document.getElementById('market-momentum-label');
+  const momIcon = document.getElementById('market-momentum-icon');
+  const momFill = document.getElementById('market-momentum-fill');
+  const posEl = document.getElementById('market-price-position');
   const forecastEl = document.getElementById('market-forecast-text');
-  if (regimeLabel) { regimeLabel.textContent = '分析待ち'; regimeLabel.style.color = ''; }
-  if (regimeIcon) regimeIcon.textContent = '―';
-  if (strengthFill) strengthFill.style.width = '0%';
+  if (momLabel) { momLabel.textContent = '分析待ち'; momLabel.style.color = ''; }
+  if (momIcon) momIcon.textContent = '➡';
+  if (momFill) momFill.style.width = '0%';
+  if (posEl) posEl.textContent = '';
   if (forecastEl) forecastEl.textContent = 'データ収集中...';
+  const updatedEl = document.getElementById('market-last-updated');
+  if (updatedEl) updatedEl.textContent = '';
   const volBadge = document.getElementById('market-volatility-badge');
   if (volBadge) { volBadge.textContent = ''; volBadge.className = 'market-volatility-badge'; }
 }

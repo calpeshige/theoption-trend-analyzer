@@ -140,23 +140,21 @@
             </div>
           </button>
           <div class="card-content" id="tech-content">
-            <!-- 相場局面 -->
-            <div class="market-regime-section">
-              <div class="market-regime-row">
-                <span class="market-regime-icon" id="market-regime-icon">―</span>
-                <span class="market-regime-label" id="market-regime-label">分析待ち</span>
+            <!-- モメンタム（勢い） -->
+            <div class="market-momentum-section">
+              <div class="market-momentum-row">
+                <span class="market-momentum-icon" id="market-momentum-icon">➡</span>
+                <span class="market-momentum-label" id="market-momentum-label">分析待ち</span>
               </div>
-              <div class="market-strength-bar">
-                <div class="market-strength-fill" id="market-strength-fill"></div>
+              <div class="market-momentum-bar">
+                <div class="market-momentum-fill" id="market-momentum-fill"></div>
               </div>
+              <div class="market-price-position" id="market-price-position"></div>
             </div>
-            <!-- 変遷ログ -->
-            <div class="market-history" id="market-history">
-              <!-- JSで動的生成 -->
-            </div>
-            <!-- 短期予測 -->
+            <!-- 予測文 -->
             <div class="market-forecast" id="market-forecast">
               <div class="market-forecast-text" id="market-forecast-text">データ収集中...</div>
+              <div class="market-last-updated" id="market-last-updated"></div>
             </div>
           </div>
         </article>
