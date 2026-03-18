@@ -785,13 +785,13 @@ class EnhancedTechnicalAnalysis {
    */
   getAnalysisPeriod(timeframeSec) {
     const periodMap = {
-      15: 60,    // 15秒判定 → 直近60秒（1分）
-      30: 120,   // 30秒判定 → 直近120秒（2分）
-      60: 180,   // 60秒判定 → 直近180秒（3分）
-      180: 360,  // 3分判定 → 直近360秒（6分）
-      300: 600   // 5分判定 → 直近600秒（10分）
+      15: 300,    // 15秒判定 → 直近300秒（5分・20本分）
+      30: 600,    // 30秒判定 → 直近600秒（10分・20本分）
+      60: 1200,   // 60秒判定 → 直近1200秒（20分・20本分）
+      180: 3600,  // 3分判定 → 直近3600秒（60分・20本分）
+      300: 6000   // 5分判定 → 直近6000秒（100分・20本分）
     };
-    return periodMap[timeframeSec] || timeframeSec * 4;
+    return periodMap[timeframeSec] || timeframeSec * 20;
   }
 
   /**

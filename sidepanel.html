@@ -127,64 +127,36 @@
 
       <!-- 分析詳細セクション -->
       <section class="analysis-section">
-        <!-- v5.9.0: エントリー条件ダッシュボード -->
+        <!-- マーケット概況カード -->
         <article class="analysis-card" id="tech-card">
           <button class="card-header" id="tech-header">
             <div class="card-header-left">
-              <span class="card-title">エントリー条件</span>
+              <span class="card-title">マーケット概況</span>
+              <span class="market-volatility-badge" id="market-volatility-badge"></span>
             </div>
-            <span class="card-expand-icon">▼</span>
+            <div class="card-header-right">
+              <span class="market-countdown" id="market-countdown"></span>
+              <span class="card-expand-icon">▼</span>
+            </div>
           </button>
           <div class="card-content" id="tech-content">
-            <!-- 3カードダッシュボード -->
-            <div class="cond-dashboard" id="cond-dashboard">
-              <div class="cond-card" id="cond-env">
-                <svg class="cond-ring" viewBox="0 0 60 60">
-                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
-                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
-                </svg>
-                <div class="cond-card-label">環境</div>
+            <!-- 相場局面 -->
+            <div class="market-regime-section">
+              <div class="market-regime-row">
+                <span class="market-regime-icon" id="market-regime-icon">―</span>
+                <span class="market-regime-label" id="market-regime-label">分析待ち</span>
               </div>
-              <div class="cond-card" id="cond-dir">
-                <svg class="cond-ring" viewBox="0 0 60 60">
-                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
-                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
-                </svg>
-                <div class="cond-card-label">方向</div>
-              </div>
-              <div class="cond-card" id="cond-timing">
-                <svg class="cond-ring" viewBox="0 0 60 60">
-                  <circle class="cond-ring-bg" cx="30" cy="30" r="25" />
-                  <circle class="cond-ring-fill" cx="30" cy="30" r="25" data-progress="0" />
-                </svg>
-                <div class="cond-card-label">タイミング</div>
+              <div class="market-strength-bar">
+                <div class="market-strength-fill" id="market-strength-fill"></div>
               </div>
             </div>
-            <!-- 一言コメント -->
-            <div class="cond-comment" id="cond-comment">分析待ち</div>
-            <!-- 詳細（折りたたみ） -->
-            <div class="cond-details-toggle" id="cond-details-toggle">詳細を見る</div>
-            <div class="cond-details" id="cond-details" style="display:none;">
-              <div class="entry-conditions" id="entry-conditions">
-                <div class="entry-col">
-                  <div class="entry-col-header">テクニカル</div>
-                  <div class="entry-checks" id="tech-checks">
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">局面適合</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">ボラ適合</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">時間軸整合</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">トリガー</span></div>
-                  </div>
-                </div>
-                <div class="entry-col">
-                  <div class="entry-col-header">AI予測</div>
-                  <div class="entry-checks" id="ai-checks">
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">優位性</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">同値リスク</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">信頼度</span></div>
-                    <div class="entry-check-item neutral"><span class="check-icon">―</span><span class="check-text">整合</span></div>
-                  </div>
-                </div>
-              </div>
+            <!-- 変遷ログ -->
+            <div class="market-history" id="market-history">
+              <!-- JSで動的生成 -->
+            </div>
+            <!-- 短期予測 -->
+            <div class="market-forecast" id="market-forecast">
+              <div class="market-forecast-text" id="market-forecast-text">データ収集中...</div>
             </div>
           </div>
         </article>

@@ -47,6 +47,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage(message).catch(() => {});
   }
 
+  // コンテンツスクリプトの初期化完了通知をサイドパネルに転送
+  if (message.type === 'CONTENT_SCRIPT_READY') {
+    chrome.runtime.sendMessage(message).catch(() => {});
+  }
+
   // コンテンツスクリプトからの分析データ更新
   if (message.type === 'ANALYSIS_UPDATE') {
     // データをキャッシュ

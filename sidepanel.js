@@ -74,8 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // v5.9.3: Signal20データを2秒ごとにポーリング（確実な更新）
   startSignal20Polling();
 
-  // v5.9.0: エントリー条件ダッシュボードの詳細展開トグル
-  initCondDetailsToggle();
+  // マーケット概況カードはデフォルトで展開
+  const techCard = document.getElementById('tech-card');
+  if (techCard) {
+    techCard.classList.add('expanded');
+    expandedCards.add('tech-card');
+  }
 
   // 初期データ取得
   chrome.storage.local.get(['sidepanel_asset', 'sidepanel_dataCount'], (result) => {
@@ -102,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const card = document.getElementById(cardId);
     if (card) card.classList.add('expanded');
   });
+
 });
 
 // v5.6.4: visibilitychange監視は削除（不要）
@@ -1055,6 +1060,9 @@ function selectTimeframe(timeframe) {
   }
   lastValidAICardData = null;
 
+  // 時間枠変更時はマーケット概況をリセット（新しい間隔で即更新させる）
+  resetMarketOverview();
+
   // 詳細カードを更新
   if (latestAnalysisData) {
     updateDisplay(latestAnalysisData);
@@ -1203,6 +1211,13 @@ function notifySettingChange(key, value) {
 // v5.6.4: bubinga_systemパターン - 常にデータを受信、状態管理なし
 function listenForAnalysisUpdates() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // コンテンツスクリプト初期化完了 → 即座にデータ要求
+    if (message.type === 'CONTENT_SCRIPT_READY') {
+      debugLog('[SidePanel] コンテンツスクリプト初期化完了を受信');
+      chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
+      requestAnalysisData();
+    }
+
     if (message.type === 'ANALYSIS_UPDATE') {
       latestAnalysisData = message.data;
       // v5.10.3: signal20はポーリング専用。ここでは処理しない
@@ -1319,8 +1334,7 @@ function resetSignalCards() {
   lastTechSignal = { signal: null, confidence: null };
   lastAISignal = { signal: null, matchCount: null, available: null };
 
-  // v5.8.21: エントリー条件カードをリセット
-  resetEntryConditions();
+  // マーケット概況はリセットしない（カウントダウン継続のため）
 }
 
 // シグナルカードを「準備中」状態にリセット（詳細カードはそのまま）
@@ -1376,13 +1390,7 @@ function updateSignalCardsFromStatus(signal) {
 
     // デバッグパネルはポーリング専用（STATUS_UPDATEから更新するとチカチカの原因になる）
 
-    // v5.8.22: STATUS_UPDATEでもテクニカル条件を更新（ANALYSIS_UPDATE時にsignal未確定の場合への対応）
-    const validTechSignals = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
-    if (validTechSignals.includes(signal.tech) && latestEnhancedData && !enhancedAnalysisLock.isLocked) {
-      enhancedAnalysisLock.isLocked = true;
-      enhancedAnalysisLock.lockedData = latestEnhancedData;
-      updateTechConditions(latestEnhancedData, { signal: signal.tech });
-    }
+    // (旧エントリー条件判定は削除、マーケット概況はANALYSIS_UPDATEで更新)
   }
 
   // AI予測シグナルカード更新
@@ -1433,17 +1441,7 @@ function updateSignalCardsFromStatus(signal) {
     aiConfidenceEl.textContent = confidence;
     if (aiCardEl) aiCardEl.setAttribute('data-signal-type', dataSignal);
 
-    // v5.8.21: AI条件チェックを更新
-    const validAISignals = ['HIGH', 'LOW', 'ENHANCED_HIGH', 'ENHANCED_LOW'];
-    const hasValidAISignal = validAISignals.includes(signal.ai);
-
-    if (hasValidAISignal && signal.aiUpRate !== undefined && signal.aiDownRate !== undefined) {
-      updateAIConditions({
-        upRate: signal.aiUpRate,
-        downRate: signal.aiDownRate,
-        matchCount: signal.aiMatchCount || 0
-      }, signal.tech);
-    }
+    // (旧AI条件チェックは削除)
   }
 
   // v5.6.5: シグナルに含まれるAI予測詳細データでAI予測詳細カードも更新
@@ -1522,10 +1520,7 @@ function updateRealtimeStatus(data) {
       aiPredictionLock.lockedData = null;
     }
 
-    if (enhancedAnalysisLock.isLocked) {
-      debugLog('[SidePanel] 🔓 取引終了により高精度分析ロック解除');
-      resetEnhancedAnalysisLock();
-    }
+    // マーケット概況は取引終了でもリセットしない（カウントダウン継続のため）
   }
 
   // カウントダウン（フェーズに応じて表示を変更）
@@ -1561,8 +1556,29 @@ function updateRealtimeStatus(data) {
         aiPredictionLock.isLocked = false;
         aiPredictionLock.lockedData = null;
       }
+
     }
     lastStatusCountdown = isTrading ? -1 : countdown;
+
+    // マーケット概況カウントダウンをエントリーcountdownに初回同期
+    // 準備期間（prepTime=5秒）の直前で0になるように揃える
+    // → countdown=6の時にマーケット概況が更新 → 直後にテクニカル・AIの5秒カウントダウン開始
+    if (!isTrading && marketOverviewInitialized && !marketOverviewSynced && countdown > 0) {
+      const interval = getMarketOverviewIntervalSec();
+      const tf = currentTimeframe;
+      const prepOffset = prepTime + 1; // countdown=6で0になるようにする
+      const cyclesPerUpdate = Math.round(interval / tf);
+      // 残り秒数 = (cycles-1)*tf + (countdown - prepOffset)
+      let aligned = (cyclesPerUpdate - 1) * tf + (countdown - prepOffset);
+      // 負の場合は1サイクル足す
+      if (aligned <= 0) aligned += tf;
+      marketOverviewRemaining = aligned;
+      marketOverviewTargetTime = Date.now() + aligned * 1000;
+      marketOverviewSynced = true;
+      const cdEl = document.getElementById('market-countdown');
+      if (cdEl) cdEl.textContent = `${marketOverviewRemaining}秒`;
+    }
+
     // 取引中の場合は取引時間を使用
     const totalForRing = isTrading ? tradingDuration : lastCountdownTotal;
     const currentForRing = isTrading ? tradingRemaining : countdown;
@@ -1718,21 +1734,8 @@ function updateDisplay(data) {
     updateTechnicalCard(timeframeData.technical);
     updateAICard(timeframeData.ai, data.stratification);
     updateStratificationInsights(data.stratification);
-    // v5.7.0: 高精度テクニカル分析カードを更新
-    // v5.7.9: テクニカル分析のシグナルも渡して、最低限グレードを表示
-    updateEnhancedCard(timeframeData.enhanced, timeframeData.technical);
-    // v5.8.22: ANALYSIS_UPDATEでもAI条件を更新（STATUS_UPDATEより先にAIデータが届く場合への対応）
-    if (timeframeData.ai && timeframeData.ai.available && timeframeData.technical) {
-      const techSig = timeframeData.technical.signal;
-      const validSigs = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
-      if (validSigs.includes(techSig) && timeframeData.ai.upRate !== undefined) {
-        updateAIConditions({
-          upRate: timeframeData.ai.upRate,
-          downRate: timeframeData.ai.downRate,
-          matchCount: timeframeData.ai.matchCount || timeframeData.ai.sampleSize || 0
-        }, techSig);
-      }
-    }
+    // マーケット概況カードを更新
+    updateMarketOverview(timeframeData.enhanced, timeframeData.technical);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
     debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
@@ -1750,8 +1753,7 @@ function updateDisplay(data) {
     if (probBarUp) probBarUp.style.width = '0%';
     if (probBarDown) probBarDown.style.width = '0%';
     if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
-    // v5.7.0: 高精度分析カードもリセット
-    updateEnhancedCard(null);
+    // マーケット概況はリセットしない（カウントダウン継続のため）
   }
 
   if (data.mlStats) {
@@ -2314,415 +2316,381 @@ function updateStratificationInsights(stratification) {
   insightsContainer.innerHTML = html;
 }
 
-// v5.7.6: 高精度分析結果のロック（エントリー終了まで維持）
-let enhancedAnalysisLock = {
-  isLocked: false,
-  lockedData: null
-};
+// ========================================
+// マーケット概況カード
+// ========================================
 
-// v5.8.21: 最新のenhancedデータを保持（条件判定に使用）
 let latestEnhancedData = null;
 
-// v5.7.6: 高精度分析のロックをリセット（取引終了時に呼び出される）
-function resetEnhancedAnalysisLock() {
-  enhancedAnalysisLock.isLocked = false;
-  enhancedAnalysisLock.lockedData = null;
-  resetEntryConditions();
-}
+// 局面変遷ログ（最大5件保持）
+let marketRegimeHistory = [];
+let lastRegimeLabel = null;
+let lastRegimeChangeTime = 0; // レジーム変更のデバウンス用
+let pendingMarketData = null; // 次回更新用のデータをバッファ
+let marketOverviewInitialized = false; // 初回更新済みフラグ
+let marketOverviewTimerId = null; // setIntervalのID
+let marketOverviewRemaining = 0; // 次回更新までの残り秒数
+let marketOverviewSynced = false; // countdownと同期済みフラグ
+let marketOverviewTargetTime = 0; // 次回更新の目標時刻（Date.now()ベース）
 
-// v5.9.0: 条件結果を保持（ダッシュボード更新用）
-let conditionResults = {
-  t1: null, t2: null, t3: null, t4: null,
-  a1: null, a2: null, a3: null, a4: null
+// 判定時間ごとの更新間隔（秒）
+const MARKET_OVERVIEW_INTERVAL_SEC = {
+  15: 60,    // 60秒ごと
+  30: 60,    // 60秒ごと
+  60: 60,    // 60秒ごと
+  180: 180,  // 180秒ごと
+  300: 300   // 300秒ごと
 };
 
-// v5.9.0: エントリー条件カードをリセット
-function resetEntryConditions() {
-  const techChecks = document.getElementById('tech-checks');
-  const aiChecks = document.getElementById('ai-checks');
-  if (techChecks) {
-    techChecks.querySelectorAll('.entry-check-item').forEach(item => {
-      item.className = 'entry-check-item neutral';
-      item.querySelector('.check-icon').textContent = '―';
-    });
-  }
-  if (aiChecks) {
-    aiChecks.querySelectorAll('.entry-check-item').forEach(item => {
-      item.className = 'entry-check-item neutral';
-      item.querySelector('.check-icon').textContent = '―';
-    });
-  }
-  conditionResults = { t1: null, t2: null, t3: null, t4: null, a1: null, a2: null, a3: null, a4: null };
-  updateCondDashboard();
-}
-
-// v5.9.0: エントリー条件のチェック項目を更新
-function updateCheckItem(containerEl, index, pass) {
-  const items = containerEl.querySelectorAll('.entry-check-item');
-  if (!items[index]) return;
-  items[index].className = `entry-check-item ${pass ? 'pass' : 'fail'}`;
-  items[index].querySelector('.check-icon').textContent = pass ? '✓' : '✗';
-}
-
-// ========================================
-// v5.9.0: ダッシュボードUI
-// ========================================
-
-const RING_CIRCUMFERENCE_COND = 2 * Math.PI * 25; // ≈ 157.08
-
-/**
- * リングゲージを更新
- * @param {string} cardId - カード要素のID
- * @param {number} cleared - クリアした条件数
- * @param {number} total - 全条件数
- */
-function updateCondRing(cardId, cleared, total) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
-  const fill = card.querySelector('.cond-ring-fill');
-  if (!fill) return;
-
-  const ratio = total > 0 ? cleared / total : 0;
-  const offset = RING_CIRCUMFERENCE_COND * (1 - ratio);
-  fill.style.strokeDashoffset = offset;
-
-  // 色レベル判定
-  let level = 'neutral';
-  if (total === 0 || cleared === null) {
-    level = 'neutral';
-  } else if (ratio >= 0.75) {
-    level = 'good';
-  } else if (ratio >= 0.5) {
-    level = 'warn';
-  } else if (cleared > 0) {
-    level = 'warn';
-  } else {
-    level = 'bad';
-  }
-  fill.setAttribute('data-level', level);
+function getMarketOverviewIntervalSec() {
+  return MARKET_OVERVIEW_INTERVAL_SEC[currentTimeframe] || 60;
 }
 
 /**
- * 一言コメントを生成
+ * sidepanel自身のsetIntervalでカウントダウンを駆動
+ * Date.now()ベースで残り時間を計算するため、バックグラウンドでも正確に動作。
  */
-function generateCondComment() {
-  const r = conditionResults;
-  const hasAny = Object.values(r).some(v => v !== null);
-  if (!hasAny) return '分析待ち';
+function startMarketOverviewTimer() {
+  if (marketOverviewTimerId) clearInterval(marketOverviewTimerId);
 
-  // 環境チェック
-  const envCleared = [r.t2, r.a2, r.a3].filter(v => v === true).length;
-  const envTotal = [r.t2, r.a2, r.a3].filter(v => v !== null).length;
+  marketOverviewTimerId = setInterval(() => {
+    if (!marketOverviewInitialized) return;
 
-  // 方向チェック
-  const dirCleared = [r.t1, r.t3, r.a1, r.a4].filter(v => v === true).length;
-  const dirTotal = [r.t1, r.t3, r.a1, r.a4].filter(v => v !== null).length;
+    const now = Date.now();
+    marketOverviewRemaining = Math.ceil((marketOverviewTargetTime - now) / 1000);
+    const countdownEl = document.getElementById('market-countdown');
 
-  // タイミング
-  const timingOk = r.t4 === true;
+    if (marketOverviewRemaining <= 0) {
+      // 更新実行
+      if (pendingMarketData) {
+        updateMarketOverview(pendingMarketData.enhanced, pendingMarketData.technical, true);
+      }
+      // 次の目標時刻をセット
+      marketOverviewTargetTime = now + getMarketOverviewIntervalSec() * 1000;
+      marketOverviewRemaining = getMarketOverviewIntervalSec();
+    }
+    if (countdownEl) countdownEl.textContent = `${marketOverviewRemaining}秒`;
+  }, 1000);
+}
 
-  // v2Regime取得
-  const v2Regime = latestEnhancedData?.v2?.t1?.v2Regime || '';
+// 後方互換: 旧コードから呼ばれる関数のスタブ
+function resetEnhancedAnalysisLock() {
+  // マーケット概況はリセットしない（カウントダウン継続のため）
+}
 
-  // コメント生成
-  if (envTotal > 0 && envCleared === 0) return '環境不安定';
-  if (r.a3 === false && r.a2 === null && r.a1 === null) return 'データ不足';
-  if (dirTotal > 0 && dirCleared === 0) return '方向感なし';
+/**
+ * マーケット概況カードを更新
+ * enhanced(v2付き)があればフル表示、なければtechnicalからフォールバック表示
+ */
+function updateMarketOverview(enhanced, technical, forceUpdate = false) {
+  if (enhanced) latestEnhancedData = enhanced;
 
+  const v2 = enhanced?.v2;
+
+  // 常に最新データをバッファに保存（次回更新時に使用）
+  pendingMarketData = { enhanced, technical };
+
+  // 初回は即表示してタイマー開始、以降はタイマーから呼ばれるまで待つ
+  if (!forceUpdate && marketOverviewInitialized) {
+    return;
+  }
+  if (!marketOverviewInitialized) {
+    // 初回: 目標時刻をセットしてタイマー開始
+    marketOverviewRemaining = getMarketOverviewIntervalSec();
+    marketOverviewTargetTime = Date.now() + marketOverviewRemaining * 1000;
+    const cdEl = document.getElementById('market-countdown');
+    if (cdEl) cdEl.textContent = `${marketOverviewRemaining}秒`;
+    startMarketOverviewTimer();
+  }
+  marketOverviewInitialized = true;
+
+  // デバッグ
+  const intervalSec = getMarketOverviewIntervalSec();
+  console.log(`[マーケット概況] 更新実行 (${currentTimeframe}秒判定, ${intervalSec}秒間隔) |`,
+    'v2:', v2 ? 'あり' : 'なし',
+    '| technical:', technical ? `isTrending=${technical.isTrending}, strength=${technical.totalStrength}, dir=${technical.trendDirection}` : 'なし');
+
+  // v2がある場合: フル表示
+  if (v2 && v2.t1 && v2.t2 && v2.t3) {
+    const { v2Regime, emaSlope, rsi, bbPosition } = v2.t1;
+    const { volRatio } = v2.t2;
+    const { s30, s60, s180, mtfWeightedScore } = v2.t3;
+    const t4 = v2.t4;
+
+    // 1. 相場局面
+    const regimeInfo = getRegimeInfo(v2Regime, emaSlope);
+    const regimeIconEl = document.getElementById('market-regime-icon');
+    const regimeLabelEl = document.getElementById('market-regime-label');
+    const strengthFill = document.getElementById('market-strength-fill');
+
+    if (regimeIconEl) regimeIconEl.textContent = regimeInfo.icon;
+    if (regimeLabelEl) {
+      regimeLabelEl.textContent = regimeInfo.label;
+      regimeLabelEl.style.color = regimeInfo.color;
+    }
+    if (strengthFill) {
+      let strength = 0;
+      if (v2Regime.startsWith('STRONG_TREND')) {
+        strength = Math.min(100, 60 + Math.abs(emaSlope) * 40);
+      } else if (v2Regime.startsWith('WEAK_TREND')) {
+        strength = Math.min(50, 20 + Math.abs(emaSlope) * 30);
+      } else if (v2Regime.startsWith('BREAKOUT')) {
+        strength = 80;
+      } else if (v2Regime.startsWith('REVERSAL')) {
+        strength = 50;
+      }
+      // RANGE は 0（デフォルト）
+      strengthFill.style.width = `${strength}%`;
+      strengthFill.style.background = regimeInfo.color;
+    }
+
+    // ボラティリティバッジ（ヘッダーに表示）
+    const volBadgeV2 = document.getElementById('market-volatility-badge');
+    if (volBadgeV2) {
+      const volLabel = volRatio < 0.65 ? '非常に静穏' : volRatio < 0.85 ? '静穏' : volRatio > 1.4 ? '非常に活発' : volRatio > 1.1 ? '活発' : '通常';
+      const volClass = volRatio < 0.65 ? 'vol-very-low' : volRatio < 0.85 ? 'vol-low' : volRatio > 1.4 ? 'vol-very-high' : volRatio > 1.1 ? 'vol-high' : 'vol-normal';
+      volBadgeV2.textContent = volLabel;
+      volBadgeV2.className = `market-volatility-badge ${volClass}`;
+    }
+
+    // 2. 変遷ログ（デバウンス付き: 10秒以内の変更は無視）
+    const now = Date.now();
+    if (regimeInfo.label !== lastRegimeLabel && lastRegimeLabel !== null) {
+      if (now - lastRegimeChangeTime >= 10000) {
+        const dateNow = new Date();
+        const timeStr = `${dateNow.getHours()}:${String(dateNow.getMinutes()).padStart(2, '0')}`;
+        marketRegimeHistory.unshift({ time: timeStr, from: lastRegimeLabel, to: regimeInfo.label });
+        if (marketRegimeHistory.length > 5) marketRegimeHistory.pop();
+        lastRegimeLabel = regimeInfo.label;
+        lastRegimeChangeTime = now;
+      }
+    } else {
+      lastRegimeLabel = regimeInfo.label;
+      if (lastRegimeChangeTime === 0) lastRegimeChangeTime = now;
+    }
+
+    const historyEl = document.getElementById('market-history');
+    if (historyEl) {
+      if (marketRegimeHistory.length === 0) {
+        historyEl.innerHTML = '';
+      } else {
+        historyEl.innerHTML = marketRegimeHistory.map(h =>
+          `<div class="market-history-item"><span class="market-history-time">${h.time}</span>${h.from} <span class="market-history-arrow">\u2192</span> ${h.to}</div>`
+        ).join('');
+      }
+    }
+
+    // 3. 短期予測文
+    const forecast = generateForecast(v2Regime, emaSlope, rsi, bbPosition, volRatio, mtfWeightedScore, t4);
+    const forecastEl = document.getElementById('market-forecast-text');
+    if (forecastEl) forecastEl.textContent = forecast;
+    return;
+  }
+
+  // v2がない場合: technicalデータからフォールバック表示
+  if (technical) {
+    const regimeIconEl = document.getElementById('market-regime-icon');
+    const regimeLabelEl = document.getElementById('market-regime-label');
+    const strengthFill = document.getElementById('market-strength-fill');
+    const forecastEl = document.getElementById('market-forecast-text');
+    const breakdown = technical.breakdown || {};
+
+    // breakdownからRSI値を取得
+    const rsiValue = breakdown.rsi?.value ?? null;
+    // breakdownからADX（トレンド強度の補助指標）を取得
+    const adxValue = breakdown.adx?.adx ?? null;
+    // breakdownからモメンタムを取得
+    const momentumScore = breakdown.momentum?.score ?? 0;
+
+    // トレンド判定の補強: isTrending + totalStrength に加えて
+    // ADX > 20 かつ totalStrength > 25 ならトレンドと見なす（閾値が厳しすぎる問題への対策）
+    let effectiveIsTrending = technical.isTrending;
+    let effectiveDir = technical.trendDirection || '中立';
+    const strength = technical.totalStrength || 0;
+
+    if (!effectiveIsTrending && strength >= 25 && adxValue !== null && adxValue > 20) {
+      // スコアからは「レンジ」だが、ADXとstrengthが十分 → トレンドとして扱う
+      effectiveIsTrending = true;
+      // 方向はmomentumやbreakdownから推定
+      if (momentumScore > 0.5) effectiveDir = '上昇';
+      else if (momentumScore < -0.5) effectiveDir = '下降';
+      else if (breakdown.direction?.score > 0) effectiveDir = '上昇';
+      else if (breakdown.direction?.score < 0) effectiveDir = '下降';
+    }
+
+    // 方向が確定していないトレンドはレンジとして扱う
+    if (effectiveIsTrending && effectiveDir !== '上昇' && effectiveDir !== '下降') {
+      effectiveIsTrending = false;
+    }
+
+    if (effectiveIsTrending) {
+      const isUp = effectiveDir === '上昇';
+      const color = isUp ? '#2e7d32' : '#c62828';
+      if (regimeIconEl) regimeIconEl.textContent = isUp ? '📈' : '📉';
+      if (regimeLabelEl) { regimeLabelEl.textContent = `${effectiveDir}トレンド`; regimeLabelEl.style.color = color; }
+      if (strengthFill) { strengthFill.style.width = `${strength}%`; strengthFill.style.background = color; }
+    } else {
+      if (regimeIconEl) regimeIconEl.textContent = '\u2194';
+      if (regimeLabelEl) { regimeLabelEl.textContent = 'レンジ相場'; regimeLabelEl.style.color = '#757575'; }
+      if (strengthFill) { strengthFill.style.width = '0%'; strengthFill.style.background = '#757575'; }
+    }
+
+    // ボラティリティバッジ（ヘッダーに表示）
+    const volBadge = document.getElementById('market-volatility-badge');
+    if (volBadge && technical.volatility) {
+      const volMap = { 'VERY_LOW': '非常に静穏', 'LOW': '静穏', 'MODERATE': '通常', 'NORMAL': '通常', 'HIGH': '活発', 'VERY_HIGH': '非常に活発', 'EXTREME': '非常に活発' };
+      const classMap = { 'VERY_LOW': 'vol-very-low', 'LOW': 'vol-low', 'MODERATE': 'vol-normal', 'NORMAL': 'vol-normal', 'HIGH': 'vol-high', 'VERY_HIGH': 'vol-very-high', 'EXTREME': 'vol-very-high' };
+      volBadge.textContent = volMap[technical.volatility] || technical.volatility;
+      volBadge.className = `market-volatility-badge ${classMap[technical.volatility] || 'vol-normal'}`;
+    }
+
+    // 予測文（technicalからの詳細版）
+    if (forecastEl) {
+      const parts = [];
+      if (effectiveIsTrending) {
+        if (strength >= 70) {
+          parts.push(`${effectiveDir}トレンドが明確。この方向が継続する可能性が高い`);
+        } else if (strength >= 40) {
+          parts.push(`緩やかな${effectiveDir}傾向。トレンドが強まるか注視`);
+        } else {
+          parts.push(`弱い${effectiveDir}傾向。方向感が出きっていない`);
+        }
+        // RSIの過熱判定
+        if (rsiValue !== null) {
+          if (effectiveDir === '上昇' && rsiValue > 70) {
+            parts.push(`過熱圏(RSI${Math.round(rsiValue)})に入っており反落の可能性`);
+          } else if (effectiveDir === '下降' && rsiValue < 30) {
+            parts.push(`売られすぎ圏(RSI${Math.round(rsiValue)})で反発の可能性`);
+          }
+        }
+      } else {
+        parts.push('レンジ相場。方向感が出にくい状態');
+        if (adxValue !== null && adxValue > 15) {
+          parts.push('ただしトレンドが出始める兆候あり');
+        }
+      }
+      forecastEl.textContent = parts.join('。') + '。';
+    }
+
+    // 変遷ログ（デバウンス付き: 10秒以内の変更は無視）
+    const label = effectiveIsTrending ? `${effectiveDir}トレンド` : 'レンジ相場';
+    const now = Date.now();
+    if (label !== lastRegimeLabel && lastRegimeLabel !== null) {
+      if (now - lastRegimeChangeTime >= 10000) {
+        const dateNow = new Date();
+        const timeStr = `${dateNow.getHours()}:${String(dateNow.getMinutes()).padStart(2, '0')}`;
+        marketRegimeHistory.unshift({ time: timeStr, from: lastRegimeLabel, to: label });
+        if (marketRegimeHistory.length > 5) marketRegimeHistory.pop();
+        lastRegimeLabel = label;
+        lastRegimeChangeTime = now;
+      }
+      // 10秒以内の変更はlastRegimeLabelを更新しない → フリッカー防止
+    } else {
+      lastRegimeLabel = label;
+      if (lastRegimeChangeTime === 0) lastRegimeChangeTime = now;
+    }
+
+    const historyEl = document.getElementById('market-history');
+    if (historyEl && marketRegimeHistory.length > 0) {
+      historyEl.innerHTML = marketRegimeHistory.map(h =>
+        `<div class="market-history-item"><span class="market-history-time">${h.time}</span>${h.from} <span class="market-history-arrow">\u2192</span> ${h.to}</div>`
+      ).join('');
+    }
+  }
+}
+
+function getRegimeInfo(regime, emaSlope) {
+  const regimeMap = {
+    'STRONG_TREND_UP':   { icon: '📈', label: '強い上昇トレンド', color: '#2e7d32' },
+    'STRONG_TREND_DOWN': { icon: '📉', label: '強い下降トレンド', color: '#c62828' },
+    'WEAK_TREND_UP':     { icon: '📈', label: '上昇トレンド', color: '#2e7d32' },
+    'WEAK_TREND_DOWN':   { icon: '📉', label: '下降トレンド', color: '#c62828' },
+    'RANGE':             { icon: '↔', label: 'レンジ相場', color: '#757575' },
+    'BREAKOUT_UP':       { icon: '🚀', label: '上方ブレイクアウト', color: '#2e7d32' },
+    'BREAKOUT_DOWN':     { icon: '💥', label: '下方ブレイクアウト', color: '#c62828' },
+    'REVERSAL_UP':       { icon: '🔄', label: '反転上昇', color: '#2e7d32' },
+    'REVERSAL_DOWN':     { icon: '🔄', label: '反転下降', color: '#c62828' },
+  };
+  return regimeMap[regime] || { icon: '↔', label: 'レンジ相場', color: '#757575' };
+}
+
+
+function generateForecast(regime, emaSlope, rsi, bbPosition, volRatio, mtfScore, t4) {
   const parts = [];
 
-  // 局面説明
-  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
-    parts.push(r.t1 ? '順張り局面' : 'トレンド中');
-  } else if (v2Regime === 'RANGE') {
-    parts.push(r.t1 ? 'レンジ反転の兆候' : 'レンジ相場');
-  } else {
-    parts.push('移行期');
-  }
+  if (regime === 'TREND' || regime === 'BREAKOUT') {
+    const dir = emaSlope > 0 ? '上昇' : '下降';
+    const strength = Math.abs(emaSlope);
 
-  // 方向
-  if (dirCleared >= 3) {
-    parts.push('条件揃い');
-  } else if (dirCleared >= 2) {
-    parts.push('方向一致');
-  } else {
-    parts.push('方向不明確');
-  }
-
-  // タイミング
-  if (timingOk) {
-    // タイミングOKは特に強調しない（リングで見える）
-  } else if (dirCleared >= 2) {
-    parts[parts.length - 1] += '・タイミング待ち';
-  }
-
-  return parts.join('・');
-}
-
-/**
- * ダッシュボード全体を更新
- */
-function updateCondDashboard() {
-  const r = conditionResults;
-
-  // 環境: T2, A2, A3
-  const envItems = [r.t2, r.a2, r.a3];
-  const envCleared = envItems.filter(v => v === true).length;
-  const envTotal = envItems.filter(v => v !== null).length;
-  updateCondRing('cond-env', envCleared, envTotal);
-
-  // 方向: T1, T3, A1, A4
-  const dirItems = [r.t1, r.t3, r.a1, r.a4];
-  const dirCleared = dirItems.filter(v => v === true).length;
-  const dirTotal = dirItems.filter(v => v !== null).length;
-  updateCondRing('cond-dir', dirCleared, dirTotal);
-
-  // タイミング: T4 (1項目なので0 or 1)
-  const timingCleared = r.t4 === true ? 1 : 0;
-  const timingTotal = r.t4 !== null ? 1 : 0;
-  updateCondRing('cond-timing', timingCleared, timingTotal);
-
-  // 一言コメント
-  const commentEl = document.getElementById('cond-comment');
-  if (commentEl) {
-    commentEl.textContent = generateCondComment();
-  }
-}
-
-/**
- * 詳細展開トグルの初期化
- */
-function initCondDetailsToggle() {
-  const toggle = document.getElementById('cond-details-toggle');
-  const details = document.getElementById('cond-details');
-  if (toggle && details) {
-    toggle.addEventListener('click', () => {
-      const isHidden = details.style.display === 'none';
-      details.style.display = isHidden ? 'block' : 'none';
-      toggle.textContent = isHidden ? '詳細を閉じる' : '詳細を見る';
-    });
-  }
-}
-
-// v5.8.21: エントリー条件カードを更新（旧updateEnhancedCard置き換え）
-function updateEnhancedCard(enhanced, technical = null) {
-  // enhancedデータを保持
-  if (enhanced) {
-    latestEnhancedData = enhanced;
-  }
-
-  if (!enhanced) {
-    if (!enhancedAnalysisLock.isLocked) {
-      resetEntryConditions();
+    if (dir === '上昇' && rsi > 70) {
+      parts.push(`${dir}が続いているが過熱圏(RSI${Math.round(rsi)})に入っており、反落の可能性が高まっている`);
+    } else if (dir === '下降' && rsi < 30) {
+      parts.push(`${dir}が続いているが売られすぎ圏(RSI${Math.round(rsi)})に入っており、反発の可能性が高まっている`);
+    } else if (strength > 0.5) {
+      if (t4 && t4.macdIncreasing) {
+        parts.push(`${dir}の勢いが増しており、この方向が継続する見込み`);
+      } else {
+        parts.push(`${dir}トレンドが明確だが、勢いはやや鈍化の兆し`);
+      }
+    } else {
+      parts.push(`緩やかな${dir}傾向。トレンドが強まるか反転するか、まだ判断しにくい`);
     }
-    return;
-  }
 
-  const validSignals = ['HIGH', 'LOW', 'STRONG_HIGH', 'STRONG_LOW'];
-  const techSignalValid = technical && technical.signal && validSignals.includes(technical.signal);
+    if (dir === '上昇' && bbPosition > 90) {
+      parts.push('ボリンジャーバンド上限を超えており、一旦押し戻される場面がありそう');
+    } else if (dir === '下降' && bbPosition < 10) {
+      parts.push('ボリンジャーバンド下限を超えており、一旦戻される場面がありそう');
+    }
 
-  if (techSignalValid) {
-    if (enhancedAnalysisLock.isLocked) return;
-    enhancedAnalysisLock.isLocked = true;
-    enhancedAnalysisLock.lockedData = enhanced;
-    updateTechConditions(enhanced, technical);
-  } else if (!enhancedAnalysisLock.isLocked) {
-    resetEntryConditions();
-  }
-}
+  } else if (regime === 'RANGE') {
+    if (bbPosition > 75 && rsi > 60) {
+      parts.push('レンジ上限付近。ここから下落に転じやすいポイント');
+    } else if (bbPosition < 25 && rsi < 40) {
+      parts.push('レンジ下限付近。ここから上昇に転じやすいポイント');
+    } else {
+      parts.push('レンジの中間帯にいるため、方向感が出にくい状態');
+    }
+    if (volRatio > 1.2) {
+      parts.push('ボラティリティが拡大中でレンジを抜ける可能性あり');
+    }
 
-// ========================================
-// v5.9.0: エントリー条件v2 判定ロジック
-// ========================================
-
-// v5.9.0: 設定定数
-const V2_CONFIG = {
-  PAYOUT_RATE: 0.80,       // デフォルトペイアウト率
-  EV_MIN: 0.02,            // A1: 最小期待値
-  EV_STRONG: 0.05,         // A4: 不一致でも許容するEV閾値
-  TIE_MAX: 0.25,           // A2: 同値率上限
-  WILSON_Z: 1.64,          // A3: Wilson下限の信頼係数（90%）
-  MIN_SAMPLES: 30,         // A3: 最小サンプル数
-  MTF_THRESHOLD: 0.30,     // T3: 整合スコア閾値
-  MTF_VETO_THRESHOLD: -0.70, // T3: 300秒veto閾値
-  VOL_RANGE_LOW: 0.65,     // T2: ボラ下限
-  VOL_RANGE_HIGH: 1.40,    // T2: レンジ時ボラ上限
-  VOL_TREND_HIGH: 1.80     // T2: トレンド時ボラ上限
-};
-
-// v5.9.0: 最後に計算したAI EVデータを保持（A2/A4条件で参照）
-let lastAIEVData = null;
-
-// v5.9.0: テクニカル側の4条件を判定・表示（v2）
-function updateTechConditions(enhanced, technical) {
-  const techChecks = document.getElementById('tech-checks');
-  if (!techChecks) return;
-
-  const v2 = enhanced.v2;
-  const signal = enhanced.signal || technical?.signal || 'NEUTRAL';
-  const isHigh = signal === 'HIGH' || signal === 'STRONG_HIGH';
-  const isLow = signal === 'LOW' || signal === 'STRONG_LOW';
-
-  // v2データがない場合はフォールバック
-  if (!v2) {
-    debugLog('[EntryCondV2] v2データなし、フォールバック');
-    updateCheckItem(techChecks, 0, false);
-    updateCheckItem(techChecks, 1, true);
-    updateCheckItem(techChecks, 2, false);
-    updateCheckItem(techChecks, 3, false);
-    conditionResults.t1 = false;
-    conditionResults.t2 = true;
-    conditionResults.t3 = false;
-    conditionResults.t4 = false;
-    updateCondDashboard();
-    return;
-  }
-
-  // === T1: 局面適合 ===
-  const { v2Regime, emaSlope, rsi: t1Rsi, bbPosition } = v2.t1;
-  let t1Pass = false;
-  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
-    // トレンド/ブレイク: シグナル方向とEMA傾き方向が一致
-    t1Pass = (isHigh && emaSlope > 0) || (isLow && emaSlope < 0);
-  } else if (v2Regime === 'RANGE') {
-    // レンジ: 反転条件（BB端+オシレーター反転をT4と連動で判定）
-    // HIGHなら下側で反転、LOWなら上側で反転
-    const bbAtLower = bbPosition < 25;
-    const bbAtUpper = bbPosition > 75;
-    const rsiOversold = t1Rsi < 35;
-    const rsiOverbought = t1Rsi > 65;
-    t1Pass = (isHigh && bbAtLower && rsiOversold) || (isLow && bbAtUpper && rsiOverbought);
-  }
-  // TRANSITION → 原則✗
-  updateCheckItem(techChecks, 0, t1Pass);
-
-  // === T2: ボラ適合 ===
-  const { volRatio } = v2.t2;
-  let t2Pass = false;
-  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
-    t2Pass = volRatio >= V2_CONFIG.VOL_RANGE_LOW && volRatio <= V2_CONFIG.VOL_TREND_HIGH;
   } else {
-    t2Pass = volRatio >= V2_CONFIG.VOL_RANGE_LOW && volRatio <= V2_CONFIG.VOL_RANGE_HIGH;
+    if (Math.abs(mtfScore) > 0.3) {
+      const mtfDir = mtfScore > 0 ? '上昇' : '下降';
+      parts.push(`方向感が定まっていないが、${mtfDir}方向に傾きつつある`);
+    } else {
+      parts.push('方向感が定まらず、しばらく不安定な値動きが続きそう');
+    }
   }
-  updateCheckItem(techChecks, 1, t2Pass);
 
-  // === T3: 時間軸整合 ===
-  const { mtfWeightedScore, s180 } = v2.t3;
-  const mtfDirection = mtfWeightedScore > 0 ? 'HIGH' : 'LOW';
-  const mtfDirectionMatch = (isHigh && mtfDirection === 'HIGH') || (isLow && mtfDirection === 'LOW');
-  const mtfAboveThreshold = Math.abs(mtfWeightedScore) >= V2_CONFIG.MTF_THRESHOLD;
-  // veto: 180秒が強逆行の場合は✗（3TF版なのでs180を使用）
-  const vetoActive = (isHigh && s180 <= V2_CONFIG.MTF_VETO_THRESHOLD) ||
-                     (isLow && s180 >= -V2_CONFIG.MTF_VETO_THRESHOLD);
-  // レンジ時はvetoを弱める
-  const vetoApplied = v2Regime === 'RANGE' ? false : vetoActive;
-  const t3Pass = mtfDirectionMatch && mtfAboveThreshold && !vetoApplied;
-  updateCheckItem(techChecks, 2, t3Pass);
-
-  // === T4: エントリートリガー ===
-  const t4 = v2.t4;
-  let t4Pass = false;
-  if (v2Regime === 'TREND' || v2Regime === 'BREAKOUT') {
-    // トレンド用: 3つ中2つ成立で✓
-    let trendTriggers = 0;
-    // 1. RSIが50をクロス
-    if ((isHigh && t4.rsiCross50Up) || (isLow && t4.rsiCross50Down)) trendTriggers++;
-    // 2. MACDヒストグラムがゼロ付近 or 3本連続増加
-    if (t4.macdNearZero || t4.macdIncreasing) trendTriggers++;
-    // 3. 終値がEMA9を方向側にブレイク＋EMA9傾きが同方向
-    if ((isHigh && t4.ema9BreakUp && t4.ema9SlopeUp) ||
-        (isLow && t4.ema9BreakDown && t4.ema9SlopeDown)) trendTriggers++;
-    t4Pass = trendTriggers >= 2;
-  } else if (v2Regime === 'RANGE') {
-    // レンジ用: 3つ中2つ成立で✓
-    let rangeTriggers = 0;
-    // 4. BB外側到達後にBB内に回帰
-    if (t4.bbReversion) rangeTriggers++;
-    // 5. RSIが極端域から戻る
-    if ((isLow && t4.rsiFromOverbought) || (isHigh && t4.rsiFromOversold)) rangeTriggers++;
-    // 6. ストキャスティクスが極端域で反転クロス
-    if ((isHigh && t4.stochReversalUp) || (isLow && t4.stochReversalDown)) rangeTriggers++;
-    t4Pass = rangeTriggers >= 2;
+  if (volRatio > 1.8) {
+    parts.push('ボラティリティが非常に高く、急変動に注意');
+  } else if (volRatio < 0.5) {
+    parts.push('値動きが極端に小さく、同値リスクが高い');
   }
-  updateCheckItem(techChecks, 3, t4Pass);
 
-  // ダッシュボード用に結果を保持
-  conditionResults.t1 = t1Pass;
-  conditionResults.t2 = t2Pass;
-  conditionResults.t3 = t3Pass;
-  conditionResults.t4 = t4Pass;
-  updateCondDashboard();
+  return parts.join('。') + '。';
 }
 
-// v5.9.0: AI側の4条件を判定・表示（v2: EV計算ベース）
-function updateAIConditions(aiData, techSignal) {
-  const aiChecks = document.getElementById('ai-checks');
-  if (!aiChecks) return;
-
-  const upRate = (aiData.upRate || 0) / 100;   // 0-1に正規化
-  const downRate = (aiData.downRate || 0) / 100;
-  const tieRate = Math.max(0, 1 - upRate - downRate);
-  const matchCount = aiData.matchCount || aiData.sampleSize || 0;
-  const r = V2_CONFIG.PAYOUT_RATE;
-
-  // 勝率方向を判定
-  const pWin = Math.max(upRate, downRate);
-  const pLose = Math.min(upRate, downRate);
-  const aiDirection = upRate > downRate ? 'HIGH' : 'LOW';
-
-  // 期待値 EV = p_win * r - p_lose
-  const ev = pWin * r - pLose;
-
-  // 損益分岐勝率 p_BE = (1 - p_tie) / (1 + r)
-  const pBE = (1 - tieRate) / (1 + r);
-
-  // テクニカル方向との一致判定
-  const techIsHigh = techSignal === 'HIGH' || techSignal === 'STRONG_HIGH';
-  const techIsLow = techSignal === 'LOW' || techSignal === 'STRONG_LOW';
-  const directionMatch = (techIsHigh && aiDirection === 'HIGH') || (techIsLow && aiDirection === 'LOW');
-
-  // EVデータを保持（A4のレジーム連動判定で使用）
-  lastAIEVData = { ev, pWin, pLose, tieRate, pBE, directionMatch, matchCount };
-
-  // === A1: 優位性（期待値EV） ===
-  const a1Pass = ev >= V2_CONFIG.EV_MIN;
-  updateCheckItem(aiChecks, 0, a1Pass);
-
-  // === A2: 同値リスク ===
-  // p_tie ≤ 0.25、またはEVが十分なら同値が多くても許容
-  const a2Pass = tieRate <= V2_CONFIG.TIE_MAX || ev >= V2_CONFIG.EV_MIN;
-  updateCheckItem(aiChecks, 1, a2Pass);
-
-  // === A3: 信頼度（Wilson下限） ===
-  let a3Pass = false;
-  if (matchCount >= V2_CONFIG.MIN_SAMPLES) {
-    const z = V2_CONFIG.WILSON_Z;
-    const n = matchCount;
-    const p = pWin;
-    // Wilson score interval lower bound
-    const lb = (p + z * z / (2 * n) - z * Math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)) / (1 + z * z / n);
-    a3Pass = lb >= pBE;
-  }
-  updateCheckItem(aiChecks, 2, a3Pass);
-
-  // === A4: 整合（方向の一致 + EV柔軟判定） ===
-  let a4Pass = false;
-  if (directionMatch) {
-    a4Pass = true;
-  } else if (ev >= V2_CONFIG.EV_STRONG) {
-    // 不一致でもEVが十分かつレンジ局面なら条件付き✓
-    // latestEnhancedDataからv2Regimeを取得
-    const v2Regime = latestEnhancedData?.v2?.t1?.v2Regime;
-    a4Pass = v2Regime === 'RANGE';
-  }
-  updateCheckItem(aiChecks, 3, a4Pass);
-
-  // ダッシュボード用に結果を保持
-  conditionResults.a1 = a1Pass;
-  conditionResults.a2 = a2Pass;
-  conditionResults.a3 = a3Pass;
-  conditionResults.a4 = a4Pass;
-  updateCondDashboard();
+function resetMarketOverview() {
+  if (marketOverviewTimerId) { clearInterval(marketOverviewTimerId); marketOverviewTimerId = null; }
+  marketOverviewInitialized = false;
+  marketOverviewSynced = false;
+  marketOverviewRemaining = 0;
+  marketOverviewTargetTime = 0;
+  pendingMarketData = null;
+  const countdownEl = document.getElementById('market-countdown');
+  if (countdownEl) { countdownEl.textContent = ''; }
+  const regimeLabel = document.getElementById('market-regime-label');
+  const regimeIcon = document.getElementById('market-regime-icon');
+  const strengthFill = document.getElementById('market-strength-fill');
+  const forecastEl = document.getElementById('market-forecast-text');
+  if (regimeLabel) { regimeLabel.textContent = '分析待ち'; regimeLabel.style.color = ''; }
+  if (regimeIcon) regimeIcon.textContent = '―';
+  if (strengthFill) strengthFill.style.width = '0%';
+  if (forecastEl) forecastEl.textContent = 'データ収集中...';
+  const volBadge = document.getElementById('market-volatility-badge');
+  if (volBadge) { volBadge.textContent = ''; volBadge.className = 'market-volatility-badge'; }
 }
 
 // ML学習状況更新

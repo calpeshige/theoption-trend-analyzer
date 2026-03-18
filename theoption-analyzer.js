@@ -869,7 +869,8 @@ function initializeAnalyzer() {
                 reason: enhancedResult.reason || '',
                 regime: enhancedResult.regime || 'N/A',  // 文字列で返される
                 mtfAgreement: enhancedResult.mtfAgreement || 0,  // 直接数値で返される
-                qualityScore: enhancedResult.qualityScore || 0
+                qualityScore: enhancedResult.qualityScore || 0,
+                v2: enhancedResult.v2 || null  // マーケット概況カード用
               };
               logFn(`[SidePanel送信] 📊 高精度分析(${tf}s): ${enhancedData.grade} ${enhancedData.regime} MTF:${enhancedData.mtfAgreement}%`);
             } else {
@@ -2353,6 +2354,13 @@ function initializeAnalyzer() {
       startPriceMonitoring();
 
       console.log('[TheOption Analyzer] ✅ 初期化完了');
+
+      // サイドパネルに初期化完了を通知
+      try {
+        chrome.runtime.sendMessage({ type: 'CONTENT_SCRIPT_READY' });
+      } catch (e) {
+        // サイドパネルが開いていない場合は無視
+      }
     }
 
 
