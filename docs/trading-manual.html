@@ -254,6 +254,86 @@
     }
     .faq-a { font-size: 14px; }
 
+    /* ダウンロードカード */
+    .release-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+    .release-card.latest {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    .release-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .release-version {
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .release-date {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .release-latest-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 10px;
+      background: rgba(26,115,232,0.12);
+      color: var(--primary);
+    }
+    .release-notes {
+      font-size: 14px;
+      margin-bottom: 16px;
+      color: var(--text-secondary);
+    }
+    .release-notes ul {
+      margin: 6px 0 0 18px;
+    }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #1557b0; }
+    .download-btn svg { flex-shrink: 0; }
+    .download-size {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-left: 8px;
+    }
+    .install-steps {
+      background: var(--bg-section);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0 16px;
+    }
+    .install-steps h3 {
+      margin-top: 0;
+      font-size: 15px;
+    }
+    .install-steps ol {
+      font-size: 14px;
+      margin: 8px 0 0 18px;
+    }
+
     /* フッター */
     .site-footer {
       text-align: center;
@@ -289,6 +369,7 @@
   <nav class="tab-nav">
     <button class="tab-btn active" data-tab="manual">取扱説明書</button>
     <button class="tab-btn" data-tab="updates">アップデート情報</button>
+    <button class="tab-btn" data-tab="download">ダウンロード</button>
   </nav>
 
   <!-- ===== 取扱説明書タブ ===== -->
@@ -830,6 +911,73 @@
         <ul>
           <li>変更内容</li>
         </ul>
+      </div>
+      -->
+
+    </div>
+  </div>
+
+  <!-- ===== ダウンロードタブ ===== -->
+  <div class="tab-content" id="tab-download">
+    <div class="content">
+
+      <h2>ダウンロード</h2>
+      <p>Theoption Trading System の各バージョンをダウンロードできます。</p>
+
+      <div class="install-steps">
+        <h3>インストール方法</h3>
+        <ol>
+          <li>下のボタンからZIPファイルをダウンロード</li>
+          <li>ZIPを展開（解凍）する</li>
+          <li>Chromeで <code>chrome://extensions</code> を開く</li>
+          <li>右上の「デベロッパーモード」を有効にする</li>
+          <li>「パッケージ化されていない拡張機能を読み込む」をクリック</li>
+          <li>展開したフォルダを選択</li>
+        </ol>
+      </div>
+
+      <div class="note">
+        <strong>アップデート時の注意：</strong> 新しいバージョンをインストールする前に、サイドパネルからJSONエクスポートでデータのバックアップを取ることをお勧めします。学習データは引き継がれますが、万が一に備えてください。
+      </div>
+
+      <!-- 最新バージョン -->
+      <div class="release-card latest">
+        <div class="release-header">
+          <span class="release-version">v5.12.1</span>
+          <span class="release-latest-badge">最新</span>
+          <span class="release-date">2026年3月19日</span>
+        </div>
+        <div class="release-notes">
+          <ul>
+            <li>シグナルモード切替機能（標準 / 多数決）を追加</li>
+            <li>マーケット概況をモメンタム・価格位置ベースに全面刷新</li>
+            <li>急変検出アラートを追加</li>
+            <li>時間帯別データ削除機能を追加</li>
+            <li>カウントダウン表示の簡素化</li>
+          </ul>
+        </div>
+        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.1/theoption-trading-system-v5.12.1.zip">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          ダウンロード（v5.12.1）
+        </a>
+      </div>
+
+      <!-- 過去バージョンはここに追加 -->
+      <!--
+      <div class="release-card">
+        <div class="release-header">
+          <span class="release-version">vX.X.X</span>
+          <span class="release-date">20XX年X月X日</span>
+        </div>
+        <div class="release-notes">
+          <ul>
+            <li>変更内容</li>
+          </ul>
+        </div>
+        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/vX.X.X/theoption-trading-system-vX.X.X.zip">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          ダウンロード（vX.X.X）
+        </a>
       </div>
       -->
 
