@@ -4,6 +4,10 @@
     {
       "src": "*.html",
       "use": "@vercel/static"
+    },
+    {
+      "src": "docs/*.html",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -14,6 +18,14 @@
     {
       "src": "/license-admin.html",
       "dest": "/license-admin.html"
+    },
+    {
+      "src": "/manual",
+      "dest": "/docs/trading-manual.html"
+    },
+    {
+      "src": "/docs/trading-manual.html",
+      "dest": "/docs/trading-manual.html"
     }
   ]
 }

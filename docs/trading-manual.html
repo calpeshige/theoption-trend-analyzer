@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theoption Trading System - 取扱説明書</title>
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-light: #e8f0fe;
+      --text: #202124;
+      --text-secondary: #5f6368;
+      --border: #dadce0;
+      --bg: #ffffff;
+      --bg-section: #f8f9fa;
+      --success: #1e8e3e;
+      --danger: #d93025;
+      --warning: #f9ab00;
+      --orange: #e8710a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    /* ヘッダー */
+    .site-header {
+      background: var(--primary);
+      color: #fff;
+      padding: 32px 24px 24px;
+      text-align: center;
+    }
+    .site-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .site-header .version {
+      font-size: 13px;
+      opacity: 0.85;
+    }
+
+    /* タブナビ */
+    .tab-nav {
+      display: flex;
+      border-bottom: 2px solid var(--border);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 14px 8px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--primary); }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    /* タブコンテンツ */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* コンテンツ共通 */
+    .content {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 40px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+    }
+    h2:first-child { margin-top: 8px; }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 28px 0 10px;
+    }
+
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 20px 0 8px;
+    }
+
+    p { margin: 8px 0; }
+
+    /* テーブル */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--bg-section);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* リスト */
+    ul, ol {
+      margin: 8px 0 12px 20px;
+    }
+    li { margin: 4px 0; }
+
+    /* 注意ボックス */
+    .note {
+      background: #fff8e1;
+      border-left: 4px solid var(--warning);
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 14px;
+    }
+    .note-info {
+      background: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 14px;
+    }
+
+    /* フローボックス */
+    .flow-box {
+      background: var(--bg-section);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 12px 0 16px;
+      font-size: 14px;
+      line-height: 2;
+    }
+
+    /* DO/DONTカード */
+    .do-dont {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .do-card, .dont-card {
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .do-card {
+      background: #e6f4ea;
+      border: 1px solid #a8dab5;
+    }
+    .do-card h4 { color: var(--success); margin-top: 0; }
+    .dont-card {
+      background: #fce8e6;
+      border: 1px solid #f5c6cb;
+    }
+    .dont-card h4 { color: var(--danger); margin-top: 0; }
+
+    /* バッジ */
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .badge-blue { background: rgba(26,115,232,0.12); color: var(--primary); }
+    .badge-orange { background: rgba(232,113,10,0.12); color: var(--orange); }
+    .badge-green { background: rgba(30,142,62,0.12); color: var(--success); }
+    .badge-red { background: rgba(217,48,37,0.12); color: var(--danger); }
+    .badge-gray { background: rgba(95,99,104,0.12); color: var(--text-secondary); }
+
+    /* アップデートカード */
+    .update-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+    .update-card h3 {
+      margin-top: 0;
+      font-size: 17px;
+    }
+    .update-version {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+    .update-card ul { font-size: 14px; }
+
+    /* 目次 */
+    .toc {
+      background: var(--bg-section);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px 16px 20px;
+      margin: 16px 0 24px;
+    }
+    .toc-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+    }
+    .toc ol {
+      margin: 0 0 0 18px;
+      font-size: 14px;
+    }
+    .toc a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .toc a:hover { text-decoration: underline; }
+
+    /* FAQ */
+    .faq-item { margin: 16px 0; }
+    .faq-q {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .faq-a { font-size: 14px; }
+
+    /* フッター */
+    .site-footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+    }
+
+    /* レスポンシブ */
+    @media (max-width: 600px) {
+      .content { padding: 16px 14px 48px; }
+      .do-dont { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+      th, td { padding: 8px 10px; }
+    }
+
+    @media print {
+      .tab-nav { display: none; }
+      .tab-content { display: block !important; }
+      .tab-content + .tab-content { page-break-before: always; }
+      .site-header { background: #333; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <h1>Theoption Trading System</h1>
+    <div class="version">v5.12.1</div>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="manual">取扱説明書</button>
+    <button class="tab-btn" data-tab="updates">アップデート情報</button>
+  </nav>
+
+  <!-- ===== 取扱説明書タブ ===== -->
+  <div class="tab-content active" id="tab-manual">
+    <div class="content">
+
+      <div class="toc">
+        <div class="toc-title">目次</div>
+        <ol>
+          <li><a href="#sec-intro">はじめに</a></li>
+          <li><a href="#sec-install">インストールと起動</a></li>
+          <li><a href="#sec-layout">画面構成</a></li>
+          <li><a href="#sec-signal">シグナルの見方</a></li>
+          <li><a href="#sec-mode">シグナルモード（標準 / 多数決）</a></li>
+          <li><a href="#sec-market">マーケット概況</a></li>
+          <li><a href="#sec-ai">AI予測詳細</a></li>
+          <li><a href="#sec-learning">AI学習状況とデータ管理</a></li>
+          <li><a href="#sec-quick">クイック設定</a></li>
+          <li><a href="#sec-settings">設定パネル</a></li>
+          <li><a href="#sec-entry">エントリーガイド</a></li>
+          <li><a href="#sec-download">データのダウンロード・バックアップ</a></li>
+          <li><a href="#sec-hourly">時間帯別データ管理</a></li>
+          <li><a href="#sec-faq">よくある質問</a></li>
+        </ol>
+      </div>
+
+      <!-- 1. はじめに -->
+      <h2 id="sec-intro">1. はじめに</h2>
+      <p>Theoption Trading Systemは、TheOptionのトレーディング画面と連動し、テクニカル分析とAI（機械学習）予測を組み合わせた取引支援ツールです。</p>
+      <p><strong>対応する判定時間：</strong> 15秒・30秒・60秒・3分・5分</p>
+      <p>サイドパネル上にリアルタイムでシグナルを表示し、エントリータイミングの判断をサポートします。</p>
+      <div class="note">
+        <strong>ご注意：</strong> 本システムのシグナルは取引の参考情報です。投資判断はご自身の責任で行ってください。
+      </div>
+
+      <!-- 2. インストールと起動 -->
+      <h2 id="sec-install">2. インストールと起動</h2>
+      <h3>インストール</h3>
+      <ol>
+        <li>Chrome ブラウザで <code>chrome://extensions</code> を開く</li>
+        <li>右上の「デベロッパーモード」を有効にする</li>
+        <li>「パッケージ化されていない拡張機能を読み込む」をクリック</li>
+        <li>本システムのフォルダを選択</li>
+      </ol>
+      <h3>起動方法</h3>
+      <ol>
+        <li>TheOptionのトレーディング画面（<code>jp.theoption.com/trading</code>）を開く</li>
+        <li>ブラウザ右上の拡張機能アイコンをクリック</li>
+        <li>サイドパネルが自動的に開き、分析が開始されます</li>
+      </ol>
+      <h3>待機画面</h3>
+      <p>TheOptionのトレーディング画面以外を表示している場合、サイドパネルには「待機中」画面が表示されます。トレーディング画面に移動すると自動的に分析が開始されます。</p>
+
+      <!-- 3. 画面構成 -->
+      <h2 id="sec-layout">3. 画面構成</h2>
+      <p>サイドパネルは上から順に以下の構成です。</p>
+
+      <h3>トップバー</h3>
+      <table>
+        <tr><th>要素</th><th>説明</th></tr>
+        <tr><td><strong>接続ステータス</strong></td><td>緑のドット＝接続中、テキストで状態を表示</td></tr>
+        <tr><td><strong>データ件数</strong></td><td>現在のAI学習データの総件数</td></tr>
+        <tr><td><strong>通貨ペア名</strong></td><td>現在選択中の通貨ペア（自動検出）</td></tr>
+        <tr><td><strong>カウントダウン</strong></td><td>次の分析までの円形プログレスリング</td></tr>
+        <tr><td><strong>ダウンロードボタン</strong></td><td>データのダウンロード・バックアップ画面を開く</td></tr>
+        <tr><td><strong>設定ボタン（⚙）</strong></td><td>各種設定画面を開く</td></tr>
+      </table>
+
+      <h3>判定時間セレクター</h3>
+      <p>5つのボタンから判定時間を選択します：<strong>15秒 / 30秒 / 60秒 / 3分 / 5分</strong></p>
+      <p>TheOptionの取引画面で選択している判定時間に合わせてください。</p>
+
+      <h3>シグナルカード</h3>
+      <p>2つのカードが並んで表示されます。</p>
+      <ul>
+        <li><strong>テクニカル分析</strong> — 複数の指標を統合した総合判断</li>
+        <li><strong>AI予測</strong> — 機械学習による予測結果</li>
+      </ul>
+
+      <h3>急変検出アラート</h3>
+      <p>急激な価格変動を検出した場合、シグナルカードの下に「⚠ 急変検出」アラートが表示されます。急変時はエントリーを控えることを推奨します。</p>
+
+      <h3>20インジケータ多数決パネル（多数決モード時のみ）</h3>
+      <p>20個のインジケータの詳細を確認できます。ヘッダーをクリックすると展開/折りたたみが切り替わります。</p>
+
+      <h3>マーケット概況カード</h3>
+      <p>相場の勢い・価格位置・ボラティリティ・予測文を表示します。</p>
+
+      <h3>AI予測詳細カード</h3>
+      <p>AI予測の確率や層別化分析の詳細を表示します。</p>
+
+      <h3>AI学習状況カード</h3>
+      <p>AIの学習データ量や学習レベル、データ管理機能を提供します。</p>
+
+      <h3>クイック設定</h3>
+      <p>分析モード・類似度閾値・データ範囲をワンタッチで変更できます。</p>
+
+      <!-- 4. シグナルの見方 -->
+      <h2 id="sec-signal">4. シグナルの見方</h2>
+
+      <h3>シグナルの種類</h3>
+      <table>
+        <tr><th>シグナル</th><th>表示色</th><th>意味</th></tr>
+        <tr><td><span class="badge badge-green">HIGH</span></td><td>緑</td><td>上昇予測 → HIGHエントリー推奨</td></tr>
+        <tr><td><span class="badge badge-red">LOW</span></td><td>赤</td><td>下降予測 → LOWエントリー推奨</td></tr>
+        <tr><td><span class="badge badge-gray">見送り</span></td><td>グレー</td><td>方向性が不明確 → エントリー非推奨</td></tr>
+        <tr><td><span class="badge badge-gray">データ収集中</span></td><td>グレー</td><td>分析に必要なデータを収集中</td></tr>
+      </table>
+
+      <h3>信頼度の表示</h3>
+      <p>各シグナルカードの下部に信頼度が表示されます。信頼度が高いほど、シグナルの精度が期待できます。</p>
+
+      <h3>カウントダウン表示</h3>
+      <p>分析開始前は「あと○分○秒」というカウントダウンが表示されます。この時間が経過すると、最初のシグナルが出力されます。</p>
+
+      <!-- 5. シグナルモード -->
+      <h2 id="sec-mode">5. シグナルモード（標準 / 多数決）</h2>
+      <p>本システムには2つのシグナルモードがあります。設定パネルから切り替え可能です。</p>
+
+      <h3>多数決モード（デフォルト）<span class="badge badge-blue" style="margin-left:8px;">多数決</span></h3>
+      <ul>
+        <li>テクニカル分析カードのヘッダーに <span class="badge badge-blue">多数決</span> バッジが表示</li>
+        <li>20種類のインジケータで多数決を取り、13個以上が一致した方向をシグナルとして出力</li>
+        <li>より多くのデータを必要とするため、分析開始までの待ち時間が長い</li>
+        <li>「20インジケータ多数決」パネルが表示され、各インジケータの判定を確認可能</li>
+      </ul>
+
+      <p><strong>分析開始までの目安時間（多数決モード）：</strong></p>
+      <table>
+        <tr><th>判定時間</th><th>待ち時間の目安</th></tr>
+        <tr><td>15秒</td><td>約7分30秒</td></tr>
+        <tr><td>30秒</td><td>約15分</td></tr>
+        <tr><td>60秒</td><td>約30分</td></tr>
+        <tr><td>3分</td><td>約45分</td></tr>
+        <tr><td>5分</td><td>約75分</td></tr>
+      </table>
+
+      <h3>標準モード <span class="badge badge-orange" style="margin-left:8px;">標準</span></h3>
+      <ul>
+        <li>テクニカル分析カードのヘッダーに <span class="badge badge-orange">標準</span> バッジが表示</li>
+        <li>複数のテクニカル指標を統合した総合分析方式</li>
+        <li>必要データ量が少なく、分析開始が早い</li>
+        <li>「20インジケータ多数決」パネルは非表示</li>
+      </ul>
+
+      <p><strong>分析開始までの目安時間（標準モード）：</strong></p>
+      <table>
+        <tr><th>判定時間</th><th>待ち時間の目安</th></tr>
+        <tr><td>15秒</td><td>約2分</td></tr>
+        <tr><td>30秒</td><td>約5分</td></tr>
+        <tr><td>60秒</td><td>約8分</td></tr>
+        <tr><td>3分</td><td>約9分</td></tr>
+        <tr><td>5分</td><td>約10分</td></tr>
+      </table>
+
+      <h3>どちらのモードを使うべきか？</h3>
+      <table>
+        <tr><th>状況</th><th>推奨モード</th></tr>
+        <tr><td>すぐにシグナルが欲しい</td><td>標準モード</td></tr>
+        <tr><td>じっくり待てる・精度重視</td><td>多数決モード</td></tr>
+      </table>
+
+      <h3>モードの切り替え方</h3>
+      <ol>
+        <li>右上の ⚙（設定）ボタンをタップ</li>
+        <li>「シグナルモード」のドロップダウンから選択</li>
+        <li>設定は即座に反映されます</li>
+      </ol>
+      <div class="note">
+        <strong>注意：</strong> モードを切り替えると、データ収集のカウントダウンがリセットされる場合があります。
+      </div>
+
+      <!-- 6. マーケット概況 -->
+      <h2 id="sec-market">6. マーケット概況</h2>
+      <p>マーケット概況カードでは、現在の相場状況を一目で把握できます。カードヘッダーをタップすると展開/折りたたみが切り替わります。</p>
+
+      <h3>モメンタム（勢い）</h3>
+      <table>
+        <tr><th>表示</th><th>意味</th></tr>
+        <tr><td><strong>↑ 上昇</strong></td><td>上昇の勢いがある</td></tr>
+        <tr><td><strong>↓ 下降</strong></td><td>下降の勢いがある</td></tr>
+        <tr><td><strong>➡ 横ばい</strong></td><td>明確な方向性がない</td></tr>
+      </table>
+      <p>モメンタムバーで勢いの強さを視覚的に確認できます。</p>
+
+      <h3>ボラティリティバッジ</h3>
+      <table>
+        <tr><th>バッジ</th><th>意味</th></tr>
+        <tr><td><strong>高ボラ</strong></td><td>値動きが大きい（チャンスが多いが注意も必要）</td></tr>
+        <tr><td><strong>低ボラ</strong></td><td>値動きが小さい（シグナルが出にくい）</td></tr>
+        <tr><td>表示なし</td><td>通常の変動幅</td></tr>
+      </table>
+
+      <h3>価格位置</h3>
+      <p>現在の価格が直近のレンジの中でどの位置にあるかを表示します。</p>
+
+      <h3>予測文</h3>
+      <p>現在の相場状況を総合した予測テキストが表示されます。</p>
+
+      <!-- 7. AI予測詳細 -->
+      <h2 id="sec-ai">7. AI予測詳細</h2>
+      <p>AI予測詳細カードでは、機械学習による予測の詳細情報を確認できます。</p>
+
+      <h3>確率バー</h3>
+      <p>上昇確率と下降確率が横棒グラフで表示されます。</p>
+      <ul>
+        <li><strong>緑（上昇）</strong> — 上昇する確率</li>
+        <li><strong>赤（下降）</strong> — 下降する確率</li>
+      </ul>
+      <p>確率の差が大きいほど、予測の方向性が明確です。</p>
+
+      <h3>時間帯バッジ</h3>
+      <p>AI予測が「時間帯別」モードで動作している場合、バッジが表示されます（クイック設定の「分析モード」と連動）。</p>
+
+      <h3>層別化分析</h3>
+      <p>AIは過去のデータを類似パターンで層別化（グループ分け）し、精度を高めています。層別化の結果がカード内に表示される場合があります。</p>
+
+      <h3>基本情報</h3>
+      <p>AIの予測に使われた学習データ件数やパターン一致度などの基本情報が表示されます。</p>
+
+      <!-- 8. AI学習状況 -->
+      <h2 id="sec-learning">8. AI学習状況とデータ管理</h2>
+
+      <h3>AI学習状況カード</h3>
+      <table>
+        <tr><th>項目</th><th>説明</th></tr>
+        <tr><td><strong>収集データ</strong></td><td>現在蓄積されているデータ件数（上限25,000件/通貨ペア）</td></tr>
+        <tr><td><strong>学習レベル</strong></td><td>AIの予測精度の目安（%表示）</td></tr>
+        <tr><td><strong>プログレスバー</strong></td><td>データ量の視覚的な進捗表示</td></tr>
+      </table>
+
+      <h3>データ鮮度</h3>
+      <p>データの新しさを星（★）で5段階評価します。古いデータが多いと精度が低下する場合があります。</p>
+
+      <h3>データ整理</h3>
+      <p>上限を超えた古いデータを自動的に整理する機能です。「データ整理」ボタンが表示された場合、タップして古いデータを削除できます。整理中は画面がブロックされ、完了まで操作できません。</p>
+
+      <h3>通貨ペア別データ状況</h3>
+      <p>「📊 通貨ペア別データ状況」ボタンをタップすると、通貨ペアごとのデータ蓄積状況を一覧で確認できます。</p>
+      <p>各通貨ペアをタップして展開すると、時間帯別のデータ件数が表示されます。不要な時間帯のデータを選択して削除することも可能です。</p>
+
+      <!-- 9. クイック設定 -->
+      <h2 id="sec-quick">9. クイック設定</h2>
+      <p>メイン画面の下部に、よく使う設定を素早く変更できるクイック設定があります。</p>
+
+      <h3>分析モード</h3>
+      <table>
+        <tr><th>モード</th><th>説明</th></tr>
+        <tr><td><strong>全体</strong></td><td>すべての時間帯のデータを使ってAI予測</td></tr>
+        <tr><td><strong>時間帯別</strong></td><td>現在と同じ時間帯のデータのみを使ってAI予測（精度向上が期待できる）</td></tr>
+      </table>
+      <p><strong>使い分け：</strong> データが十分にある場合は「時間帯別」で精度向上を狙い、データが少ない場合は「全体」で予測を安定させてください。</p>
+
+      <h3>類似度閾値</h3>
+      <p>AI予測時に、過去の類似パターンを探す際の一致度の基準です。</p>
+      <table>
+        <tr><th>閾値</th><th>特徴</th></tr>
+        <tr><td><strong>50%</strong></td><td>広く一致を取る（データ多、精度やや低）</td></tr>
+        <tr><td><strong>70%</strong>（推奨）</td><td>バランス型</td></tr>
+        <tr><td><strong>80%</strong></td><td>やや厳密（精度高、一致数減少）</td></tr>
+        <tr><td><strong>90%</strong></td><td>非常に厳密（精度最高、一致数がかなり少ない）</td></tr>
+      </table>
+      <p>データが十分にある場合は80%以上、少ない場合は50〜70%を推奨します。</p>
+
+      <h3>データ範囲</h3>
+      <table>
+        <tr><th>範囲</th><th>説明</th></tr>
+        <tr><td><strong>500</strong></td><td>直近500件のみ使用</td></tr>
+        <tr><td><strong>1K</strong></td><td>直近1,000件のみ使用</td></tr>
+        <tr><td><strong>2K</strong></td><td>直近2,000件のみ使用</td></tr>
+        <tr><td><strong>全期間</strong>（推奨）</td><td>すべてのデータを使用</td></tr>
+      </table>
+      <p>データが古くて精度が低いと感じる場合は、範囲を絞ると改善する場合があります。</p>
+
+      <!-- 10. 設定パネル -->
+      <h2 id="sec-settings">10. 設定パネル</h2>
+      <p>右上の ⚙ ボタンから設定パネルを開けます。</p>
+
+      <h3>アラート音</h3>
+      <table>
+        <tr><th>設定値</th><th>説明</th></tr>
+        <tr><td><strong>OFF</strong></td><td>通知音なし</td></tr>
+        <tr><td><strong>テクニカルのみ</strong></td><td>テクニカル分析シグナル時のみ</td></tr>
+        <tr><td><strong>AI予測のみ</strong></td><td>AI予測シグナル時のみ</td></tr>
+        <tr><td><strong>両方</strong></td><td>テクニカル・AI両方のシグナルで通知</td></tr>
+      </table>
+
+      <h3>音量</h3>
+      <p>通知音の音量を「小」「中」「大」から選択します。</p>
+
+      <h3>アラート音の種類</h3>
+      <p>10種類のサウンドから選択できます。▶ ボタンで試聴可能です。</p>
+
+      <h3>フォントサイズ</h3>
+      <p>画面全体の文字の大きさを「小」「中」「大」から選択します。</p>
+
+      <h3>シグナルモード</h3>
+      <table>
+        <tr><th>モード</th><th>説明</th></tr>
+        <tr><td><strong>多数決モード</strong></td><td>20インジケータの多数決で判定（デフォルト）</td></tr>
+        <tr><td><strong>標準モード</strong></td><td>複数指標の統合分析で判定（起動が早い）</td></tr>
+      </table>
+      <p>詳細は「<a href="#sec-mode">5. シグナルモード</a>」を参照してください。</p>
+
+      <h3>モメンタムフィルタ</h3>
+      <p>トレンドの勢いが弱まっている時のシグナルを抑制する機能です。</p>
+      <table>
+        <tr><th>設定値</th><th>説明</th></tr>
+        <tr><td><strong>OFF</strong></td><td>フィルタなし（すべてのシグナルを表示）</td></tr>
+        <tr><td><strong>弱</strong></td><td>明らかにトレンド終息時のみ抑制</td></tr>
+        <tr><td><strong>中</strong>（推奨）</td><td>バランスの良い抑制</td></tr>
+        <tr><td><strong>強</strong></td><td>積極的に抑制（シグナル数が減る）</td></tr>
+      </table>
+      <p>「見送り」シグナルが多すぎると感じたら「弱」に、騙しシグナルが多いと感じたら「強」にしてください。</p>
+
+      <!-- 11. エントリーガイド -->
+      <h2 id="sec-entry">11. エントリーガイド</h2>
+
+      <h3>基本的なエントリーフロー</h3>
+      <div class="flow-box">
+        ① 判定時間を選択（TheOptionの画面と合わせる）<br>
+        ② カウントダウンが完了するまで待つ<br>
+        ③ テクニカル分析とAI予測のシグナルを確認<br>
+        ④ 両方が一致していればエントリー
+      </div>
+
+      <h3>エントリー推奨条件</h3>
+      <p>以下のすべてを満たす場合、最も精度の高いエントリーが期待できます。</p>
+      <ol>
+        <li><strong>テクニカル分析とAI予測が同じ方向</strong>（HIGH同士 or LOW同士）</li>
+        <li><strong>信頼度が高い</strong></li>
+        <li><strong>急変検出アラートが出ていない</strong></li>
+        <li><strong>モメンタムが明確な方向を示している</strong></li>
+      </ol>
+
+      <h3>エントリーすべきでない状況</h3>
+      <table>
+        <tr><th>状況</th><th>理由</th></tr>
+        <tr><td>シグナルが「見送り」</td><td>方向性が不明確</td></tr>
+        <tr><td>テクニカルとAIが逆方向</td><td>分析が矛盾している</td></tr>
+        <tr><td>急変検出アラートが表示中</td><td>相場が不安定</td></tr>
+        <tr><td>データ収集中（カウントダウン表示中）</td><td>分析が未完了</td></tr>
+      </table>
+
+      <h3>時間帯による推奨</h3>
+      <h4>取引に適した時間帯</h4>
+      <table>
+        <tr><th>時間帯</th><th>市場</th><th>特徴</th></tr>
+        <tr><td>9:00〜11:00</td><td>東京市場</td><td>比較的安定した値動き</td></tr>
+        <tr><td>16:00〜18:00</td><td>ロンドン市場開始</td><td>活発な値動き</td></tr>
+        <tr><td>22:00〜24:00</td><td>NY市場</td><td>大きな値動き</td></tr>
+      </table>
+      <h4>避けるべきタイミング</h4>
+      <ul>
+        <li>重要な経済指標の発表前後30分</li>
+        <li>市場の切り替わり時間帯</li>
+        <li>深夜〜早朝（値動きが少なく予測が不安定）</li>
+      </ul>
+
+      <h3>取引のDO / DON'T</h3>
+      <div class="do-dont">
+        <div class="do-card">
+          <h4>DO（推奨）</h4>
+          <ul>
+            <li>シグナルが一致したときのみエントリー</li>
+            <li>カウントダウン完了後にシグナルを確認</li>
+            <li>マーケット概況で相場の勢いを確認</li>
+            <li>連続で負けたら一旦休む</li>
+            <li>データが十分に蓄積されてからAI予測を参考にする</li>
+          </ul>
+        </div>
+        <div class="dont-card">
+          <h4>DON'T（非推奨）</h4>
+          <ul>
+            <li>シグナルを無視した感覚トレード</li>
+            <li>急変検出アラート中のエントリー</li>
+            <li>データ収集中のエントリー</li>
+            <li>連続負け後の感情的なエントリー</li>
+            <li>テクニカルとAIが矛盾しているときのエントリー</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 12. ダウンロード -->
+      <h2 id="sec-download">12. データのダウンロード・バックアップ</h2>
+      <p>トップバーのダウンロードボタンから、データ管理画面を開けます。</p>
+
+      <h3>CSVダウンロード</h3>
+      <table>
+        <tr><th>種類</th><th>内容</th></tr>
+        <tr><td><strong>AI学習データ</strong></td><td>機械学習のトレーニングに使用されたデータ</td></tr>
+        <tr><td><strong>予測履歴</strong></td><td>AI予測の結果履歴</td></tr>
+        <tr><td><strong>トレンド分析</strong></td><td>テクニカル分析の履歴データ</td></tr>
+      </table>
+
+      <h3>バックアップ</h3>
+      <table>
+        <tr><th>機能</th><th>説明</th></tr>
+        <tr><td><strong>JSONエクスポート</strong></td><td>すべてのデータを1つのJSONファイルとしてバックアップ</td></tr>
+        <tr><td><strong>JSONインポート</strong></td><td>エクスポートしたJSONファイルからデータを復元</td></tr>
+      </table>
+      <div class="note-info">
+        <strong>推奨：</strong> 定期的にJSONエクスポートでバックアップを取ることをお勧めします。拡張機能の再インストール時にデータが失われることを防げます。
+      </div>
+
+      <!-- 13. 時間帯別データ管理 -->
+      <h2 id="sec-hourly">13. 時間帯別データ管理</h2>
+      <p>特定の時間帯のデータを選択して削除する機能です。</p>
+
+      <h3>アクセス方法</h3>
+      <ol>
+        <li>AI学習状況カードの「📊 通貨ペア別データ状況」をタップ</li>
+        <li>通貨ペアの一覧が表示される</li>
+        <li>各通貨ペアをタップして展開</li>
+        <li>時間帯別（0〜23時）のデータ件数が表示される</li>
+      </ol>
+
+      <h3>データの削除</h3>
+      <ol>
+        <li>削除したい時間帯のチェックボックスを選択</li>
+        <li>「削除」ボタンをタップ</li>
+        <li>確認ダイアログで「削除する」を選択</li>
+      </ol>
+      <div class="note">
+        <strong>注意：</strong> 削除したデータは元に戻せません。削除前にJSONエクスポートでバックアップを取ることを推奨します。
+      </div>
+
+      <h3>活用方法</h3>
+      <ul>
+        <li>取引しない時間帯のデータを削除することで、AI予測の精度向上が期待できます</li>
+        <li>例：深夜帯（1:00〜6:00）に取引しない場合、その時間帯のデータを削除</li>
+      </ul>
+
+      <!-- 14. FAQ -->
+      <h2 id="sec-faq">14. よくある質問</h2>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: シグナルが出るまでにどのくらいかかりますか？</div>
+        <div class="faq-a">A: シグナルモードと判定時間により異なります。「あと○分○秒」のカウントダウンが完了すると最初のシグナルが表示されます。すぐにシグナルが欲しい場合は「標準モード」をお試しください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: 多数決モードと標準モード、どちらが精度が高いですか？</div>
+        <div class="faq-a">A: 相場状況により異なります。多数決モードは多くの指標で合意を取るため安定性が高い傾向です。標準モードは複合的な分析を行い、起動が早い利点があります。まずは多数決モードで使用し、待ち時間が気になる場合に標準モードをお試しください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: テクニカルとAI、どちらを優先すべきですか？</div>
+        <div class="faq-a">A: 両方が一致したときのみエントリーするのが最も安全です。片方だけで判断するのは推奨しません。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: AI予測が「準備中」のまま表示されません</div>
+        <div class="faq-a">A: AI予測には一定量の学習データが必要です。初回利用時はデータが蓄積されるまで待つ必要があります。AI学習状況カードでデータの蓄積具合を確認してください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: 急変検出アラートが表示されたらどうすればいいですか？</div>
+        <div class="faq-a">A: 急激な価格変動が検出された状態です。シグナルの信頼性が低下しているため、アラートが消えるまでエントリーを控えることを推奨します。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: データの上限に達した場合はどうなりますか？</div>
+        <div class="faq-a">A: 各通貨ペアにつき最大25,000件のデータが保存されます。上限に近づくと「データ整理」ボタンが表示されます。タップすると古いデータが自動的に削除され、新しいデータのための容量が確保されます。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: 20インジケータ多数決パネルが表示されません</div>
+        <div class="faq-a">A: シグナルモードが「標準モード」になっている可能性があります。「多数決モード」に切り替えると表示されます。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: シグナルが頻繁に変わるのですが？</div>
+        <div class="faq-a">A: 相場が不安定な状態です。シグナルが安定するまで待つか、モメンタムフィルタの強度を上げることをお勧めします。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: ページをリロードするとカウントダウンが最初からになりますか？</div>
+        <div class="faq-a">A: はい、ページをリロードするとデータ収集が最初からやり直しになります。分析中はリロードを避けてください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q: 別の通貨ペアに切り替えるとどうなりますか？</div>
+        <div class="faq-a">A: 通貨ペアを切り替えると、その通貨ペアのデータ収集が新たに開始されます。カウントダウンが再表示されます。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== アップデート情報タブ ===== -->
+  <div class="tab-content" id="tab-updates">
+    <div class="content">
+
+      <h2>アップデート履歴</h2>
+      <p>新しいアップデートが上に表示されます。</p>
+
+      <!-- === v5.12 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.12</div>
+        <h3>シグナルモード切替機能</h3>
+        <ul>
+          <li>テクニカル分析の判定方式を<strong>「多数決モード」と「標準モード」</strong>から選べるようになりました</li>
+          <li>標準モードは待ち時間が短く、すぐにシグナルが出始めます</li>
+          <li>現在のモードがテクニカル分析カードにバッジで表示されます</li>
+          <li>カウントダウン表示を「あと○分○秒」にシンプル化</li>
+        </ul>
+      </div>
+
+      <!-- === v5.11 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.11</div>
+        <h3>マーケット概況の全面刷新</h3>
+        <ul>
+          <li>トレンド/レンジ判定を廃止し、<strong>モメンタム（勢い）・価格位置</strong>ベースの表示に変更</li>
+          <li>相場状況がより直感的に把握できるようになりました</li>
+          <li>カウントダウンが別タブを見ている間もズレなくなりました</li>
+          <li>英語表記を日本語に統一</li>
+        </ul>
+      </div>
+
+      <!-- === v5.10 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.10</div>
+        <h3>20インジケータ多数決エンジン・急変検出</h3>
+        <ul>
+          <li>テクニカル分析に<strong>20インジケータ多数決方式</strong>を導入し、シグナルの安定性が向上</li>
+          <li>相場の急変を自動検出する<strong>「⚠ 急変検出」アラート</strong>を追加</li>
+          <li><strong>時間帯別データ削除</strong>機能を追加（不要な時間帯のデータを整理してAI精度向上）</li>
+          <li>モメンタムフィルタを設定パネルに移動</li>
+          <li>シグナル表示のチラつきを改善</li>
+        </ul>
+      </div>
+
+      <!-- ここに今後のアップデートを追加 -->
+      <!--
+      <div class="update-card">
+        <div class="update-version">20XX年X月 — vX.X</div>
+        <h3>タイトル</h3>
+        <ul>
+          <li>変更内容</li>
+        </ul>
+      </div>
+      -->
+
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    Theoption Trading System v5.12.1<br>
+    本マニュアルの内容は予告なく変更される場合があります。
+  </footer>
+
+  <script>
+    // タブ切替
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        window.scrollTo(0, 0);
+      });
+    });
+
+    // 目次のスムーススクロール
+    document.querySelectorAll('.toc a').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  </script>
+</body>
+</html>

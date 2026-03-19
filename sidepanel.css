@@ -575,6 +575,25 @@ body {
   z-index: 1;
 }
 
+.signal-mode-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+  margin-left: 4px;
+  background: rgba(33, 150, 243, 0.12);
+  color: #1976d2;
+}
+
+.signal-mode-badge.mode-standard {
+  background: rgba(239, 108, 0, 0.12);
+  color: #ef6c00;
+}
+
 .signal-card-icon {
   margin-bottom: 8px;
   height: 52px;

@@ -425,6 +425,7 @@ function initializeAnalyzer() {
     let signalEngine20 = null;  // v5.9.1: 20インジケータ多数決シグナルシステム
     let latestSignal20Result = null;  // v5.9.2: 最新のsignal20結果（sendAnalysisToSidePanelで使用）
     let currentFilterLevel = 2;  // v5.10.6: モメンタムフィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
+    let currentSignalMode = 'majority';  // 'majority'（多数決モード）| 'standard'（標準モード）
     let priceUpdateInterval = null;
     let uiPanel = null;
     let tickData = [];
@@ -520,8 +521,11 @@ function initializeAnalyzer() {
         label: '15秒',
         updateInterval: 15,  // 15秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 450,  // 30本×15秒=450秒のデータを使用
-        minDataPoints: 450,  // 最低7分30秒(450秒)のデータが必要
+        dataWindow: 450,  // 多数決モード: 30本×15秒=450秒のデータを使用
+        minDataPoints: 450,  // 多数決モード: 最低7分30秒(450秒)のデータが必要
+        // 標準モード用（Signal20導入前の値）
+        standardDataWindow: 120,   // 直近2分のデータを使用
+        standardMinDataPoints: 120, // 最低2分(120秒)のデータが必要
         // v5.10.6: Signal20用設定（15秒足・30本制約）
         signal20: {
           candleSize: 15, minCandles: 30, label: '15秒足',
@@ -542,8 +546,10 @@ function initializeAnalyzer() {
         label: '30秒',
         updateInterval: 30,  // 30秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 900,  // 60本×15秒=900秒のデータを使用
-        minDataPoints: 900,  // 最低15分(900秒)のデータが必要
+        dataWindow: 900,  // 多数決モード: 60本×15秒=900秒のデータを使用
+        minDataPoints: 900,  // 多数決モード: 最低15分(900秒)のデータが必要
+        standardDataWindow: 300,   // 直近5分のデータを使用
+        standardMinDataPoints: 300, // 最低5分(300秒)のデータが必要
         // v5.10.6: Signal20用設定（15秒足・60本制約→標準パラメータ使用可能）
         signal20: {
           candleSize: 15, minCandles: 60, label: '15秒足',
@@ -564,8 +570,10 @@ function initializeAnalyzer() {
         label: '60秒',
         updateInterval: 60,  // 60秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 1800,  // 30本×60秒=1800秒のデータを使用
-        minDataPoints: 1800,  // 最低30分(1800秒)のデータが必要
+        dataWindow: 1800,  // 多数決モード: 30本×60秒=1800秒のデータを使用
+        minDataPoints: 1800,  // 多数決モード: 最低30分(1800秒)のデータが必要
+        standardDataWindow: 480,   // 直近8分のデータを使用
+        standardMinDataPoints: 480, // 最低8分(480秒)のデータが必要
         // v5.10.6: Signal20用設定（1分足・30本制約）
         signal20: {
           candleSize: 60, minCandles: 30, label: '1分足',
@@ -586,8 +594,10 @@ function initializeAnalyzer() {
         label: '3分',
         updateInterval: 180,  // 180秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 2700,  // 45本×60秒=2700秒のデータを使用
-        minDataPoints: 2700,  // 最低45分(2700秒)のデータが必要
+        dataWindow: 2700,  // 多数決モード: 45本×60秒=2700秒のデータを使用
+        minDataPoints: 2700,  // 多数決モード: 最低45分(2700秒)のデータが必要
+        standardDataWindow: 540,   // 直近9分のデータを使用
+        standardMinDataPoints: 540, // 最低9分(540秒)のデータが必要
         // v5.10.6: Signal20用設定（1分足・45本制約）
         signal20: {
           candleSize: 60, minCandles: 45, label: '1分足',
@@ -608,8 +618,10 @@ function initializeAnalyzer() {
         label: '5分',
         updateInterval: 300,  // 300秒ごとに更新
         prepTime: 5,  // エントリー5秒前に分析完了
-        dataWindow: 3600,  // 60本×60秒=3600秒のデータを使用
-        minDataPoints: 3600,  // 最低60分(3600秒)のデータが必要
+        dataWindow: 3600,  // 多数決モード: 60本×60秒=3600秒のデータを使用
+        minDataPoints: 3600,  // 多数決モード: 最低60分(3600秒)のデータが必要
+        standardDataWindow: 600,   // 直近10分のデータを使用
+        standardMinDataPoints: 600, // 最低10分(600秒)のデータが必要
         // v5.10.6: Signal20用設定（1分足・60本制約→標準パラメータ使用可能）
         signal20: {
           candleSize: 60, minCandles: 60, label: '1分足',
@@ -627,6 +639,12 @@ function initializeAnalyzer() {
         }
       }
     };
+
+    // モードに応じたminDataPointsを取得するヘルパー
+    function getEffectiveMinDataPoints(tf) {
+      const cfg = TIMEFRAME_CONFIGS[tf];
+      return currentSignalMode === 'standard' ? cfg.standardMinDataPoints : cfg.minDataPoints;
+    }
 
     // ========================================
     // 設定変更時のML予測再実行
@@ -1293,7 +1311,7 @@ function initializeAnalyzer() {
       try {
         // 現在の時間枠の設定を取得
         const config = TIMEFRAME_CONFIGS[currentTimeframe];
-        const requiredData = config.minDataPoints || 30;
+        const requiredData = getEffectiveMinDataPoints(currentTimeframe) || 30;
         const currentData = priceHistory.length;
 
         // テクニカル分析のデータ収集進捗
@@ -1354,9 +1372,9 @@ function initializeAnalyzer() {
             const techGrade = currentResult.enhanced?.grade || null;
 
             // v5.10.4: Signal20がWAITまたは未計算の場合、テクニカルシグナルを無効にする
-            // ローソク足が十分にないのにシグナルが出るのを防止
+            // 標準モードではSignal20チェックをスキップ
             const signal20Data = currentResult.multiDim?.signal20 || null;
-            const signal20Ready = signal20Data && signal20Data.signal !== 'WAIT';
+            const signal20Ready = currentSignalMode === 'standard' || (signal20Data && signal20Data.signal !== 'WAIT');
             const techSignalValue = signal20Ready ? (signals.technical ? signals.technical.signal : null) : 'NEUTRAL';
             const techConfValue = signal20Ready ? (signals.technical ? signals.technical.confidence : null) : 0;
 
@@ -1488,7 +1506,22 @@ function initializeAnalyzer() {
           mlStats: mlStats,
           // v5.9.5: signal20データ + 準備状況
           signal20: latestSignal20Result || null,
+          signalMode: currentSignalMode,
           signal20Status: (() => {
+            if (currentSignalMode === 'standard') {
+              // 標準モード: minDataPointsベースの準備状況
+              const stdMin = config.standardMinDataPoints;
+              if (priceHistory.length >= stdMin) return { ready: true };
+              const remainingSec = stdMin - priceHistory.length;
+              return {
+                ready: false,
+                currentCandles: priceHistory.length,
+                requiredCandles: stdMin,
+                remainingSec: remainingSec,
+                candleLabel: 'データ'
+              };
+            }
+            // 多数決モード: Signal20ローソク足ベース
             const s20Cfg = config.signal20;
             const s20Candles = generateCandles(priceHistory, s20Cfg.candleSize);
             const current = s20Candles.length;
@@ -1818,6 +1851,11 @@ function initializeAnalyzer() {
 
         // v5.10.3: Signal20データ＋準備状況をポーリングで返す（唯一のデータパス）
         if (message.type === 'REQUEST_SIGNAL20_DATA') {
+          // 標準モードではSignal20不要なのでready:trueを返す
+          if (currentSignalMode === 'standard') {
+            sendResponse({ signal20: null, signal20Status: { ready: true }, signalMode: 'standard' });
+            return;
+          }
           const config = TIMEFRAME_CONFIGS[currentTimeframe];
           const s20Cfg = config.signal20;
           const s20Candles = generateCandles(priceHistory, s20Cfg.candleSize);
@@ -1922,6 +1960,14 @@ function initializeAnalyzer() {
           const level = Math.max(0, Math.min(3, message.level || 0));
           currentFilterLevel = level;
           sendResponse({ success: true, level: level });
+          return;
+        }
+
+        // シグナルモード変更（多数決モード / 標準モード）
+        if (message.type === 'SET_SIGNAL_MODE') {
+          currentSignalMode = message.mode === 'standard' ? 'standard' : 'majority';
+          originalConsoleLog(`[TheOption Analyzer] 🔄 シグナルモード変更: ${currentSignalMode}`);
+          sendResponse({ success: true, mode: currentSignalMode });
           return;
         }
 
@@ -2379,7 +2425,7 @@ function initializeAnalyzer() {
       chrome.storage.local.set({ currentTimeframe: newTimeframe });
 
       // タブ切り替え時は次回分析まで待機
-      const minDataPoints = TIMEFRAME_CONFIGS[newTimeframe].minDataPoints;
+      const minDataPoints = getEffectiveMinDataPoints(newTimeframe);
 
       if (priceHistory.length >= minDataPoints) {
         // 現在時刻を設定して、次回の分析インターバルまで待機
@@ -2883,7 +2929,7 @@ function initializeAnalyzer() {
 
                 // ML初期化完了後、十分なデータがあれば再分析を実行してAI予測を更新
                 const currentPrice = window.theOptionCurrentPrice;
-                if (currentPrice && priceHistory.length >= TIMEFRAME_CONFIGS[currentTimeframe].minDataPoints) {
+                if (currentPrice && priceHistory.length >= getEffectiveMinDataPoints(currentTimeframe)) {
                   console.log(`[TheOption Analyzer] 🔄 通貨ペア切替後のML初期化完了、再分析を実行 (price: ${currentPrice})`);
                   performAnalysis(currentPrice, { timeframe: currentTimeframe, isTabSwitch: false, forceUpdate: true });
                 } else {
@@ -2970,7 +3016,7 @@ function initializeAnalyzer() {
 
                 // ML初期化完了後、十分なデータがあれば再分析を実行してAI予測を更新
                 const currentPrice = window.theOptionCurrentPrice;
-                if (currentPrice && priceHistory.length >= TIMEFRAME_CONFIGS[currentTimeframe].minDataPoints) {
+                if (currentPrice && priceHistory.length >= getEffectiveMinDataPoints(currentTimeframe)) {
                   console.log(`[TheOption Analyzer] 🔄 ML初期化完了後の再分析を実行 (price: ${currentPrice})`);
                   performAnalysis(currentPrice, { timeframe: currentTimeframe, isTabSwitch: false, forceUpdate: true });
                 } else {
@@ -3145,7 +3191,7 @@ function initializeAnalyzer() {
           // 30秒ごとに進捗ログとデータ保存（パフォーマンス最適化）
           if (now - lastLogTime > 30000) {
             const config = TIMEFRAME_CONFIGS[currentTimeframe];
-            console.log(`[TheOption Analyzer] 📊 ${currentAsset || 'データ'} 収集中: ${priceHistory.length}/${config.minDataPoints}秒 (価格: ${price})`);
+            console.log(`[TheOption Analyzer] 📊 ${currentAsset || 'データ'} 収集中: ${priceHistory.length}/${getEffectiveMinDataPoints(currentTimeframe)}秒 (価格: ${price})`);
             lastLogTime = now;
 
             // 30秒ごとにストレージに保存（パフォーマンス最適化）
@@ -3374,13 +3420,17 @@ function initializeAnalyzer() {
         }
       }
 
+      // モードに応じた最低データ数とデータ範囲を決定
+      const effectiveMinDataPoints = currentSignalMode === 'standard' ? config.standardMinDataPoints : config.minDataPoints;
+      const effectiveDataWindow = currentSignalMode === 'standard' ? config.standardDataWindow : config.dataWindow;
+
       // 時間枠に応じた最低データ数をチェック
-      if (priceHistory.length < config.minDataPoints) {
+      if (priceHistory.length < effectiveMinDataPoints) {
         // 選択中の時間枠の場合のみUI更新
         if (targetTimeframe === currentTimeframe) {
           updateUI({
             status: 'COLLECTING',
-            message: `データ収集中... (${priceHistory.length}/${config.minDataPoints}秒)`,
+            message: `データ収集中... (${priceHistory.length}/${effectiveMinDataPoints}秒)`,
             timeframe: targetTimeframe
           });
         }
@@ -3389,6 +3439,7 @@ function initializeAnalyzer() {
 
       console.log('[TheOption Analyzer] 分析開始:', {
         timeframe: config.label,
+        signalMode: currentSignalMode,
         priceCount: priceHistory.length,
         tickCount: tickData.length,
         currentPrice: currentPrice,
@@ -3398,8 +3449,8 @@ function initializeAnalyzer() {
       });
 
       // 時間枠に応じたデータ範囲を取得
-      const relevantPrices = priceHistory.slice(-config.dataWindow);
-      const relevantTicks = tickData.slice(-config.dataWindow);
+      const relevantPrices = priceHistory.slice(-effectiveDataWindow);
+      const relevantTicks = tickData.slice(-effectiveDataWindow);
 
       // ダミーローソク足生成（簡易版）
       candles = generateCandles(relevantPrices);
@@ -3409,7 +3460,7 @@ function initializeAnalyzer() {
         if (targetTimeframe === currentTimeframe) {
           updateUI({
             status: 'COLLECTING',
-            message: `データ収集中... (${priceHistory.length}/${config.minDataPoints}秒)`,
+            message: `データ収集中... (${priceHistory.length}/${effectiveMinDataPoints}秒)`,
             timeframe: targetTimeframe
           });
         }
@@ -3494,38 +3545,46 @@ function initializeAnalyzer() {
       // v5.10.4: Signal20の多数決が確定しない限り、テクニカルシグナルは出さない
       let signal20Result = null;
       let signal20Decided = false;  // Signal20がHIGH/LOWを確定したかどうか
-      const s20Config = config.signal20;
-      const signal20Candles = generateCandles(priceHistory, s20Config.candleSize);
-      originalConsoleLog(`[TheOption Analyzer] 🔍 Signal20チェック: engine=${!!signalEngine20}, ${s20Config.label}=${signal20Candles.length}本/${s20Config.minCandles}本必要 (priceHistory=${priceHistory.length})`);
-      if (signalEngine20 && signal20Candles.length >= s20Config.minCandles) {
-        try {
-          signalEngine20.setCandles(signal20Candles);
-          if (s20Config.params) signalEngine20.setParams(s20Config.params);
-          if (s20Config.filterParams) signalEngine20.setFilterParams(s20Config.filterParams);
-          signalEngine20.setFilterLevel(currentFilterLevel);
-          signal20Result = signalEngine20.analyze();
-          const filterInfo = signal20Result.momentumFilter;
-          // 20インジケータの詳細データを常に保持（デバッグパネル用）
-          multiDimResult.signal20 = signal20Result;
-          latestSignal20Result = signal20Result;  // グローバル変数にも保存（sendAnalysisToSidePanel後に送信）
-          // 20インジケータの結果でテクニカルシグナルを上書き
-          if (signal20Result.signal !== 'WAIT') {
-            multiDimResult.signal = signal20Result.signal;
-            // starLevelに基づいてconfidenceを設定（UI側で星表示に変換）
-            multiDimResult.confidence = signal20Result.starLevel > 0 ? 60 + (signal20Result.starLevel - 1) * 15 : null;
-            signal20Decided = true;
-          }
-        } catch (error) {
-          console.error(`[TheOption Analyzer] SignalEngine20エラー:`, error);
-        }
-      }
 
-      // v5.10.4: Signal20の多数決が未確定（WAIT or ローソク足不足）の場合、テクニカルシグナルをNEUTRALに強制
-      // 多数決が出てからでないとシグナルを出してはいけない
-      if (!signal20Decided) {
-        multiDimResult.signal = 'NEUTRAL';
-        multiDimResult.confidence = 0;
-        originalConsoleLog(`[TheOption Analyzer] ⏳ Signal20未確定 → テクニカルシグナルをNEUTRALに強制`);
+      if (currentSignalMode === 'majority') {
+        // 多数決モード: Signal20で判定し、未確定ならNEUTRAL強制
+        const s20Config = config.signal20;
+        const signal20Candles = generateCandles(priceHistory, s20Config.candleSize);
+        originalConsoleLog(`[TheOption Analyzer] 🔍 Signal20チェック: engine=${!!signalEngine20}, ${s20Config.label}=${signal20Candles.length}本/${s20Config.minCandles}本必要 (priceHistory=${priceHistory.length})`);
+        if (signalEngine20 && signal20Candles.length >= s20Config.minCandles) {
+          try {
+            signalEngine20.setCandles(signal20Candles);
+            if (s20Config.params) signalEngine20.setParams(s20Config.params);
+            if (s20Config.filterParams) signalEngine20.setFilterParams(s20Config.filterParams);
+            signalEngine20.setFilterLevel(currentFilterLevel);
+            signal20Result = signalEngine20.analyze();
+            const filterInfo = signal20Result.momentumFilter;
+            // 20インジケータの詳細データを常に保持（デバッグパネル用）
+            multiDimResult.signal20 = signal20Result;
+            latestSignal20Result = signal20Result;  // グローバル変数にも保存（sendAnalysisToSidePanel後に送信）
+            // 20インジケータの結果でテクニカルシグナルを上書き
+            if (signal20Result.signal !== 'WAIT') {
+              multiDimResult.signal = signal20Result.signal;
+              // starLevelに基づいてconfidenceを設定（UI側で星表示に変換）
+              multiDimResult.confidence = signal20Result.starLevel > 0 ? 60 + (signal20Result.starLevel - 1) * 15 : null;
+              signal20Decided = true;
+            }
+          } catch (error) {
+            console.error(`[TheOption Analyzer] SignalEngine20エラー:`, error);
+          }
+        }
+
+        // v5.10.4: Signal20の多数決が未確定（WAIT or ローソク足不足）の場合、テクニカルシグナルをNEUTRALに強制
+        if (!signal20Decided) {
+          multiDimResult.signal = 'NEUTRAL';
+          multiDimResult.confidence = 0;
+          originalConsoleLog(`[TheOption Analyzer] ⏳ Signal20未確定 → テクニカルシグナルをNEUTRALに強制`);
+        }
+      } else {
+        // 標準モード: Signal20をスキップし、MultiDimAnalyzer + AdvancedSignalEngineの結果をそのまま使用
+        signal20Decided = true;  // Signal20チェックを無効化
+        latestSignal20Result = null;
+        originalConsoleLog(`[TheOption Analyzer] 📋 標準モード: MultiDimAnalyzer結果をそのまま使用 (signal=${multiDimResult.signal}, conf=${multiDimResult.confidence})`);
       }
 
       // パフォーマンス最適化: 事前計算されたMLデータを使用

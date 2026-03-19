@@ -222,6 +222,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // シグナルモード変更
+  if (message.type === 'SET_SIGNAL_MODE') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'SET_SIGNAL_MODE',
+          mode: message.mode
+        }).then(response => {
+          sendResponse(response || { success: true });
+        }).catch(error => {
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
+  }
+
   // 通貨ペア別データ一覧を取得（IndexedDBから）
   if (message.type === 'GET_ASSET_DATA_LIST') {
     chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {

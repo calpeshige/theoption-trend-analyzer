@@ -27,7 +27,8 @@ let currentSettings = {
   similarityThreshold: 70,
   dataLimit: 'all',
   timeFilterMode: 'all', // 'all' | 'session'
-  momentumFilterLevel: 2  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
+  momentumFilterLevel: 2,  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
+  signalMode: 'majority'  // 'majority'（多数決モード）| 'standard'（標準モード）
 };
 
 // 状態管理
@@ -170,7 +171,7 @@ async function loadMLDataCountForAsset(assetName) {
 
 // 設定読み込み
 function loadSettings() {
-  chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode', 'momentumFilterLevel'], (result) => {
+  chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode', 'momentumFilterLevel', 'signalMode'], (result) => {
     // v5.8.20: alertSoundMode（新キー）を優先、旧alertSoundEnabledからのマイグレーション
     if (result.alertSoundMode) {
       currentSettings.alertSoundMode = result.alertSoundMode;
@@ -232,6 +233,17 @@ function loadSettings() {
     // 起動時にコンテンツスクリプトにも通知
     chrome.runtime.sendMessage({ type: 'SET_MOMENTUM_FILTER', level: currentSettings.momentumFilterLevel });
 
+    // シグナルモード初期化
+    if (result.signalMode) {
+      currentSettings.signalMode = result.signalMode;
+    }
+    const signalModeSelect = document.getElementById('signal-mode-select');
+    if (signalModeSelect) signalModeSelect.value = currentSettings.signalMode;
+    updateSignalModeBadge(currentSettings.signalMode);
+    updateSignalModeUI(currentSettings.signalMode);
+    // 起動時にコンテンツスクリプトにも通知
+    chrome.runtime.sendMessage({ type: 'SET_SIGNAL_MODE', mode: currentSettings.signalMode });
+
     // v5.6.5: データ範囲のヒントを初期化
     updateDataLimitHint(dataLimit);
   });
@@ -255,6 +267,15 @@ function setupEventListeners() {
   document.getElementById('download-trends').addEventListener('click', () => requestDownload('TRENDS'));
   document.getElementById('export-json').addEventListener('click', () => requestDownload('EXPORT_JSON'));
   document.getElementById('import-json').addEventListener('click', () => requestDownload('IMPORT_JSON'));
+
+  // シグナルモード設定
+  document.getElementById('signal-mode-select').addEventListener('change', (e) => {
+    currentSettings.signalMode = e.target.value;
+    chrome.storage.local.set({ signalMode: e.target.value });
+    chrome.runtime.sendMessage({ type: 'SET_SIGNAL_MODE', mode: e.target.value });
+    updateSignalModeBadge(e.target.value);
+    updateSignalModeUI(e.target.value);
+  });
 
   // v5.10.6: モメンタムフィルタ設定（設定画面内）
   document.getElementById('momentum-filter-select').addEventListener('change', (e) => {
@@ -1595,8 +1616,8 @@ function updateRealtimeStatus(data) {
       signal.ai === 'TREND_HIGH' || signal.ai === 'TREND_LOW' ||
       signal.ai === 'ENHANCED_HIGH' || signal.ai === 'ENHANCED_LOW'
     );
-    // テクニカルシグナルはlatestSignal20が存在する場合のみ有効
-    const hasSignal = (hasValidTech && latestSignal20 !== null) || hasValidAI;
+    // 多数決モード: latestSignal20が存在する場合のみテクニカル有効 / 標準モード: Signal20チェック不要
+    const hasSignal = (hasValidTech && (currentSettings.signalMode === 'standard' || latestSignal20 !== null)) || hasValidAI;
 
     // アラート音はtheoption-analyzer.jsで再生するため、ここでは再生しない
     // （二重再生防止）
@@ -1670,7 +1691,24 @@ function updateRealtimeStatus(data) {
     }
   }
 
-  // v5.10.3: signal20はポーリング専用。STATUS_UPDATEでは処理しない
+  // 標準モード時: signal20Statusのデータ収集カウントダウンを表示
+  if (currentSettings.signalMode === 'standard' && !signalDisplayed && data.signal20Status && !data.signal20Status.ready) {
+    const techCardEl = document.getElementById('tech-signal-card');
+    const techIconEl = document.getElementById('tech-signal-icon');
+    const techLabelEl = document.getElementById('tech-signal-label');
+    const techConfidenceEl = document.getElementById('tech-signal-confidence');
+    if (techIconEl) techIconEl.setAttribute('data-signal', 'wait');
+    if (techCardEl) techCardEl.setAttribute('data-signal-type', 'wait');
+    if (techLabelEl) {
+      const sec = data.signal20Status.remainingSec;
+      const min = Math.floor(sec / 60);
+      const s = sec % 60;
+      techLabelEl.textContent = min > 0 ? `あと${min}分${s > 0 ? s + '秒' : ''}` : `あと${s}秒`;
+    }
+    if (techConfidenceEl) {
+      techConfidenceEl.textContent = '';
+    }
+  }
 
   // ML統計
   if (data.mlStats) {
@@ -2772,6 +2810,27 @@ function updateIndicatorDebugPanel(signal20) {
   grid.innerHTML = html;
 }
 
+// シグナルモードバッジ更新
+function updateSignalModeBadge(mode) {
+  const badge = document.getElementById('signal-mode-badge');
+  if (!badge) return;
+  if (mode === 'standard') {
+    badge.textContent = '標準';
+    badge.className = 'signal-mode-badge mode-standard';
+  } else {
+    badge.textContent = '多数決';
+    badge.className = 'signal-mode-badge';
+  }
+}
+
+// シグナルモードに応じたUI表示切替（20インジケータパネルの表示/非表示）
+function updateSignalModeUI(mode) {
+  const debugPanel = document.getElementById('indicator-debug-panel');
+  if (debugPanel) {
+    debugPanel.style.display = mode === 'majority' ? '' : 'none';
+  }
+}
+
 // v5.10.3: Signal20データをポーリングで取得（唯一のデータパス）
 // signal20 + signal20Statusの両方を取得し、デバッグパネルとテクニカルカードを更新
 let signal20PollCount = 0;
@@ -2782,18 +2841,22 @@ function startSignal20Polling() {
       if (chrome.runtime.lastError) return;
       if (!response) return;
 
-      // signal20データがあればデバッグパネル更新
+      // 標準モード時: Signal20データ不要、カウントダウンはSTATUS_UPDATEのsignal20Statusで処理
+      if (response.signalMode === 'standard' || currentSettings.signalMode === 'standard') {
+        latestSignal20 = null;
+        return;
+      }
+
+      // 多数決モード: signal20データがあればデバッグパネル更新
       if (response.signal20) {
         updateIndicatorDebugPanel(response.signal20);
         // v5.10.4: Signal20がWAIT（ローソク足不足）の場合はnull扱い
-        // WAITの結果でlatestSignal20を設定すると、テクニカルシグナルが誤表示される
         if (response.signal20.signal !== 'WAIT') {
           latestSignal20 = response.signal20;
         } else {
           latestSignal20 = null;
         }
       } else {
-        // signal20がnull → データ収集中
         latestSignal20 = null;
       }
 
@@ -2813,7 +2876,7 @@ function startSignal20Polling() {
           techLabelEl.textContent = min > 0 ? `あと${min}分${s > 0 ? s + '秒' : ''}` : `あと${s}秒`;
         }
         if (techConfidenceEl) {
-          techConfidenceEl.textContent = `${response.signal20Status.candleLabel} ${response.signal20Status.currentCandles}/${response.signal20Status.requiredCandles}本`;
+          techConfidenceEl.textContent = '';
         }
       }
     });

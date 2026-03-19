@@ -86,7 +86,7 @@
       <section class="dual-signal-section">
         <!-- テクニカル分析シグナル -->
         <div class="signal-card" id="tech-signal-card">
-          <div class="signal-card-header">テクニカル分析</div>
+          <div class="signal-card-header">テクニカル分析 <span class="signal-mode-badge" id="signal-mode-badge">多数決</span></div>
           <div class="signal-card-icon" id="tech-signal-icon" data-signal="wait">
             <span class="signal-dot">●</span>
           </div>
@@ -416,6 +416,17 @@
             <option value="small">小</option>
             <option value="medium" selected>中</option>
             <option value="large">大</option>
+          </select>
+        </div>
+        <!-- シグナルモード設定 -->
+        <div class="setting-item">
+          <div class="setting-item-content">
+            <span class="setting-item-label">シグナルモード</span>
+            <span class="setting-item-description">テクニカル分析の判定方式を切替</span>
+          </div>
+          <select class="select-input" id="signal-mode-select">
+            <option value="majority" selected>多数決モード</option>
+            <option value="standard">標準モード</option>
           </select>
         </div>
         <!-- モメンタムフィルタ設定 -->
