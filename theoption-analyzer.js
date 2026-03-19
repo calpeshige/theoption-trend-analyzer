@@ -13,28 +13,29 @@ if (typeof window.DEBUG_MODE === 'undefined') {
   window.DEBUG_MODE = false; // true=デバッグ表示, false=本番（ログなし）
 }
 
-// 重要な運用ログ用の関数（DEBUG_MODEに関係なく常に表示）
-// データ収集状況など、ユーザーが確認したい情報を出力
+// デバッグログ制御
 const originalConsoleLog = console.log.bind(console);
 const originalConsoleWarn = console.warn.bind(console);
-// グローバルに保存して他の場所からもアクセス可能に
-window.originalConsoleLog = originalConsoleLog;
-window.originalConsoleWarn = originalConsoleWarn;
-
-window.mlLog = function(...args) {
-  originalConsoleLog('[ML]', ...args);
-};
-window.mlWarn = function(...args) {
-  originalConsoleWarn('[ML]', ...args);
-};
-
-// 起動時バージョン表示（DEBUG_MODE無効化前に実行）
-originalConsoleLog('[TheOption Analyzer] 🚀 v5.10.6 起動 (判定時間別インジケーターパラメータ最適化)');
 
 if (!window.DEBUG_MODE) {
+  // 本番モード: すべてのログを無効化（console.errorのみ残す）
   console.log = () => { };
   console.warn = () => { };
-  // console.errorはエラー確認のため残す
+  window.originalConsoleLog = () => { };
+  window.originalConsoleWarn = () => { };
+  window.mlLog = () => { };
+  window.mlWarn = () => { };
+} else {
+  // デバッグモード: すべてのログを有効化
+  window.originalConsoleLog = originalConsoleLog;
+  window.originalConsoleWarn = originalConsoleWarn;
+  window.mlLog = function(...args) {
+    originalConsoleLog('[ML]', ...args);
+  };
+  window.mlWarn = function(...args) {
+    originalConsoleWarn('[ML]', ...args);
+  };
+  originalConsoleLog('[TheOption Analyzer] 🚀 v5.12.1 起動');
 }
 // ========================================
 
@@ -1552,9 +1553,9 @@ function initializeAnalyzer() {
           const ra = statusData.reversalAlert;
           const sig = currentSignal?.tech || 'NONE';
           if (ra.detected) {
-            console.error(`[REVERSAL] ⚠️ 急変検出! signal=${sig}, ${ra.direction}, 乖離=${ra.deviationRate}%, ATR×${ra.atrMultiple}`);
+            console.warn(`[REVERSAL] ⚠️ 急変検出! signal=${sig}, ${ra.direction}, 乖離=${ra.deviationRate}%, ATR×${ra.atrMultiple}`);
           } else {
-            console.error(`[REVERSAL] ✅ 正常 signal=${sig}, lookback=${config.reversal?.lookbackSec}s`);
+            console.log(`[REVERSAL] ✅ 正常 signal=${sig}, lookback=${config.reversal?.lookbackSec}s`);
           }
         }
 

@@ -997,7 +997,7 @@ async function executeHourDelete(assetName, hours) {
 
     if (response?.error) throw new Error(response.error);
 
-    console.log(`[SidePanel] 削除完了: ${response.deletedCount}件`);
+    debugLog(`[SidePanel] 削除完了: ${response.deletedCount}件`);
 
     // モーダルの内容を更新
     await loadAssetDataList();
@@ -1009,12 +1009,12 @@ async function executeHourDelete(assetName, hours) {
 
 // ダウンロードリクエスト
 function requestDownload(type) {
-  console.log('[SidePanel] ダウンロードリクエスト送信:', type);
+  debugLog('[SidePanel] ダウンロードリクエスト送信:', type);
   chrome.runtime.sendMessage({ type: 'REQUEST_DOWNLOAD', downloadType: type }, (response) => {
     if (chrome.runtime.lastError) {
       console.error('[SidePanel] メッセージ送信エラー:', chrome.runtime.lastError.message);
     } else {
-      console.log('[SidePanel] メッセージ送信完了');
+      debugLog('[SidePanel] メッセージ送信完了');
     }
   });
   closeDownload();
@@ -1960,8 +1960,7 @@ function updateAISignalCard(ai) {
   const available = ai ? ai.available : false;
   const status = ai ? ai.status : null;
 
-  // デバッグ: available状態を確認
-  console.log('[SidePanel] 🔍 AI available状態:', {
+  debugLog('[SidePanel] 🔍 AI available状態:', {
     available,
     status,
     upRate: ai?.upRate,

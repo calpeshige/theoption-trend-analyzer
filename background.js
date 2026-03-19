@@ -7,7 +7,7 @@
  */
 
 // デバッグモード（本番ではfalse）
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 const debugLog = DEBUG_MODE ? console.log.bind(console) : () => {};
 
 // 最新の分析データをキャッシュ
@@ -196,7 +196,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: false, error: error.message });
         });
       } else {
-        console.warn('[Background] theoption.comタブが見つかりません');
+        debugLog('[Background] theoption.comタブが見つかりません');
         sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
       }
     });
