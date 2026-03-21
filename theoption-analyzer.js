@@ -35,7 +35,7 @@ if (!window.DEBUG_MODE) {
   window.mlWarn = function(...args) {
     originalConsoleWarn('[ML]', ...args);
   };
-  originalConsoleLog('[TheOption Analyzer] 🚀 v5.12.1 起動');
+  originalConsoleLog('[TheOption Analyzer] 🚀 v5.12.4 起動');
 }
 // ========================================
 
@@ -426,6 +426,7 @@ function initializeAnalyzer() {
     let signalEngine20 = null;  // v5.9.1: 20インジケータ多数決シグナルシステム
     let latestSignal20Result = null;  // v5.9.2: 最新のsignal20結果（sendAnalysisToSidePanelで使用）
     let currentFilterLevel = 2;  // v5.10.6: モメンタムフィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
+    let currentPricePositionFilterLevel = 2;  // v5.12.4: 急変フィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let currentSignalMode = 'majority';  // 'majority'（多数決モード）| 'standard'（標準モード）
     let priceUpdateInterval = null;
     let uiPanel = null;
@@ -1960,6 +1961,15 @@ function initializeAnalyzer() {
         if (message.type === 'SET_FILTER_LEVEL') {
           const level = Math.max(0, Math.min(3, message.level || 0));
           currentFilterLevel = level;
+          sendResponse({ success: true, level: level });
+          return;
+        }
+
+        // v5.12.4: 急変フィルタ強度変更
+        if (message.type === 'SET_PRICE_POSITION_FILTER_LEVEL') {
+          const level = Math.max(0, Math.min(3, message.level || 0));
+          currentPricePositionFilterLevel = level;
+          originalConsoleLog(`[TheOption Analyzer] ⚡ 急変フィルタ変更: ${['OFF', '弱', '中', '強'][level]}`);
           sendResponse({ success: true, level: level });
           return;
         }
@@ -3555,11 +3565,21 @@ function initializeAnalyzer() {
         if (signalEngine20 && signal20Candles.length >= s20Config.minCandles) {
           try {
             signalEngine20.setCandles(signal20Candles);
+            signalEngine20.setPriceContext(priceHistory, targetTimeframe);
             if (s20Config.params) signalEngine20.setParams(s20Config.params);
             if (s20Config.filterParams) signalEngine20.setFilterParams(s20Config.filterParams);
             signalEngine20.setFilterLevel(currentFilterLevel);
+            signalEngine20.setPricePositionFilterLevel(currentPricePositionFilterLevel);
             signal20Result = signalEngine20.analyze();
             const filterInfo = signal20Result.momentumFilter;
+            // v5.12.4: 急変フィルタのログ
+            const pp = signal20Result.pricePositionFilter;
+            if (pp) {
+              const rangeRatioStr = pp.cooldownRangeRatio !== null ? ` 冷却レンジ比:${pp.cooldownRangeRatio}%` : '';
+              if (!pp.passed) {
+                originalConsoleLog(`[TheOption Analyzer] ⚡ 急変フィルタ → シグナル抑制 | レンジ幅:${pp.rangeSize} (${pp.rangeLow}〜${pp.rangeHigh}) 観測:${pp.lookback}秒${rangeRatioStr}`);
+              }
+            }
             // 20インジケータの詳細データを常に保持（デバッグパネル用）
             multiDimResult.signal20 = signal20Result;
             latestSignal20Result = signal20Result;  // グローバル変数にも保存（sendAnalysisToSidePanel後に送信）
@@ -3873,11 +3893,10 @@ function initializeAnalyzer() {
           }
         }
 
-        // テクニカルのみ、AIのみ、または両方でアラート音を再生
+        // シグナル検出時の処理（アラート音はsidepanel.jsでシグナル表示時に再生）
         if (hasTechSignal || hasAISignal) {
           const triggerType = (hasTechSignal && hasAISignal) ? 'both' : (hasTechSignal ? 'tech' : 'ai');
-          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType} - アラート音(${triggerType})`);
-          playAlertSound(triggerType);
+          console.log(`[TheOption Analyzer] 🔔 シグナル検出: Tech=${techSignal || 'なし'}, AI=${aiSignalType}`);
 
           // v5.6.6: シグナルが出たら予測値をロック（次のサイクルまで変更しない）
           // これにより、シグナル表示後にパーセンテージが変動することを防ぐ

@@ -222,6 +222,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // v5.12.4: 急変フィルタ強度変更
+  if (message.type === 'SET_PRICE_POSITION_FILTER') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'SET_PRICE_POSITION_FILTER_LEVEL',
+          level: message.level
+        }).then(response => {
+          sendResponse(response || { success: true });
+        }).catch(error => {
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
+  }
+
   // シグナルモード変更
   if (message.type === 'SET_SIGNAL_MODE') {
     chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {

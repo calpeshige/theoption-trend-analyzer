@@ -5,6 +5,8 @@
 class SignalEngine20 {
   constructor() {
     this.candles = [];
+    this.priceHistory = [];  // 1秒tickデータ（価格位置フィルター用）
+    this.timeframe = 15;     // 判定時間（秒）
     this.trendMode = null;
     this.rangeContext = null;
     this.shortTermMomentum = null;
@@ -19,6 +21,9 @@ class SignalEngine20 {
 
     // v5.10.6: モメンタムフィルタ設定
     this.filterLevel = 1;  // 0=OFF, 1=弱, 2=中, 3=強
+
+    // v5.12.4: 急変フィルタ設定
+    this.pricePositionFilterLevel = 2;  // 0=OFF, 1=弱, 2=中, 3=強
     this.filterParams = {
       candleCheckCount: 5,   // 直近N本の陽線/陰線チェック
       atrLookbackShort: 3,   // ATR短期平均
@@ -57,6 +62,12 @@ class SignalEngine20 {
     this.trendMode = null;
   }
 
+  // 1秒tickデータと判定時間をセット（価格位置フィルター用）
+  setPriceContext(priceHistory, timeframe) {
+    this.priceHistory = priceHistory || [];
+    this.timeframe = timeframe || 15;
+  }
+
   // v5.10.6: 判定時間別パラメータをセット
   setParams(params) {
     if (params) {
@@ -70,6 +81,11 @@ class SignalEngine20 {
   // v5.10.6: フィルタ強度をセット (0=OFF, 1=弱, 2=中, 3=強)
   setFilterLevel(level) {
     this.filterLevel = Math.max(0, Math.min(3, level));
+  }
+
+  // v5.12.4: 急変フィルタ強度をセット (0=OFF, 1=弱, 2=中, 3=強)
+  setPricePositionFilterLevel(level) {
+    this.pricePositionFilterLevel = Math.max(0, Math.min(3, level));
   }
 
   // v5.10.6: フィルタパラメータをセット（判定時間別）
@@ -120,8 +136,15 @@ class SignalEngine20 {
 
     // v5.10.6: モメンタムフィルタ適用
     const momentumCheck = this.checkMomentumFilter(signal);
-    const filteredSignal = momentumCheck.passed ? signal : 'NEUTRAL';
-    const filteredStarLevel = momentumCheck.passed ? starLevel : 0;
+    let filteredSignal = momentumCheck.passed ? signal : 'NEUTRAL';
+    let filteredStarLevel = momentumCheck.passed ? starLevel : 0;
+
+    // v5.12.4: 急変フィルター（急変後の反発リスクを防止）
+    const pricePositionCheck = this.checkPricePositionFilter(filteredSignal);
+    if (!pricePositionCheck.passed) {
+      filteredSignal = 'NEUTRAL';
+      filteredStarLevel = 0;
+    }
 
     return {
       signal: filteredSignal,        // フィルタ適用後のシグナル
@@ -134,6 +157,7 @@ class SignalEngine20 {
       rawStarLevel: starLevel,       // フィルタ前の星レベル
       trendMode: this.trendMode,
       momentumFilter: momentumCheck, // フィルタ詳細情報
+      pricePositionFilter: pricePositionCheck, // 価格位置フィルタ詳細
       timestamp: Date.now()
     };
   }
@@ -240,6 +264,115 @@ class SignalEngine20 {
     // ROCがシグナル方向であればOK
     if (isHigh) return roc > 0;
     return roc < 0;
+  }
+
+  // ========================================
+  // 急変フィルター
+  // 直近に急変（大きなレンジ変動）があれば冷却期間中はシグナルを抑制
+  // ========================================
+
+  checkPricePositionFilter(signal) {
+    if (signal === 'NEUTRAL' || signal === 'WAIT') {
+      return { passed: true, reason: 'no_signal' };
+    }
+
+    // OFF の場合はスキップ
+    if (this.pricePositionFilterLevel === 0) {
+      return { passed: true, reason: 'filter_off', level: 0 };
+    }
+
+    if (!this.priceHistory || this.priceHistory.length < 30) {
+      return { passed: true, reason: 'insufficient_data', dataLength: this.priceHistory?.length || 0 };
+    }
+
+    const isHigh = signal === 'HIGH' || signal === 'STRONG_HIGH';
+
+    // レベル別閾値
+    //          冷却レンジ比  レンジ倍率
+    // 弱:      30%          4倍     （急変がかなり大きい場合のみ抑制）
+    // 中:      50%          3倍     （標準）
+    // 強:      60%          2.5倍   （積極的に抑制）
+    const levelConfig = {
+      1: { cooldownRangeThreshold: 30, rangeMultiplier: 4 },
+      2: { cooldownRangeThreshold: 50, rangeMultiplier: 3 },
+      3: { cooldownRangeThreshold: 60, rangeMultiplier: 2.5 }
+    };
+    const config = levelConfig[this.pricePositionFilterLevel];
+
+    // 観測期間: 判定時間の8倍、上限600秒
+    const lookback = Math.min(this.timeframe * 8, 600);
+    const available = Math.min(lookback, this.priceHistory.length);
+    const prices = this.priceHistory.slice(-available);
+
+    // レンジの高値・安値を計算
+    let rangeHigh = -Infinity;
+    let rangeLow = Infinity;
+    for (let i = 0; i < prices.length; i++) {
+      if (prices[i] > rangeHigh) rangeHigh = prices[i];
+      if (prices[i] < rangeLow) rangeLow = prices[i];
+    }
+
+    const rangeSize = rangeHigh - rangeLow;
+    if (rangeSize <= 0) {
+      return { passed: true, reason: 'no_range', rangeSize: 0 };
+    }
+
+    const currentPrice = prices[prices.length - 1];
+    const position = ((currentPrice - rangeLow) / rangeSize) * 100;
+
+    let blocked = false;
+    let reason = 'ok';
+
+    // 急変クールダウン判定
+    // 冷却期間内のミニレンジと全体レンジを比較
+    // ミニレンジが小さい = 急変は冷却期間より前に起きて今は落ち着いている = まだ不安定
+    const cooldownPeriod = Math.min(this.timeframe * 4, 300);
+    let cooldownRangeRatio = null;
+    let hadSharpMove = false;
+
+    const cooldownSamples = Math.min(cooldownPeriod, prices.length);
+    const recentPrices = prices.slice(-cooldownSamples);
+
+    let recentHigh = -Infinity;
+    let recentLow = Infinity;
+    for (let i = 0; i < recentPrices.length; i++) {
+      if (recentPrices[i] > recentHigh) recentHigh = recentPrices[i];
+      if (recentPrices[i] < recentLow) recentLow = recentPrices[i];
+    }
+    const recentRange = recentHigh - recentLow;
+    cooldownRangeRatio = rangeSize > 0 ? (recentRange / rangeSize) * 100 : 100;
+
+    if (cooldownRangeRatio < config.cooldownRangeThreshold) {
+      // 全体レンジが通常変動と比べて大きいか確認
+      let totalChange = 0;
+      for (let i = 1; i < prices.length; i++) {
+        totalChange += Math.abs(prices[i] - prices[i - 1]);
+      }
+      const avgChange = totalChange / (prices.length - 1);
+      const normalRange = avgChange * Math.sqrt(available) * config.rangeMultiplier;
+
+      if (rangeSize > normalRange) {
+        hadSharpMove = true;
+        blocked = true;
+        reason = 'cooldown_sharp_move';
+      }
+    }
+
+    return {
+      passed: !blocked,
+      reason: reason,
+      level: this.pricePositionFilterLevel,
+      position: position.toFixed(1),
+      currentPrice: currentPrice,
+      rangeHigh: rangeHigh,
+      rangeLow: rangeLow,
+      rangeSize: rangeSize.toFixed(0),
+      lookback: available,
+      cooldown: cooldownPeriod,
+      cooldownRangeRatio: cooldownRangeRatio !== null ? cooldownRangeRatio.toFixed(0) : null,
+      hadSharpMove: hadSharpMove,
+      timeframe: this.timeframe
+    };
   }
 
   // ========================================

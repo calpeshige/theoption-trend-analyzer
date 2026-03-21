@@ -28,6 +28,7 @@ let currentSettings = {
   dataLimit: 'all',
   timeFilterMode: 'all', // 'all' | 'session'
   momentumFilterLevel: 2,  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
+  pricePositionFilterLevel: 2,  // v5.12.4: 0=OFF, 1=弱, 2=中, 3=強
   signalMode: 'majority'  // 'majority'（多数決モード）| 'standard'（標準モード）
 };
 
@@ -43,6 +44,8 @@ let lastAISignal = { signal: null, matchCount: null, available: null };
 let lastTechSignal = { signal: null, confidence: null };
 // データカウントは常に増加のみ許可（チカチカ防止）
 let highestMLDataCount = 0;
+// データ整理中フラグ（整理完了までUI更新を抑制）
+let isTrimmingData = false;
 // シグナル表示状態の追跡（シグナル消失防止）
 let signalDisplayed = false;  // シグナルが一度表示されたかどうか
 let lastDisplayedSignal = null;  // 最後に表示されたシグナル
@@ -171,7 +174,7 @@ async function loadMLDataCountForAsset(assetName) {
 
 // 設定読み込み
 function loadSettings() {
-  chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode', 'momentumFilterLevel', 'signalMode'], (result) => {
+  chrome.storage.local.get(['alertSoundMode', 'alertSoundEnabled', 'alertVolume', 'alertSoundType', 'fontSize', 'similarityThreshold', 'dataLimit', 'timeFilterMode', 'momentumFilterLevel', 'pricePositionFilterLevel', 'signalMode'], (result) => {
     // v5.8.20: alertSoundMode（新キー）を優先、旧alertSoundEnabledからのマイグレーション
     if (result.alertSoundMode) {
       currentSettings.alertSoundMode = result.alertSoundMode;
@@ -233,6 +236,14 @@ function loadSettings() {
     // 起動時にコンテンツスクリプトにも通知
     chrome.runtime.sendMessage({ type: 'SET_MOMENTUM_FILTER', level: currentSettings.momentumFilterLevel });
 
+    // v5.12.4: 急変フィルタ初期化
+    if (result.pricePositionFilterLevel !== undefined) {
+      currentSettings.pricePositionFilterLevel = result.pricePositionFilterLevel;
+    }
+    const ppFilterSelect = document.getElementById('price-position-filter-select');
+    if (ppFilterSelect) ppFilterSelect.value = String(currentSettings.pricePositionFilterLevel);
+    chrome.runtime.sendMessage({ type: 'SET_PRICE_POSITION_FILTER', level: currentSettings.pricePositionFilterLevel });
+
     // シグナルモード初期化
     if (result.signalMode) {
       currentSettings.signalMode = result.signalMode;
@@ -275,6 +286,12 @@ function setupEventListeners() {
     chrome.runtime.sendMessage({ type: 'SET_SIGNAL_MODE', mode: e.target.value });
     updateSignalModeBadge(e.target.value);
     updateSignalModeUI(e.target.value);
+    // モード切替時にシグナル表示状態をリセット（前モードのシグナルが残るのを防止）
+    signalDisplayed = false;
+    lastDisplayedSignal = null;
+    latestSignal20 = null;
+    lastTechSignal = { signal: null, confidence: null };
+    lastAISignal = { signal: null, matchCount: null, available: null };
   });
 
   // v5.10.6: モメンタムフィルタ設定（設定画面内）
@@ -283,6 +300,14 @@ function setupEventListeners() {
     currentSettings.momentumFilterLevel = level;
     chrome.storage.local.set({ momentumFilterLevel: level });
     chrome.runtime.sendMessage({ type: 'SET_MOMENTUM_FILTER', level: level });
+  });
+
+  // v5.12.4: 急変フィルタ設定
+  document.getElementById('price-position-filter-select').addEventListener('change', (e) => {
+    const level = parseInt(e.target.value);
+    currentSettings.pricePositionFilterLevel = level;
+    chrome.storage.local.set({ pricePositionFilterLevel: level });
+    chrome.runtime.sendMessage({ type: 'SET_PRICE_POSITION_FILTER', level: level });
   });
 
   // アラート音モード選択
@@ -1525,6 +1550,16 @@ function updateRealtimeStatus(data) {
     document.getElementById('asset-data-count').textContent = `${data.dataCount}件`;
   }
 
+  // 多数決モード: STATUS_UPDATEのsignal20データでlatestSignal20を同期
+  // （ポーリングとのタイムラグでアラート音は鳴るがシグナル非表示になるのを防止）
+  if (currentSettings.signalMode === 'majority' && data.signal20) {
+    if (data.signal20.signal !== 'WAIT') {
+      latestSignal20 = data.signal20;
+    } else {
+      latestSignal20 = null;
+    }
+  }
+
   // シグナルリセット（取引終了時）
   // 取引中→非取引の遷移を検出してリセット
   const tradingJustEnded = data.signalReset || (wasInTrading && !data.isTrading);
@@ -1642,6 +1677,21 @@ function updateRealtimeStatus(data) {
       }
     } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
       // 準備：シグナルがあり、残り秒数がprepTime以内
+      // シグナルが初めて表示されるタイミングでアラート音を再生
+      if (!signalDisplayed) {
+        const hasTech = hasValidTech && (currentSettings.signalMode === 'standard' || latestSignal20 !== null);
+        const triggerType = (hasTech && hasValidAI) ? 'both' : (hasTech ? 'tech' : 'ai');
+        if (currentSettings.alertSoundMode !== 'off') {
+          const shouldPlay =
+            currentSettings.alertSoundMode === 'both' ||
+            (currentSettings.alertSoundMode === 'tech' && hasTech) ||
+            (currentSettings.alertSoundMode === 'ai' && hasValidAI);
+          if (shouldPlay) {
+            playAlertSound(currentSettings.alertSoundType, currentSettings.volume);
+            debugLog(`[SidePanel] 🔔 シグナル表示アラート: ${triggerType}`);
+          }
+        }
+      }
       signalDisplayed = true;
       lastDisplayedSignal = signal;
       nextAnalysisEl.textContent = countdown;
@@ -2633,6 +2683,8 @@ function resetMarketOverview() {
 // ML学習状況更新
 function updateMLStatus(mlStats) {
   if (!mlStats) return;
+  // データ整理中はUI更新を抑制（チカチカ防止）
+  if (isTrimmingData) return;
 
   // DB総件数を優先して表示（dataCount = DB総件数、dataCountWithResults = メモリ上の結果あり件数）
   // メモリは最大10000件に制限されているが、DBには42000件以上保存されている可能性がある
@@ -2711,11 +2763,13 @@ function executeTrimData() {
   const trimBtn = document.getElementById('ml-trim-btn');
   if (!overlay || !trimBtn) return;
 
-  // 画面全体をブロック
+  // 画面全体をブロック & UI更新を抑制
   overlay.style.display = 'flex';
+  isTrimmingData = true;
 
   chrome.runtime.sendMessage({ type: 'TRIM_DATA' }, (response) => {
     if (chrome.runtime.lastError) {
+      isTrimmingData = false;
       overlay.style.display = 'none';
       return;
     }
@@ -2723,13 +2777,18 @@ function executeTrimData() {
     if (response && response.success) {
       // カウンターをリセット
       highestMLDataCount = 0;
+      lastMLStats = { dataCountWithResults: null, dataCount: null, learningLevel: null };
       trimBtn.style.display = 'none';
       trimBtn.innerHTML = 'データ整理（<span id="ml-trim-count">0</span>件削除）';
       debugLog(`[SidePanel] データ整理完了: ${response.totalDeleted}件削除`);
     }
 
-    // オーバーレイを解除
-    overlay.style.display = 'none';
+    // 整理完了後、少し待ってからUI更新を再開しオーバーレイを解除
+    // （バックグラウンドのデータ再読み込みが安定するのを待つ）
+    setTimeout(() => {
+      isTrimmingData = false;
+      overlay.style.display = 'none';
+    }, 1500);
   });
 }
 
@@ -2771,7 +2830,7 @@ function updateIndicatorDebugPanel(signal20) {
   if (!signal20) { summary.textContent = `呼出${debugPanelCallCount}回 データなし`; return; }
 
   // サマリー表示（v5.10.6: フィルタ情報付き）
-  const { signal, rawSignal, highCount, lowCount, neutralCount, starLevel, trendMode, momentumFilter } = signal20;
+  const { signal, rawSignal, highCount, lowCount, neutralCount, starLevel, trendMode, momentumFilter, pricePositionFilter } = signal20;
   const starStr = starLevel > 0 ? '★'.repeat(starLevel) + '☆'.repeat(3 - starLevel) : '---';
   const signalLabel = signal === 'HIGH' ? 'HIGH' : signal === 'LOW' ? 'LOW' : 'WAIT';
   let filterStr = '';
@@ -2780,6 +2839,12 @@ function updateIndicatorDebugPanel(signal20) {
       filterStr = ` [F:BLOCK ${momentumFilter.score}/${momentumFilter.requiredScore}]`;
     } else {
       filterStr = ` [F:PASS]`;
+    }
+  }
+  // v5.12.4: 急変フィルタ表示
+  if (pricePositionFilter && pricePositionFilter.position !== undefined) {
+    if (!pricePositionFilter.passed) {
+      filterStr += ` [急変:BLOCK]`;
     }
   }
   summary.textContent = `${signalLabel} ${starStr} (H:${highCount} L:${lowCount} N:${neutralCount})${filterStr}`;
