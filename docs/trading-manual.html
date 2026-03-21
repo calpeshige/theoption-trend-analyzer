@@ -363,7 +363,7 @@
 
   <header class="site-header">
     <h1>Theoption Trading System</h1>
-    <div class="version">v5.12.1</div>
+    <div class="version">v5.12.4</div>
   </header>
 
   <nav class="tab-nav">
@@ -674,6 +674,19 @@
       </table>
       <p>詳細は「<a href="#sec-mode">5. シグナルモード</a>」を参照してください。</p>
 
+      <h3>急変フィルタ</h3>
+      <p>価格の急激な変動直後に発生する「反発リスク」を抑制するフィルタです。急変後は一定期間シグナルを抑制し、反発による負けを防ぎます。</p>
+      <table>
+        <tr><th>設定値</th><th>抑制の強さ</th><th>推奨場面</th></tr>
+        <tr><td><strong>OFF</strong></td><td>フィルタ無効</td><td>すべてのシグナルを表示したい場合</td></tr>
+        <tr><td><strong>弱</strong></td><td>非常に大きな急変のみ抑制</td><td>シグナル数を減らしたくない場合</td></tr>
+        <tr><td><strong>中</strong>（デフォルト）</td><td>中程度以上の急変を抑制</td><td>バランス重視の標準設定</td></tr>
+        <tr><td><strong>強</strong></td><td>小さな急変でも抑制</td><td>安全性重視。シグナル数は減るが負けを減らしたい場合</td></tr>
+      </table>
+      <div class="note-info">
+        <strong>仕組み：</strong> 直近の価格レンジ（変動幅）と通常時のレンジを比較し、急激な動きがあった場合にシグナルを一時的にブロックします。
+      </div>
+
       <h3>モメンタムフィルタ</h3>
       <p>トレンドの勢いが弱まっている時のシグナルを抑制する機能です。</p>
       <table>
@@ -866,9 +879,19 @@
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
 
-      <!-- === v5.12 === -->
+      <!-- === v5.12.4 === -->
       <div class="update-card">
-        <div class="update-version">2026年3月 — v5.12</div>
+        <div class="update-version">2026年3月 — v5.12.4</div>
+        <h3>急変フィルタ追加・アラート音修正</h3>
+        <ul>
+          <li><strong>急変フィルタ追加</strong>: 価格の急変動後のシグナルを抑制する新フィルタ。OFF/弱/中/強の4段階で設定可能</li>
+          <li><strong>アラート音タイミング修正</strong>: シグナルが画面に表示されるタイミングでのみアラート音を再生するよう修正</li>
+        </ul>
+      </div>
+
+      <!-- === v5.12.4 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.12.4</div>
         <h3>シグナルモード切替機能</h3>
         <ul>
           <li>テクニカル分析の判定方式を<strong>「多数決モード」と「標準モード」</strong>から選べるようになりました</li>
@@ -900,6 +923,28 @@
           <li><strong>時間帯別データ削除</strong>機能を追加（不要な時間帯のデータを整理してAI精度向上）</li>
           <li>モメンタムフィルタを設定パネルに移動</li>
           <li>シグナル表示のチラつきを改善</li>
+        </ul>
+      </div>
+
+      <!-- === v5.8.13 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.8.13</div>
+        <h3>テクニカル精度向上と動的ボラティリティ閾値</h3>
+        <ul>
+          <li>テクニカル指標の計算精度が向上</li>
+          <li>相場のボラティリティ（変動幅）に応じた<strong>動的閾値の自動調整機能</strong></li>
+          <li>シグナルカードと相場状況カードの表示が完全に連動</li>
+          <li>「見送り」時にグレードが表示されない仕様に変更（混乱防止）</li>
+        </ul>
+      </div>
+
+      <!-- === v5.6.6 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.6.6</div>
+        <h3>AI予測固定機能と時間帯別データ表示</h3>
+        <ul>
+          <li><strong>AI予測値の固定機能</strong>: シグナル表示後はサイクル終了まで予測値を変更しない仕様に（チカチカ防止）</li>
+          <li><strong>時間帯別データ表示</strong>: 学習データの時間帯別件数を確認可能に</li>
         </ul>
       </div>
 
@@ -943,7 +988,7 @@
       <!-- 最新バージョン -->
       <div class="release-card latest">
         <div class="release-header">
-          <span class="release-version">v5.12.1</span>
+          <span class="release-version">v5.12.4</span>
           <span class="release-latest-badge">最新</span>
           <span class="release-date">2026年3月19日</span>
         </div>
@@ -956,9 +1001,9 @@
             <li>カウントダウン表示の簡素化</li>
           </ul>
         </div>
-        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.1/theoption-trading-system-v5.12.1.zip">
+        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.4/theoption-trading-system-v5.12.4.zip">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          ダウンロード（v5.12.1）
+          ダウンロード（v5.12.4）
         </a>
       </div>
 
@@ -985,7 +1030,7 @@
   </div>
 
   <footer class="site-footer">
-    Theoption Trading System v5.12.1<br>
+    Theoption Trading System v5.12.4<br>
     本マニュアルの内容は予告なく変更される場合があります。
   </footer>
 

@@ -26,6 +26,10 @@
     {
       "src": "/docs/trading-manual.html",
       "dest": "/docs/trading-manual.html"
+    },
+    {
+      "src": "/docs/trading-manual-v5.8.html",
+      "dest": "/docs/trading-manual-v5.8.html"
     }
   ]
 }
