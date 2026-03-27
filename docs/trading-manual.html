@@ -372,6 +372,62 @@
       margin: 8px 0 0 18px;
     }
 
+    /* 動画カード */
+    .video-section {
+      margin-bottom: 32px;
+    }
+    .video-section h3 {
+      font-size: 17px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary-light);
+    }
+    .video-card {
+      background: var(--bg-section);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .video-card h4 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+    .video-card p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+    .video-card .video-embed {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+    }
+    .video-card .video-embed iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .video-placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 14px;
+      background: #f0f0f0;
+    }
+
     /* フッター */
     .site-footer {
       text-align: center;
@@ -407,6 +463,7 @@
   <nav class="tab-nav">
     <button class="tab-btn active" data-tab="manual">取扱説明書</button>
     <button class="tab-btn" data-tab="updates">アップデート情報</button>
+    <button class="tab-btn" data-tab="videos">説明動画</button>
     <button class="tab-btn" data-tab="download">ダウンロード</button>
   </nav>
 
@@ -1009,6 +1066,66 @@
         </ul>
       </div>
       -->
+
+    </div>
+  </div>
+
+  <!-- ===== 説明動画タブ ===== -->
+  <div class="tab-content" id="tab-videos">
+    <div class="content">
+
+      <h2>説明動画</h2>
+      <p>Theoption Trading System の導入方法や使い方を動画で解説しています。</p>
+
+      <!-- インストール方法 -->
+      <div class="video-section">
+        <h3>インストール方法</h3>
+        <div class="video-card">
+          <h4>初回インストール手順</h4>
+          <p>拡張機能のダウンロードからChromeへのインストールまでの流れを解説します。</p>
+          <div class="video-embed">
+            <!-- YouTube限定公開のURLに差し替え: src="https://www.youtube.com/embed/VIDEO_ID" -->
+            <div class="video-placeholder">動画準備中</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- アップデート方法 -->
+      <div class="video-section">
+        <h3>アップデート方法</h3>
+        <div class="video-card">
+          <h4>新バージョンへのアップデート手順</h4>
+          <p>新しいバージョンがリリースされた際のアップデート方法を解説します。</p>
+          <div class="video-embed">
+            <!-- YouTube限定公開のURLに差し替え: src="https://www.youtube.com/embed/VIDEO_ID" -->
+            <div class="video-placeholder">動画準備中</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 使い方・説明動画 -->
+      <div class="video-section">
+        <h3>使い方</h3>
+        <div class="video-card">
+          <h4>基本的な使い方</h4>
+          <p>シグナルの見方や設定方法など、基本的な操作を解説します。</p>
+          <div class="video-embed">
+            <!-- YouTube限定公開のURLに差し替え: src="https://www.youtube.com/embed/VIDEO_ID" -->
+            <div class="video-placeholder">動画準備中</div>
+          </div>
+        </div>
+
+        <!-- 動画を追加する場合はここにvideo-cardを追加 -->
+        <!--
+        <div class="video-card">
+          <h4>タイトル</h4>
+          <p>説明文</p>
+          <div class="video-embed">
+            <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
+          </div>
+        </div>
+        -->
+      </div>
 
     </div>
   </div>
