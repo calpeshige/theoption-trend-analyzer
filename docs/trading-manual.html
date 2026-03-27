@@ -313,6 +313,44 @@
     }
     .download-btn:hover { background: #1557b0; }
     .download-btn svg { flex-shrink: 0; }
+
+    /* パスワードゲート */
+    .password-form {
+      display: flex;
+      gap: 8px;
+      margin: 24px 0 12px;
+      max-width: 360px;
+    }
+    .password-form input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .password-form input:focus {
+      border-color: var(--primary);
+    }
+    .password-form button {
+      padding: 10px 20px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .password-form button:hover { background: #1557b0; }
+    .password-error {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
     .download-size {
       font-size: 12px;
       color: var(--text-secondary);
@@ -979,70 +1017,84 @@
   <div class="tab-content" id="tab-download">
     <div class="content">
 
-      <h2>ダウンロード</h2>
-      <p>Theoption Trading System の各バージョンをダウンロードできます。</p>
-
-      <div class="install-steps">
-        <h3>インストール方法</h3>
-        <ol>
-          <li>下のボタンからZIPファイルをダウンロード</li>
-          <li>ZIPを展開（解凍）する</li>
-          <li>Chromeで <code>chrome://extensions</code> を開く</li>
-          <li>右上の「デベロッパーモード」を有効にする</li>
-          <li>「パッケージ化されていない拡張機能を読み込む」をクリック</li>
-          <li>展開したフォルダを選択</li>
-        </ol>
+      <!-- パスワードゲート -->
+      <div id="download-gate">
+        <h2>ダウンロード</h2>
+        <p>このページの閲覧にはパスワードが必要です。</p>
+        <div class="password-form">
+          <input type="password" id="download-password" placeholder="パスワードを入力" autocomplete="off">
+          <button id="download-auth-btn">認証</button>
+        </div>
+        <p class="password-error" id="password-error" style="display:none;">パスワードが正しくありません</p>
       </div>
 
-      <div class="note">
-        <strong>アップデート時の注意：</strong> 新しいバージョンをインストールする前に、サイドパネルからJSONエクスポートでデータのバックアップを取ることをお勧めします。学習データは引き継がれますが、万が一に備えてください。
-      </div>
+      <!-- パスワード認証後に表示 -->
+      <div id="download-content" style="display:none;">
+        <h2>ダウンロード</h2>
+        <p>Theoption Trading System の各バージョンをダウンロードできます。</p>
 
-      <!-- 最新バージョン -->
-      <div class="release-card latest">
-        <div class="release-header">
-          <span class="release-version">v5.12.6</span>
-          <span class="release-latest-badge">最新</span>
-          <span class="release-date">2026年3月27日</span>
+        <div class="install-steps">
+          <h3>インストール方法</h3>
+          <ol>
+            <li>下のボタンからZIPファイルをダウンロード</li>
+            <li>ZIPを展開（解凍）する</li>
+            <li>Chromeで <code>chrome://extensions</code> を開く</li>
+            <li>右上の「デベロッパーモード」を有効にする</li>
+            <li>「パッケージ化されていない拡張機能を読み込む」をクリック</li>
+            <li>展開したフォルダを選択</li>
+          </ol>
         </div>
-        <div class="release-notes">
-          <ul>
-            <li>マーケット概況の方向感判定の精度改善</li>
-            <li>モメンタム表示の安定化</li>
-            <li>強制リロードボタン追加</li>
-            <li>拡張機能更新時の自動タブリロード</li>
-          </ul>
-        </div>
-        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.6/theoption-trading-system-v5.12.6.zip">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          ダウンロード（v5.12.6）
-        </a>
-      </div>
 
-      <!-- 過去バージョンはここに追加 -->
-      <!--
-      <div class="release-card">
-        <div class="release-header">
-          <span class="release-version">vX.X.X</span>
-          <span class="release-date">20XX年X月X日</span>
+        <div class="note">
+          <strong>アップデート時の注意：</strong> 新しいバージョンをインストールする前に、サイドパネルからJSONエクスポートでデータのバックアップを取ることをお勧めします。学習データは引き継がれますが、万が一に備えてください。
         </div>
-        <div class="release-notes">
-          <ul>
-            <li>変更内容</li>
-          </ul>
+
+        <!-- 最新バージョン -->
+        <div class="release-card latest">
+          <div class="release-header">
+            <span class="release-version">v5.12.6</span>
+            <span class="release-latest-badge">最新</span>
+            <span class="release-date">2026年3月27日</span>
+          </div>
+          <div class="release-notes">
+            <ul>
+              <li>マーケット概況の方向感判定の精度改善</li>
+              <li>モメンタム表示の安定化</li>
+              <li>強制リロードボタン追加</li>
+              <li>拡張機能更新時の自動タブリロード</li>
+            </ul>
+          </div>
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.6/theoption-trading-system-v5.12.6.zip">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            ダウンロード（v5.12.6）
+          </a>
         </div>
-        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/vX.X.X/theoption-trading-system-vX.X.X.zip">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          ダウンロード（vX.X.X）
-        </a>
+
+        <!-- 過去バージョンはここに追加 -->
+        <!--
+        <div class="release-card">
+          <div class="release-header">
+            <span class="release-version">vX.X.X</span>
+            <span class="release-date">20XX年X月X日</span>
+          </div>
+          <div class="release-notes">
+            <ul>
+              <li>変更内容</li>
+            </ul>
+          </div>
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/vX.X.X/theoption-trading-system-vX.X.X.zip">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            ダウンロード（vX.X.X）
+          </a>
+        </div>
+        -->
       </div>
-      -->
 
     </div>
   </div>
 
   <footer class="site-footer">
-    Theoption Trading System v5.12.4<br>
+    Theoption Trading System v5.12.6<br>
     本マニュアルの内容は予告なく変更される場合があります。
   </footer>
 
@@ -1066,6 +1118,37 @@
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
+
+    // ダウンロードタブのパスワード認証
+    const DL_HASH = 'e8356e5ac5b157347c25f20d329d3f3475cbfdfc11062d6f2a572164b7ca3794';
+    async function hashPassword(pw) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    function tryAuth() {
+      const input = document.getElementById('download-password');
+      const error = document.getElementById('password-error');
+      hashPassword(input.value).then(hash => {
+        if (hash === DL_HASH) {
+          document.getElementById('download-gate').style.display = 'none';
+          document.getElementById('download-content').style.display = 'block';
+          sessionStorage.setItem('dl_auth', '1');
+        } else {
+          error.style.display = 'block';
+          input.value = '';
+          input.focus();
+        }
+      });
+    }
+    document.getElementById('download-auth-btn').addEventListener('click', tryAuth);
+    document.getElementById('download-password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') tryAuth();
+    });
+    // セッション中は再入力不要
+    if (sessionStorage.getItem('dl_auth') === '1') {
+      document.getElementById('download-gate').style.display = 'none';
+      document.getElementById('download-content').style.display = 'block';
+    }
   </script>
 </body>
 </html>
