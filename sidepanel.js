@@ -111,6 +111,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (card) card.classList.add('expanded');
   });
 
+  // 強制リロードボタン
+  const forceReloadBtn = document.getElementById('force-reload-button');
+  if (forceReloadBtn) {
+    forceReloadBtn.addEventListener('click', () => {
+      const svgIcon = forceReloadBtn.querySelector('svg');
+      if (svgIcon) svgIcon.style.animation = 'spin 1s linear infinite';
+      chrome.runtime.sendMessage({ type: 'FORCE_RELOAD' }, (response) => {
+        if (chrome.runtime.lastError || !response?.success) {
+          if (svgIcon) svgIcon.style.animation = '';
+          alert('リロード失敗: TheOptionのタブが見つかりません');
+        }
+        // タブリロード後、サイドパネル自体もリセット
+        setTimeout(() => {
+          location.reload();
+        }, 1500);
+      });
+    });
+  }
+
 });
 
 // v5.6.4: visibilitychange監視は削除（不要）
@@ -2502,9 +2521,15 @@ function updateMarketOverview(enhanced, technical, forceUpdate = false) {
     volRatio = v2.t2.volRatio || 1.0;
     macdIncreasing = v2.t4?.macdIncreasing ?? null;
   } else if (technical) {
-    const breakdown = technical.breakdown || {};
-    momentum = breakdown.momentum?.score ?? 0;
+    // v2が来ない場合: 前回のv2値があればそれを使用（v2は低頻度で更新されるため）
+    if (lastMomentumValue !== null) {
+      momentum = lastMomentumValue;
+    } else {
+      const breakdown = technical.breakdown || {};
+      momentum = breakdown.momentum?.score ?? 0;
+    }
     // フォールバック: bbPositionがない場合はRSIから推定
+    const breakdown = technical.breakdown || {};
     bbPosition = breakdown.rsi?.value ?? 50;
     // ボラティリティ文字列→ratioに変換
     const volStr = technical.volatility || 'NORMAL';
@@ -2526,12 +2551,12 @@ function updateMarketOverview(enhanced, technical, forceUpdate = false) {
   // モメンタム方向・アイコン・ラベル
   const absMom = Math.abs(momentum);
   let momIcon, momLabel, momColor;
-  if (momentum > 0.5)       { momIcon = '⬆'; momLabel = '上方向に強い勢い'; momColor = '#2e7d32'; }
-  else if (momentum > 0.2)  { momIcon = '⬆'; momLabel = '上方向に勢いあり'; momColor = '#2e7d32'; }
-  else if (momentum > 0.08) { momIcon = '↗'; momLabel = 'やや上方向'; momColor = '#4caf50'; }
-  else if (momentum < -0.5) { momIcon = '⬇'; momLabel = '下方向に強い勢い'; momColor = '#c62828'; }
-  else if (momentum < -0.2) { momIcon = '⬇'; momLabel = '下方向に勢いあり'; momColor = '#c62828'; }
-  else if (momentum < -0.08){ momIcon = '↘'; momLabel = 'やや下方向'; momColor = '#e53935'; }
+  if (momentum > 0.25)      { momIcon = '⬆'; momLabel = '上方向に強い勢い'; momColor = '#2e7d32'; }
+  else if (momentum > 0.1)  { momIcon = '⬆'; momLabel = '上方向に勢いあり'; momColor = '#2e7d32'; }
+  else if (momentum > 0.04) { momIcon = '↗'; momLabel = 'やや上方向'; momColor = '#4caf50'; }
+  else if (momentum < -0.25){ momIcon = '⬇'; momLabel = '下方向に強い勢い'; momColor = '#c62828'; }
+  else if (momentum < -0.1) { momIcon = '⬇'; momLabel = '下方向に勢いあり'; momColor = '#c62828'; }
+  else if (momentum < -0.04){ momIcon = '↘'; momLabel = 'やや下方向'; momColor = '#e53935'; }
   else                      { momIcon = '➡'; momLabel = '方向感なし'; momColor = '#757575'; }
 
   // 勢いの変化（前回モメンタムとの比較）

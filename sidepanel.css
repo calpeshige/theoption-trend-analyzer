@@ -1980,6 +1980,10 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .trim-overlay-text {
   font-size: 16px;
   font-weight: 600;

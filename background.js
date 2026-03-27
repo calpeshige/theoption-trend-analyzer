@@ -18,6 +18,18 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
+// 拡張機能の更新（リロード）時にTheOptionタブを自動リロード
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'update' || details.reason === 'install') {
+    chrome.tabs.query({ url: ['*://jp.theoption.com/trading*', '*://theoption.com/trading*'] }, (tabs) => {
+      for (const tab of tabs) {
+        chrome.tabs.reload(tab.id);
+        debugLog(`[Background] TheOptionタブ自動リロード: tabId=${tab.id}`);
+      }
+    });
+  }
+});
+
 // TheOptionのトレーディングページでサイドパネルを有効化/無効化
 // bubinga_systemパターン: onUpdatedのみでサイドパネル制御
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -42,6 +54,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // メッセージハンドラー
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // システム強制リロード: TheOptionタブをリロードしてコンテンツスクリプトを再注入
+  if (message.type === 'FORCE_RELOAD') {
+    chrome.tabs.query({ url: ['*://jp.theoption.com/trading*', '*://theoption.com/trading*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.reload(tabs[0].id);
+        console.log(`[Background] 強制リロード実行: tabId=${tabs[0].id}`);
+        sendResponse({ success: true });
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
+  }
+
   // システム状態をサイドパネルに転送
   if (message.type === 'SYSTEM_STATE') {
     chrome.runtime.sendMessage(message).catch(() => {});

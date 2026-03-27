@@ -363,7 +363,7 @@
 
   <header class="site-header">
     <h1>Theoption Trading System</h1>
-    <div class="version">v5.12.4</div>
+    <div class="version">v5.12.6</div>
   </header>
 
   <nav class="tab-nav">
@@ -434,6 +434,7 @@
         <tr><td><strong>データ件数</strong></td><td>現在のAI学習データの総件数</td></tr>
         <tr><td><strong>通貨ペア名</strong></td><td>現在選択中の通貨ペア（自動検出）</td></tr>
         <tr><td><strong>カウントダウン</strong></td><td>次の分析までの円形プログレスリング</td></tr>
+        <tr><td><strong>強制リロードボタン（🔄 オレンジ）</strong></td><td>システムが動作しない場合にワンクリックで復旧。TheOptionタブとサイドパネルを同時にリロードします</td></tr>
         <tr><td><strong>ダウンロードボタン</strong></td><td>データのダウンロード・バックアップ画面を開く</td></tr>
         <tr><td><strong>設定ボタン（⚙）</strong></td><td>各種設定画面を開く</td></tr>
       </table>
@@ -879,6 +880,18 @@
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
 
+      <!-- === v5.12.6 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.12.6</div>
+        <h3>マーケット概況の精度改善・強制リロードボタン追加</h3>
+        <ul>
+          <li><strong>モメンタム感度向上</strong>: マーケット概況の方向感判定の閾値を調整し、方向性のある相場で「方向感なし」と誤表示される問題を修正</li>
+          <li><strong>モメンタム表示の安定化</strong>: データ更新間隔による表示の途切れを解消し、前回の値を維持するよう改善</li>
+          <li><strong>強制リロードボタン追加</strong>: ヘッダーにオレンジ色のリロードボタンを追加。システムが動作しない時にワンクリックで復旧可能</li>
+          <li><strong>拡張機能更新時の自動リロード</strong>: 拡張機能を更新すると、TheOptionのページが自動でリロードされるようになりました</li>
+        </ul>
+      </div>
+
       <!-- === v5.12.4 === -->
       <div class="update-card">
         <div class="update-version">2026年3月 — v5.12.4</div>
@@ -988,22 +1001,21 @@
       <!-- 最新バージョン -->
       <div class="release-card latest">
         <div class="release-header">
-          <span class="release-version">v5.12.4</span>
+          <span class="release-version">v5.12.6</span>
           <span class="release-latest-badge">最新</span>
-          <span class="release-date">2026年3月19日</span>
+          <span class="release-date">2026年3月27日</span>
         </div>
         <div class="release-notes">
           <ul>
-            <li>シグナルモード切替機能（標準 / 多数決）を追加</li>
-            <li>マーケット概況をモメンタム・価格位置ベースに全面刷新</li>
-            <li>急変検出アラートを追加</li>
-            <li>時間帯別データ削除機能を追加</li>
-            <li>カウントダウン表示の簡素化</li>
+            <li>マーケット概況の方向感判定の精度改善</li>
+            <li>モメンタム表示の安定化</li>
+            <li>強制リロードボタン追加</li>
+            <li>拡張機能更新時の自動タブリロード</li>
           </ul>
         </div>
-        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.4/theoption-trading-system-v5.12.4.zip">
+        <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.6/theoption-trading-system-v5.12.6.zip">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          ダウンロード（v5.12.4）
+          ダウンロード（v5.12.6）
         </a>
       </div>
 
