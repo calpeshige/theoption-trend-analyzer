@@ -428,6 +428,73 @@
       background: #f0f0f0;
     }
 
+    /* 動画アコーディオン */
+    .video-accordion {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .video-accordion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: var(--bg-section);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    .video-accordion-header:hover {
+      background: #eef1f5;
+    }
+    .video-accordion-header h3 {
+      font-size: 15px;
+      margin: 0;
+      border: none;
+      padding: 0;
+    }
+    .video-accordion-arrow {
+      font-size: 12px;
+      color: var(--text-secondary);
+      transition: transform 0.3s;
+    }
+    .video-accordion.open .video-accordion-arrow {
+      transform: rotate(180deg);
+    }
+    .video-accordion-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease;
+    }
+    .video-accordion.open .video-accordion-body {
+      max-height: 2000px;
+    }
+    .video-accordion-body .video-card {
+      margin: 16px;
+    }
+    .video-accordion-body .video-card:last-child {
+      margin-bottom: 16px;
+    }
+    .video-version-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 10px;
+      background: rgba(26,115,232,0.12);
+      color: var(--primary);
+      margin-right: 8px;
+    }
+    .video-accordion-header .video-new-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(30,142,62,0.12);
+      color: var(--success);
+      margin-left: 8px;
+    }
+
     /* フッター */
     .site-footer {
       text-align: center;
@@ -1077,7 +1144,7 @@
       <h2>説明動画</h2>
       <p>Theoption Trading System の導入方法や使い方を動画で解説しています。</p>
 
-      <!-- インストール方法 -->
+      <!-- ===== 固定セクション: インストール・アップデート ===== -->
       <div class="video-section">
         <h3>インストール方法</h3>
         <div class="video-card">
@@ -1089,7 +1156,6 @@
         </div>
       </div>
 
-      <!-- アップデート方法 -->
       <div class="video-section">
         <h3>アップデート方法</h3>
         <div class="video-card">
@@ -1101,29 +1167,59 @@
         </div>
       </div>
 
-      <!-- 使い方・説明動画 -->
+      <!-- ===== 固定セクション: 基本的な使い方 ===== -->
       <div class="video-section">
-        <h3>使い方</h3>
+        <h3>基本的な使い方</h3>
         <div class="video-card">
-          <h4>基本的な使い方</h4>
+          <h4>システムの基本操作</h4>
           <p>シグナルの見方や設定方法など、基本的な操作を解説します。</p>
           <div class="video-embed">
             <!-- YouTube限定公開のURLに差し替え: src="https://www.youtube.com/embed/VIDEO_ID" -->
             <div class="video-placeholder">動画準備中</div>
           </div>
         </div>
+      </div>
 
-        <!-- 動画を追加する場合はここにvideo-cardを追加 -->
-        <!--
-        <div class="video-card">
-          <h4>タイトル</h4>
-          <p>説明文</p>
-          <div class="video-embed">
-            <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
+      <!-- ===== アップデート別動画（アコーディオン） ===== -->
+      <h3 style="margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--primary-light);">アップデート別の解説動画</h3>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">各バージョンで追加・変更された機能の解説動画です。クリックで開閉できます。</p>
+
+      <!-- === v5.12.6 === 最新は open -->
+      <div class="video-accordion open">
+        <div class="video-accordion-header" onclick="this.parentElement.classList.toggle('open')">
+          <h3><span class="video-version-badge">v5.12.6</span>マーケット概況精度改善・強制リロードボタン<span class="video-new-badge">NEW</span></h3>
+          <span class="video-accordion-arrow">▼</span>
+        </div>
+        <div class="video-accordion-body">
+          <div class="video-card">
+            <h4>v5.12.6 アップデート内容</h4>
+            <p>マーケット概況の方向感判定の改善、強制リロードボタンの使い方を解説します。</p>
+            <div class="video-embed">
+              <!-- YouTube限定公開のURLに差し替え: src="https://www.youtube.com/embed/VIDEO_ID" -->
+              <div class="video-placeholder">動画準備中</div>
+            </div>
           </div>
         </div>
-        -->
       </div>
+
+      <!-- ここに今後のアップデート動画を追加 -->
+      <!-- テンプレート:
+      <div class="video-accordion">
+        <div class="video-accordion-header" onclick="this.parentElement.classList.toggle('open')">
+          <h3><span class="video-version-badge">vX.X.X</span>タイトル</h3>
+          <span class="video-accordion-arrow">▼</span>
+        </div>
+        <div class="video-accordion-body">
+          <div class="video-card">
+            <h4>タイトル</h4>
+            <p>説明文</p>
+            <div class="video-embed">
+              <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+      -->
 
     </div>
   </div>
