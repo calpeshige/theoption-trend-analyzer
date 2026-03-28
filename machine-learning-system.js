@@ -489,7 +489,8 @@ class DataCollectionSystem {
     if (!this.dbInitialized) return;
     try {
       await this.dbManager.saveRecord(record);
-      this.totalDataCount++;
+      // DB実件数を取得して同期（通貨ペア別）
+      this.totalDataCount = await this.dbManager.getCount(this.assetName);
     } catch (e) {
       console.error('[ML] Save Error:', e);
     }
@@ -564,18 +565,17 @@ class DataCollectionSystem {
     }
   }
 
-  // DB総件数を返す（UIの「収集データ」表示用）
-  // メモリ上のtrainingDataは最大10000件だが、DBにはそれ以上保存されている
-  getDataCount() { return this.totalDataCount || this.trainingData.length; }
+  // DB総件数を返す（UIの「収集データ」表示用、現在の通貨ペアのみ）
+  getDataCount() { return this.totalDataCount || 0; }
   getDataCountWithResults() { return this.trainingData.filter(d => !d.result15s?.pending).length; }
 
-  // DB総件数を非同期で取得して更新
+  // DB総件数を非同期で取得して更新（現在の通貨ペアのみ）
   async refreshTotalCount() {
     if (this.dbInitialized) {
       this.totalDataCount = await this.dbManager.getCount(this.assetName);
-      console.log(`[ML] 📊 DB総件数を更新: ${this.totalDataCount}件`);
+      console.log(`[ML] 📊 DB総件数を更新: ${this.assetName} = ${this.totalDataCount}件`);
     }
-    return this.totalDataCount || this.trainingData.length;
+    return this.totalDataCount || 0;
   }
 
   // ========================================

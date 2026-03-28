@@ -524,7 +524,7 @@
 
   <header class="site-header">
     <h1>Theoption Trading System</h1>
-    <div class="version">v5.12.7</div>
+    <div class="version">v5.12.8</div>
   </header>
 
   <nav class="tab-nav">
@@ -1042,6 +1042,18 @@
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
 
+      <!-- === v5.12.8 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.12.8</div>
+        <h3>AI学習データの精度・表示改善</h3>
+        <ul>
+          <li><strong>データ件数の正確な表示</strong>: UI上の収集データ件数が常にDB実件数（現在の通貨ペアのみ）と一致するよう修正</li>
+          <li><strong>重複データ収集の解消</strong>: 同一タイミングで2件記録されるバグを修正し、15秒に1件の正確な収集に統一</li>
+          <li><strong>データカウントの二重加算修正</strong>: 件数表示が実際の2倍になるバグを修正</li>
+          <li><strong>通貨ペア切替時の安定化</strong>: 切替時にデータが正しく同期されるよう改善</li>
+        </ul>
+      </div>
+
       <!-- === v5.12.7 === -->
       <div class="update-card">
         <div class="update-version">2026年3月 — v5.12.7</div>
@@ -1274,20 +1286,20 @@
         <!-- 最新バージョン -->
         <div class="release-card latest">
           <div class="release-header">
-            <span class="release-version">v5.12.7</span>
+            <span class="release-version">v5.12.8</span>
             <span class="release-latest-badge">最新</span>
             <span class="release-date">2026年3月28日</span>
           </div>
           <div class="release-notes">
             <ul>
-              <li>AI学習データの件数カウント修正</li>
-              <li>通貨ペア切替時のデータ表示安定化</li>
-              <li>データ収集の継続性改善</li>
+              <li>AI学習データの件数表示をDB実件数に統一</li>
+              <li>重複データ収集の解消（15秒に1件に統一）</li>
+              <li>通貨ペア別の正確なカウント表示</li>
             </ul>
           </div>
-          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.7/theoption_trend_release.zip">
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.8/theoption_trend_release.zip">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            ダウンロード（v5.12.7）
+            ダウンロード（v5.12.8）
           </a>
         </div>
 
@@ -1315,7 +1327,7 @@
   </div>
 
   <footer class="site-footer">
-    Theoption Trading System v5.12.7<br>
+    Theoption Trading System v5.12.8<br>
     本マニュアルの内容は予告なく変更される場合があります。
   </footer>
 

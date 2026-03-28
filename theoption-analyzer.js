@@ -3718,39 +3718,8 @@ function initializeAnalyzer() {
         dayOfWeek: new Date().getDay()
       };
 
-      // データ収集は collectMLData() で15秒ごとに実行されるため、ここでは行わない
-      // （重複収集を防止するため）
-      // タブ切り替え時やキャッシュがない場合のみ、フォールバックとして収集
-      if (!isTabSwitch && !cachedMLData) {
-        try {
-          // 価格パターン + テクニカル時系列 + 詳細セグメント情報を含めてMLシステムに渡す
-          mlSystem.startCollecting({ currentPrice }, {
-            multiDim: multiDimResult,
-            pricePattern15s: pricePattern15s,
-            pricePattern30s: pricePattern30s,
-            pricePattern60s: pricePattern60s,
-            pricePattern180s: pricePattern180s,
-            pricePattern300s: pricePattern300s,
-            techTimeSeries15s: techTimeSeries15s,
-            techTimeSeries30s: techTimeSeries30s,
-            techTimeSeries60s: techTimeSeries60s,
-            techTimeSeries180s: techTimeSeries180s,
-            techTimeSeries300s: techTimeSeries300s,
-            priceSegments15s: priceSegments15s,
-            priceSegments30s: priceSegments30s,
-            priceSegments60s: priceSegments60s,
-            priceSegments180s: priceSegments180s,
-            priceSegments300s: priceSegments300s
-          });
-          console.log('[TheOption Analyzer] ML データ収集（フォールバック: キャッシュなし）');
-        } catch (error) {
-          console.error('[TheOption Analyzer] ML データ収集エラー:', error);
-        }
-      } else if (isTabSwitch) {
-        console.log('[TheOption Analyzer] ⏭️ タブ切り替えのため、MLデータ収集をスキップ');
-      } else {
-        console.log('[TheOption Analyzer] ⏭️ collectMLData()で収集済み、重複収集をスキップ');
-      }
+      // データ収集は collectMLData() で15秒ごとに一本化（重複防止）
+      // performAnalysis() ではデータ収集を行わない
 
       // 🔬 診断: 最新データのセグメント情報を確認
       if (currentSituation.priceSegments15s) {
