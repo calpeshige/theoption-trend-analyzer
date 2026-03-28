@@ -1855,21 +1855,22 @@ function updateDisplay(data) {
     updateMarketOverview(timeframeData.enhanced, timeframeData.technical);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
-    debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
-    // v5.10.3: resetSignalCards()を呼ぶとテクニカルカードの残り時間表示が消えるため
-    // ここでは詳細カードのみリセット（テクニカルカードはポーリングが制御）
-    const techDetailBox = document.getElementById('tech-detail');
-    if (techDetailBox) techDetailBox.innerHTML = '';
-    const probUp = document.getElementById('prob-up');
-    const probDown = document.getElementById('prob-down');
-    const probBarUp = document.getElementById('prob-bar-up');
-    const probBarDown = document.getElementById('prob-bar-down');
-    const aiDetailBox = document.getElementById('ai-detail');
-    if (probUp) probUp.textContent = '上昇 --%';
-    if (probDown) probDown.textContent = '下降 --%';
-    if (probBarUp) probBarUp.style.width = '0%';
-    if (probBarDown) probBarDown.style.width = '0%';
-    if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
+    // 準備期間中・取引中は詳細カードのリセットをスキップ（チカチカ防止）
+    if (!signalDisplayed && !isInTrading) {
+      debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
+      const techDetailBox = document.getElementById('tech-detail');
+      if (techDetailBox) techDetailBox.innerHTML = '';
+      const probUp = document.getElementById('prob-up');
+      const probDown = document.getElementById('prob-down');
+      const probBarUp = document.getElementById('prob-bar-up');
+      const probBarDown = document.getElementById('prob-bar-down');
+      const aiDetailBox = document.getElementById('ai-detail');
+      if (probUp) probUp.textContent = '上昇 --%';
+      if (probDown) probDown.textContent = '下降 --%';
+      if (probBarUp) probBarUp.style.width = '0%';
+      if (probBarDown) probBarDown.style.width = '0%';
+      if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
+    }
     // マーケット概況はリセットしない（カウントダウン継続のため）
   }
 
