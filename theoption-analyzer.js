@@ -1818,12 +1818,29 @@ function initializeAnalyzer() {
             (countdown <= prepTime && countdown > 0)
           );
 
+          // mlStatsは常にリアルタイム値を使用（キャッシュ値だとSTATUS_UPDATEの値と不一致でチカチカする）
+          let realtimeMlStats = lastAnalysisDataCache.mlStats;
+          if (mlSystem && mlSystem.getStatistics) {
+            const liveStats = mlSystem.getStatistics();
+            const liveLearningLevel = liveStats.learningLevel !== undefined
+              ? liveStats.learningLevel
+              : Math.min(100, Math.round((liveStats.dataCountWithResults / 500) * 100));
+            realtimeMlStats = {
+              dataCount: liveStats.dataCount,
+              dataCountWithResults: liveStats.dataCountWithResults,
+              learningLevel: liveLearningLevel,
+              accuracy: liveStats.accuracy,
+              status: liveStats.status,
+              freshness: liveStats.freshness
+            };
+          }
+
           sendResponse({
             asset: currentAsset,
             dataCount: priceHistory.length,
             timeframes: lastAnalysisDataCache.timeframes,
             currentTimeframe: currentTimeframe,
-            mlStats: lastAnalysisDataCache.mlStats,
+            mlStats: realtimeMlStats,
             realtimeStatus: {
               asset: currentAsset,
               dataCount: priceHistory.length,
@@ -1834,7 +1851,7 @@ function initializeAnalyzer() {
               isTrading: isTradingForReq,
               tradingRemaining: isTradingForReq ? tradingState.remainingTime : 0,
               tradingDuration: isTradingForReq ? tradingState.duration : currentTimeframe,
-              mlStats: lastAnalysisDataCache.mlStats,
+              mlStats: realtimeMlStats,
               signal20: latestSignal20Result || null,
               signalMode: currentSignalMode,
               signal20Status: (() => {
