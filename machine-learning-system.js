@@ -603,11 +603,6 @@ class DataCollectionSystem {
       this.patternMatcher.updateWorkerData(this.timeFilteredData, mode);
     }
 
-    // UIに即座に通知（モード切替直後のデータ件数を反映）
-    if (this.onTimeFilterUpdated) {
-      this.onTimeFilterUpdated(this.getTimeFilterInfo());
-    }
-
     return this.timeFilteredData.length;
   }
 
@@ -677,7 +672,7 @@ class DataCollectionSystem {
       currentSession,
       sessionName: sessionInfo?.name || '不明',
       filteredCount: this.timeFilteredData.length,
-      totalCount: this.totalDataCount || this.trainingData.length,
+      totalCount: this.trainingData.length,
       targetHours: this.timeFilterMode === 'hour'
         ? window.DBManager.getHourRangeWithPriority(currentHour, 2)
         : (sessionInfo?.hours || [])
