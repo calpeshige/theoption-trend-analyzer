@@ -8,6 +8,19 @@
 // ========================================
 // 2重実行防止（最優先・ファイル先頭）
 // ========================================
+// 拡張機能リロード時はDOM属性が残るため、chrome.runtime.idで新しいインスタンスかを判定
+(() => {
+  const prevId = document.documentElement.getAttribute('data-theoption-analyzer-ext-id');
+  const currentId = chrome.runtime?.id || '';
+  if (prevId && prevId !== currentId) {
+    // 拡張機能がリロードされた → 古いフラグをリセット
+    document.documentElement.removeAttribute('data-theoption-analyzer-v');
+    window.__theOptionAnalyzerStarted = false;
+    window.__theOptionAnalyzerInitialized = false;
+  }
+  document.documentElement.setAttribute('data-theoption-analyzer-ext-id', currentId);
+})();
+
 if (document.documentElement.getAttribute('data-theoption-analyzer-v') === 'active') {
   // 既に実行中 - このスクリプトインスタンスは何もしない
   console.error('[TheOption Analyzer] 2重実行を検出 - スキップ');
