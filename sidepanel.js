@@ -102,8 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
   requestAnalysisData();
 
-  // 定期的にデータを要求（1秒間隔）
-  setInterval(requestAnalysisData, 1000);
+  // 定期的にデータを要求（2秒間隔、カウントダウンはSTATUS_UPDATEで毎秒更新）
+  setInterval(requestAnalysisData, 2000);
 
   // カードの初期展開状態を適用
   expandedCards.forEach(cardId => {

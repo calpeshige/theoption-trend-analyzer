@@ -996,9 +996,15 @@ function initializeAnalyzer() {
           }
         });
 
-        // ML学習状況を取得（常にgetStatistics()からリアルタイム取得）
+        // ML学習状況を取得（timeframeResultsから取得、なければgetStatistics()を使用）
         let mlStats = null;
-        if (mlSystem && mlSystem.getStatistics) {
+
+        // まずtimeframeResultsに保存されたmlStatsを探す（オーバーレイと同じデータソース）
+        const currentResult = timeframeResults[currentTimeframe];
+        if (currentResult && currentResult.mlStats) {
+          mlStats = currentResult.mlStats;
+        } else if (mlSystem && mlSystem.getStatistics) {
+          // フォールバック: 直接getStatistics()を呼び出す
           const stats = mlSystem.getStatistics();
           const learningLevel = stats.learningLevel !== undefined
             ? stats.learningLevel
@@ -1619,7 +1625,7 @@ function initializeAnalyzer() {
           // キャッシュは分析実行時に更新される（lastAnalysisDataCacheTimestamp で判定）
           const now = Date.now();
           const cacheAge = now - (lastAnalysisDataCacheTimestamp || 0);
-          const needsRebuild = cacheAge > 5000 || !lastAnalysisDataCache;
+          const needsRebuild = cacheAge > 3000 || !lastAnalysisDataCache;
 
           if (needsRebuild) {
             const timeframesData = {};
@@ -1754,31 +1760,34 @@ function initializeAnalyzer() {
               }
             });
 
+            // ML学習状況を取得
+            let mlStats = null;
+            const currentResult = timeframeResults[currentTimeframe];
+            if (currentResult && currentResult.mlStats) {
+              mlStats = currentResult.mlStats;
+            } else if (mlSystem && mlSystem.getStatistics) {
+              const stats = mlSystem.getStatistics();
+              const learningLevel = stats.learningLevel !== undefined
+                ? stats.learningLevel
+                : Math.min(100, Math.round((stats.dataCountWithResults / 500) * 100));
+              mlStats = {
+                dataCount: stats.dataCount,
+                dataCountWithResults: stats.dataCountWithResults,
+                learningLevel: learningLevel,
+                accuracy: stats.accuracy,
+                status: stats.status,
+                freshness: stats.freshness
+              };
+            }
+
             lastAnalysisDataCache = {
-              timeframes: timeframesData
+              timeframes: timeframesData,
+              mlStats: mlStats
             };
             lastAnalysisDataCacheTimestamp = now;
           }
 
-          // mlStats: 常にgetStatistics()からリアルタイム取得
-          // （timeframeResultsのキャッシュは分析実行時のスナップショットで古いため使わない）
-          let mlStats = null;
-          if (mlSystem && mlSystem.getStatistics) {
-            const stats = mlSystem.getStatistics();
-            const learningLevel = stats.learningLevel !== undefined
-              ? stats.learningLevel
-              : Math.min(100, Math.round((stats.dataCountWithResults / 500) * 100));
-            mlStats = {
-              dataCount: stats.dataCount,
-              dataCountWithResults: stats.dataCountWithResults,
-              learningLevel: learningLevel,
-              accuracy: stats.accuracy,
-              status: stats.status,
-              freshness: stats.freshness
-            };
-          }
-
-          // リアルタイムステータス（カウントダウン・フェーズ情報）
+          // リアルタイムステータスは毎回更新（カウントダウン等は常に最新値が必要）
           const config = TIMEFRAME_CONFIGS[currentTimeframe];
           const countdown = getSecondsUntilNextTiming(currentTimeframe);
           const prepTime = config.prepTime || 5;
@@ -1789,6 +1798,7 @@ function initializeAnalyzer() {
           if (isTradingForReq && tradingState.signal) {
             currentSignalForReq = tradingState.signal;
           } else {
+            // 現在の分析結果からシグナルを取得
             const reqResult = timeframeResults[currentTimeframe];
             if (reqResult && reqResult.multiDim) {
               const reqStratification = cachedStratificationResults[currentTimeframe];
@@ -1811,9 +1821,9 @@ function initializeAnalyzer() {
           sendResponse({
             asset: currentAsset,
             dataCount: priceHistory.length,
-            timeframes: lastAnalysisDataCache ? lastAnalysisDataCache.timeframes : {},
+            timeframes: lastAnalysisDataCache.timeframes,
             currentTimeframe: currentTimeframe,
-            mlStats: mlStats,
+            mlStats: lastAnalysisDataCache.mlStats,
             realtimeStatus: {
               asset: currentAsset,
               dataCount: priceHistory.length,
@@ -1824,7 +1834,7 @@ function initializeAnalyzer() {
               isTrading: isTradingForReq,
               tradingRemaining: isTradingForReq ? tradingState.remainingTime : 0,
               tradingDuration: isTradingForReq ? tradingState.duration : currentTimeframe,
-              mlStats: mlStats,
+              mlStats: lastAnalysisDataCache.mlStats,
               signal20: latestSignal20Result || null,
               signalMode: currentSignalMode,
               signal20Status: (() => {
