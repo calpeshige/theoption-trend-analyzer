@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
   requestAnalysisData();
 
-  // 定期的にデータを要求
+  // 定期的にデータを要求（2秒間隔、カウントダウンはSTATUS_UPDATEで毎秒更新）
   setInterval(requestAnalysisData, 2000);
 
   // カードの初期展開状態を適用
@@ -1802,6 +1802,10 @@ function requestAnalysisData() {
       latestAnalysisData = response;
       updateDisplay(response);
       updateStatus('connected', 'データ受信中');
+      // リアルタイムステータスが含まれている場合、カウントダウン等を更新
+      if (response.realtimeStatus) {
+        updateRealtimeStatus(response.realtimeStatus);
+      }
     }
   });
 }

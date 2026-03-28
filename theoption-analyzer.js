@@ -1,9 +1,18 @@
 /**
  * TheOption Trend Analyzer - Main Script
- * Version: 5.7.2 (高精度テクニカル分析)
+ * Version: 5.12.9 (高精度テクニカル分析)
  *
  * 多次元指標分析 + 機械学習 + シンプルUI + 市場バイアス表示
  */
+
+// ========================================
+// 2重実行防止（最優先・ファイル先頭）
+// ========================================
+if (document.documentElement.getAttribute('data-theoption-analyzer-v') === 'active') {
+  // 既に実行中 - このスクリプトインスタンスは何もしない
+  console.error('[TheOption Analyzer] 2重実行を検出 - スキップ');
+} else {
+document.documentElement.setAttribute('data-theoption-analyzer-v', 'active');
 
 // ========================================
 // デバッグモード設定
@@ -35,7 +44,7 @@ if (!window.DEBUG_MODE) {
   window.mlWarn = function(...args) {
     originalConsoleWarn('[ML]', ...args);
   };
-  originalConsoleLog('[TheOption Analyzer] 🚀 v5.12.4 起動');
+  originalConsoleLog('[TheOption Analyzer] 🚀 v5.12.9 起動');
 }
 // ========================================
 
@@ -62,10 +71,14 @@ if (!window.DEBUG_MODE) {
 })();
 
 function checkLicenseAndStart() {
+  // 既に起動済みの場合は何もしない
+  if (window.__theOptionAnalyzerStarted) return;
+
   if (!window.licenseManager || !window.licenseManager.isLicenseValid) {
     console.warn('[TheOption Analyzer] ⚠️ ライセンスが無効なため、拡張機能を起動しません');
     return; // エラーではなく静かに終了
   }
+  window.__theOptionAnalyzerStarted = true;
 
   console.log('[TheOption Analyzer] ✅ ライセンス有効 - 拡張機能を起動します');
   initializeAnalyzer(); // 実際の初期化処理を呼び出す
@@ -73,6 +86,12 @@ function checkLicenseAndStart() {
 
 // メイン初期化関数
 function initializeAnalyzer() {
+  // 2重実行防止ガード
+  if (window.__theOptionAnalyzerInitialized) {
+    console.error('[TheOption Analyzer] ⚠️ 既に初期化済み - 2重実行を防止');
+    return;
+  }
+  window.__theOptionAnalyzerInitialized = true;
 
   // ========================================
   // デバッグ用グローバル関数（即座に定義）
@@ -389,27 +408,33 @@ function initializeAnalyzer() {
     }
 
     function checkExtensionContext() {
-      if (!chrome.runtime?.id && !contextInvalidated) {
-        contextInvalidated = true;
-        // コンテキスト無効化を検出 → 静かに自動リロード（ユーザーへの警告は不要）
+      try {
+        if (!chrome.runtime?.id && !contextInvalidated) {
+          contextInvalidated = true;
+          // コンテキスト無効化を検出 → すべてのインターバルを停止
 
-        // 5秒後に自動リロード
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
+          // 監視を停止
+          if (contextCheckInterval) {
+            clearInterval(contextCheckInterval);
+            contextCheckInterval = null;
+          }
+          if (priceUpdateInterval) {
+            clearInterval(priceUpdateInterval);
+            priceUpdateInterval = null;
+          }
 
-        // 監視を停止
-        if (contextCheckInterval) {
-          clearInterval(contextCheckInterval);
+          // chrome APIを使う処理をすべて停止するためにフラグを設定
+          // （自動リロードはせず、ユーザーが手動でリロードするのを待つ）
+          // ※自動リロードはTheOptionのセッション管理と干渉してエラーコード5を引き起こす可能性がある
+          console.error('[TheOption Analyzer] ⚠️ Extension contextが無効化されました。ページをリロードしてください。');
         }
-        if (priceUpdateInterval) {
-          clearInterval(priceUpdateInterval);
-        }
+      } catch (e) {
+        // checkExtensionContext自体のエラーも安全に処理
       }
     }
 
-    // 10秒ごとにコンテキストをチェック
-    contextCheckInterval = setInterval(checkExtensionContext, 10000);
+    // 30秒ごとにコンテキストをチェック（頻度を下げてオーバーヘッド削減）
+    contextCheckInterval = setInterval(checkExtensionContext, 30000);
 
     // ========================================
     // グローバル変数
@@ -439,6 +464,8 @@ function initializeAnalyzer() {
     let lastAnalysisTime = 0;  // 最後に分析を実行した時刻（後方互換のため保持）
     let currentSimilarityThreshold = 50;  // 類似度閾値（デフォルト50%）
     let currentDataLimit = null;  // データ件数制限（null = 全期間, 500/1000/2000/3000）
+    let lastAnalysisDataCache = null;  // REQUEST_ANALYSIS_DATA レスポンスキャッシュ（負荷軽減）
+    let lastAnalysisDataCacheTimestamp = 0;  // キャッシュ生成時刻
 
     // 時間枠ごとの分析結果キャッシュ
     let timeframeResults = {
@@ -720,6 +747,9 @@ function initializeAnalyzer() {
 
     // サイドパネルに分析データを送信
     async function sendAnalysisToSidePanel() {
+      // Extension context無効化時は送信しない
+      if (contextInvalidated) return;
+
       const logFn = window.originalConsoleLog || console.log;
 
       // 安定化期間中はANALYSIS_UPDATEを送信しない（データジャンプ防止）
@@ -1301,6 +1331,9 @@ function initializeAnalyzer() {
     }
 
     function sendStatusToSidePanel(countdown) {
+      // Extension context無効化時は送信しない
+      if (contextInvalidated) return;
+
       // 安定化期間中はSTATUS_UPDATEを送信しない（タイマージャンプ防止）
       if (isStabilizingAfterActivation) {
         console.log('[TheOption Analyzer] ⏳ 安定化期間中 - STATUS_UPDATE送信スキップ');
@@ -1575,185 +1608,206 @@ function initializeAnalyzer() {
     if (chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === 'REQUEST_ANALYSIS_DATA') {
-          // 分析データを返す（sendAnalysisToSidePanelと同じ詳細データを含む）
-          const timeframesData = {};
-          Object.keys(TIMEFRAME_CONFIGS).forEach(tf => {
-            const result = timeframeResults[tf];
-            if (result && result.multiDim) {
-              // キャッシュされた層別化結果を使用
-              const cachedStratification = cachedStratificationResults[tf];
-              const signals = getCurrentTimeframeSignal(result.multiDim, result.ml, cachedStratification);
-              const multiDim = result.multiDim;
+          // 分析データをキャッシュして返す（毎回再計算しない）
+          // キャッシュは分析実行時に更新される（lastAnalysisDataCacheTimestamp で判定）
+          const now = Date.now();
+          const cacheAge = now - (lastAnalysisDataCacheTimestamp || 0);
+          const needsRebuild = cacheAge > 3000 || !lastAnalysisDataCache;
 
-              // オーバーレイと同じ詳細分析を計算（時間枠を渡す）
-              const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, null, currentAsset);
-              const totalStrength = strengthResult.total;
+          if (needsRebuild) {
+            const timeframesData = {};
+            Object.keys(TIMEFRAME_CONFIGS).forEach(tf => {
+              const result = timeframeResults[tf];
+              if (result && result.multiDim) {
+                const cachedStratification = cachedStratificationResults[tf];
+                const signals = getCurrentTimeframeSignal(result.multiDim, result.ml, cachedStratification);
+                const multiDim = result.multiDim;
 
-              // 時間枠別の閾値を取得（動的閾値を優先）
-              const tfConfig = TIMEFRAME_ANALYSIS_CONFIG[tf] || TIMEFRAME_ANALYSIS_CONFIG[60];
-              const threshold = strengthResult.config?.dynamicThreshold || tfConfig.trendThreshold;
-              const volatilityLevel = strengthResult.config?.volatilityLevel || 'NORMAL';
+                const strengthResult = calculateComprehensiveTrendStrength(multiDim, priceHistory, tf, null, currentAsset);
+                const totalStrength = strengthResult.total;
 
-              // スコアをスムージング（急激な変動を抑制）- ボラティリティ適応型
-              const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default', volatilityLevel);
+                const tfConfig = TIMEFRAME_ANALYSIS_CONFIG[tf] || TIMEFRAME_ANALYSIS_CONFIG[60];
+                const threshold = strengthResult.config?.dynamicThreshold || tfConfig.trendThreshold;
+                const volatilityLevel = strengthResult.config?.volatilityLevel || 'NORMAL';
 
-              // トレンド方向の判定（時間枠別閾値 + スムージング適用）
-              let trendDirection = '中立';
-              let trendColor = '#FFA726';
-              let isTrending = false;
+                const smoothedScore = smoothScore(multiDim.score, tf, currentAsset || 'default', volatilityLevel);
 
-              if (smoothedScore > threshold) {
-                trendDirection = '上昇';
-                trendColor = '#4CAF50';
-                isTrending = true;
-              } else if (smoothedScore < -threshold) {
-                trendDirection = '下降';
-                trendColor = '#F44336';
-                isTrending = true;
+                let trendDirection = '中立';
+                let trendColor = '#FFA726';
+                let isTrending = false;
+
+                if (smoothedScore > threshold) {
+                  trendDirection = '上昇';
+                  trendColor = '#4CAF50';
+                  isTrending = true;
+                } else if (smoothedScore < -threshold) {
+                  trendDirection = '下降';
+                  trendColor = '#F44336';
+                  isTrending = true;
+                }
+
+                let trendDisplayText = '';
+                if (isTrending) {
+                  const level = getTrendStrengthLevel(totalStrength);
+                  trendDisplayText = `${trendDirection}トレンド (強度: ${totalStrength}/100 ${level})`;
+                } else {
+                  trendDisplayText = 'レンジ相場';
+                }
+
+                let overallJudgment = '';
+                let judgmentColor = '#FFA726';
+                if (isTrending && totalStrength >= 70) {
+                  overallJudgment = `${trendDirection}トレンド明確`;
+                  judgmentColor = trendColor;
+                } else if (isTrending && totalStrength >= 40) {
+                  overallJudgment = `${trendDirection}傾向あり`;
+                  judgmentColor = trendColor;
+                } else if (isTrending) {
+                  overallJudgment = `${trendDirection}傾向だが弱い`;
+                  judgmentColor = '#FF9800';
+                } else {
+                  overallJudgment = 'レンジ相場';
+                  judgmentColor = '#9E9E9E';
+                }
+
+                const reliability = multiDim.breakdown?.reliability || {
+                  consistency: 0, alignment: 0, reversals: 0, reliabilityScore: 0
+                };
+
+                let reliabilityLevel = '低';
+                let reliabilityColor = '#9E9E9E';
+                if (reliability.reliabilityScore >= 80) {
+                  reliabilityLevel = '高';
+                  reliabilityColor = '#4CAF50';
+                } else if (reliability.reliabilityScore >= 60) {
+                  reliabilityLevel = '中';
+                  reliabilityColor = '#FFA726';
+                }
+
+                let recommendation = '';
+                if (isTrending && totalStrength >= 70) {
+                  recommendation = 'エントリー推奨';
+                } else if (!isTrending) {
+                  recommendation = '見送り推奨（レンジ相場）';
+                } else {
+                  recommendation = '慎重にエントリー';
+                }
+
+                const volatility = multiDim.breakdown?.atr?.volatility || '-';
+
+                const mlPred = result.ml?.predictions?.[`${tf}s`];
+                const mlSimilarity = mlPred?.topPatterns?.[0]?.similarity || mlPred?.confidence;
+
+                let finalTechSignal2 = multiDim.signal || 'NEUTRAL';
+                let finalTechConfidence2 = multiDim.confidence;
+                let earlyMoveOverride2 = false;
+                const enhancedResult2 = result.enhanced;
+
+                if (enhancedResult2 && enhancedResult2.recommendation === 'SKIP') {
+                  finalTechSignal2 = 'NEUTRAL';
+                  finalTechConfidence2 = 0;
+                  earlyMoveOverride2 = true;
+                }
+
+                timeframesData[tf] = {
+                  technical: {
+                    signal: finalTechSignal2,
+                    confidence: finalTechConfidence2,
+                    breakdown: multiDim.breakdown,
+                    trendDisplayText: trendDisplayText,
+                    trendDirection: trendDirection,
+                    trendColor: trendColor,
+                    isTrending: isTrending,
+                    totalStrength: totalStrength,
+                    overallJudgment: overallJudgment,
+                    judgmentColor: judgmentColor,
+                    reliability: reliability,
+                    reliabilityLevel: reliabilityLevel,
+                    reliabilityColor: reliabilityColor,
+                    recommendation: recommendation,
+                    volatility: volatility,
+                    earlyMoveOverride: earlyMoveOverride2
+                  },
+                  ai: {
+                    signal: result.ml?.status === 'READY' && mlPred ? mlPred.prediction : 'NEUTRAL',
+                    similarity: mlSimilarity,
+                    matchCount: mlPred?.sampleSize,
+                    upRate: mlPred?.upRate,
+                    downRate: mlPred?.downRate,
+                    available: result.ml?.status === 'READY' && !!mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA',
+                    status: result.ml?.status,
+                    dataCount: result.ml?.dataCount,
+                    dataCountWithResults: result.ml?.dataCountWithResults
+                  },
+                  combined: signals ? {
+                    signal: signals.combined?.signal || 'NEUTRAL',
+                    confidence: signals.combined?.confidence
+                  } : null
+                };
               }
+            });
 
-              // トレンド表示テキスト
-              let trendDisplayText = '';
-              if (isTrending) {
-                const level = getTrendStrengthLevel(totalStrength);
-                trendDisplayText = `${trendDirection}トレンド (強度: ${totalStrength}/100 ${level})`;
-              } else {
-                trendDisplayText = 'レンジ相場';
-              }
-
-              // 統合判定
-              let overallJudgment = '';
-              let judgmentColor = '#FFA726';
-              if (isTrending && totalStrength >= 70) {
-                overallJudgment = `${trendDirection}トレンド明確`;
-                judgmentColor = trendColor;
-              } else if (isTrending && totalStrength >= 40) {
-                overallJudgment = `${trendDirection}傾向あり`;
-                judgmentColor = trendColor;
-              } else if (isTrending) {
-                overallJudgment = `${trendDirection}傾向だが弱い`;
-                judgmentColor = '#FF9800';
-              } else {
-                overallJudgment = 'レンジ相場';
-                judgmentColor = '#9E9E9E';
-              }
-
-              // 信頼度メトリクス
-              const reliability = multiDim.breakdown?.reliability || {
-                consistency: 0,
-                alignment: 0,
-                reversals: 0,
-                reliabilityScore: 0
-              };
-
-              let reliabilityLevel = '低';
-              let reliabilityColor = '#9E9E9E';
-              if (reliability.reliabilityScore >= 80) {
-                reliabilityLevel = '高';
-                reliabilityColor = '#4CAF50';
-              } else if (reliability.reliabilityScore >= 60) {
-                reliabilityLevel = '中';
-                reliabilityColor = '#FFA726';
-              }
-
-              // 推奨テキスト
-              let recommendation = '';
-              if (isTrending && totalStrength >= 70) {
-                recommendation = 'エントリー推奨';
-              } else if (!isTrending) {
-                recommendation = '見送り推奨（レンジ相場）';
-              } else {
-                recommendation = '慎重にエントリー';
-              }
-
-              // ボラティリティ
-              const volatility = multiDim.breakdown?.atr?.volatility || '-';
-
-              // 該当時間枠のML予測を取得
-              const mlPred = result.ml?.predictions?.[`${tf}s`];
-              // 類似度は上位パターンの平均またはconfidenceを使用
-              const mlSimilarity = mlPred?.topPatterns?.[0]?.similarity || mlPred?.confidence;
-
-              // v5.8.15: 初動検出がSKIPを返した場合、テクニカルシグナルも見送りにする
-              let finalTechSignal2 = multiDim.signal || 'NEUTRAL';
-              let finalTechConfidence2 = multiDim.confidence;
-              let earlyMoveOverride2 = false;
-              const enhancedResult2 = result.enhanced;
-
-              if (enhancedResult2 && enhancedResult2.recommendation === 'SKIP') {
-                finalTechSignal2 = 'NEUTRAL';
-                finalTechConfidence2 = 0;
-                earlyMoveOverride2 = true;
-              }
-
-              timeframesData[tf] = {
-                technical: {
-                  signal: finalTechSignal2,
-                  confidence: finalTechConfidence2,
-                  breakdown: multiDim.breakdown,
-                  trendDisplayText: trendDisplayText,
-                  trendDirection: trendDirection,
-                  trendColor: trendColor,
-                  isTrending: isTrending,
-                  totalStrength: totalStrength,
-                  overallJudgment: overallJudgment,
-                  judgmentColor: judgmentColor,
-                  reliability: reliability,
-                  reliabilityLevel: reliabilityLevel,
-                  reliabilityColor: reliabilityColor,
-                  recommendation: recommendation,
-                  volatility: volatility,
-                  earlyMoveOverride: earlyMoveOverride2
-                },
-                ai: {
-                  signal: result.ml?.status === 'READY' && mlPred ? mlPred.prediction : 'NEUTRAL',
-                  similarity: mlSimilarity,
-                  matchCount: mlPred?.sampleSize,
-                  upRate: mlPred?.upRate,
-                  downRate: mlPred?.downRate,
-                  available: result.ml?.status === 'READY' && !!mlPred && mlPred.prediction !== 'INSUFFICIENT_DATA',
-                  status: result.ml?.status,
-                  dataCount: result.ml?.dataCount,
-                  dataCountWithResults: result.ml?.dataCountWithResults
-                },
-                combined: signals ? {
-                  signal: signals.combined?.signal || 'NEUTRAL',
-                  confidence: signals.combined?.confidence
-                } : null
+            // ML学習状況を取得
+            let mlStats = null;
+            const currentResult = timeframeResults[currentTimeframe];
+            if (currentResult && currentResult.mlStats) {
+              mlStats = currentResult.mlStats;
+            } else if (mlSystem && mlSystem.getStatistics) {
+              const stats = mlSystem.getStatistics();
+              const learningLevel = stats.learningLevel !== undefined
+                ? stats.learningLevel
+                : Math.min(100, Math.round((stats.dataCountWithResults / 500) * 100));
+              mlStats = {
+                dataCount: stats.dataCount,
+                dataCountWithResults: stats.dataCountWithResults,
+                learningLevel: learningLevel,
+                accuracy: stats.accuracy,
+                status: stats.status,
+                freshness: stats.freshness
               };
             }
-          });
 
-          // ML学習状況を取得（timeframeResultsから取得、なければgetStatistics()を使用）
-          let mlStats = null;
-
-          // まずtimeframeResultsに保存されたmlStatsを探す（オーバーレイと同じデータソース）
-          const currentResult = timeframeResults[currentTimeframe];
-
-          if (currentResult && currentResult.mlStats) {
-            mlStats = currentResult.mlStats;
-          } else if (mlSystem && mlSystem.getStatistics) {
-            // フォールバック: 直接getStatistics()を呼び出す
-            const stats = mlSystem.getStatistics();
-            const learningLevel = stats.learningLevel !== undefined
-              ? stats.learningLevel
-              : Math.min(100, Math.round((stats.dataCountWithResults / 500) * 100));
-            mlStats = {
-              dataCount: stats.dataCount,
-              dataCountWithResults: stats.dataCountWithResults,
-              learningLevel: learningLevel,
-              accuracy: stats.accuracy,
-              status: stats.status,
-              freshness: stats.freshness
+            lastAnalysisDataCache = {
+              timeframes: timeframesData,
+              mlStats: mlStats
             };
+            lastAnalysisDataCacheTimestamp = now;
           }
 
+          // リアルタイムステータスは毎回更新（カウントダウン等は常に最新値が必要）
+          const config = TIMEFRAME_CONFIGS[currentTimeframe];
+          const countdown = getSecondsUntilNextTiming(currentTimeframe);
+          const prepTime = config.prepTime || 5;
           sendResponse({
             asset: currentAsset,
             dataCount: priceHistory.length,
-            timeframes: timeframesData,
+            timeframes: lastAnalysisDataCache.timeframes,
             currentTimeframe: currentTimeframe,
-            mlStats: mlStats
+            mlStats: lastAnalysisDataCache.mlStats,
+            realtimeStatus: {
+              asset: currentAsset,
+              dataCount: priceHistory.length,
+              countdown: countdown,
+              prepTime: prepTime,
+              currentTimeframe: currentTimeframe,
+              mlStats: lastAnalysisDataCache.mlStats,
+              signal20: latestSignal20Result || null,
+              signalMode: currentSignalMode,
+              signal20Status: (() => {
+                if (currentSignalMode === 'standard') {
+                  const stdMin = config.standardMinDataPoints;
+                  if (priceHistory.length >= stdMin) return { ready: true };
+                  return { ready: false, currentCandles: priceHistory.length, requiredCandles: stdMin, remainingSec: stdMin - priceHistory.length, candleLabel: 'データ' };
+                }
+                const s20Cfg = config.signal20;
+                const s20Candles = generateCandles(priceHistory, s20Cfg.candleSize);
+                const current = s20Candles.length;
+                const required = s20Cfg.minCandles;
+                if (current >= required) return { ready: true };
+                return { ready: false, currentCandles: current, requiredCandles: required, remainingSec: (required - current) * s20Cfg.candleSize, candleLabel: s20Cfg.label };
+              })(),
+              reversalAlert: { detected: false }
+            }
           });
         }
 
@@ -2186,6 +2240,7 @@ function initializeAnalyzer() {
     async function initialize() {
       console.log('[TheOption Analyzer] 🔧 初期化開始');
 
+      try {
       // LocalStorageから履歴データを復元
       loadHistoryFromStorage();
 
@@ -2203,7 +2258,6 @@ function initializeAnalyzer() {
         console.log('[TheOption Analyzer] ⚠️ V2が見つかりません - レガシーモードで動作');
       } else {
         console.error('[TheOption Analyzer] ❌ MultiDimensionalAnalyzerが見つかりません');
-        return;
       }
 
       // 機械学習システム初期化
@@ -2217,7 +2271,6 @@ function initializeAnalyzer() {
         console.log('[TheOption Analyzer] ✅ 機械学習システム準備完了（通貨ペア検出待ち）');
       } else {
         console.error('[TheOption Analyzer] ❌ MachineLearningSystemが見つかりません');
-        return;
       }
 
       // テクニカル指標時系列分析システム初期化
@@ -2226,7 +2279,6 @@ function initializeAnalyzer() {
         console.log('[TheOption Analyzer] ✅ テクニカル指標時系列分析システム初期化完了');
       } else {
         console.error('[TheOption Analyzer] ❌ TechnicalTimeSeriesAnalyzerが見つかりません');
-        return;
       }
 
       // 詳細セグメント分析システム初期化
@@ -2243,7 +2295,6 @@ function initializeAnalyzer() {
         console.log('[TheOption Analyzer] ✅ AdvancedSignalEngine v1.0 初期化完了（30指標多数決システム）');
       } else {
         console.warn('[TheOption Analyzer] ⚠️ AdvancedSignalEngineが見つかりません - 旧ロジックで動作');
-        return;
       }
 
       // v5.9.1: 20インジケータ多数決シグナルシステム初期化
@@ -2407,7 +2458,11 @@ function initializeAnalyzer() {
         }
       });
 
-      // 価格データ取得開始
+      } catch (initError) {
+        console.error('[TheOption Analyzer] ❌ 初期化中にエラー:', initError);
+      }
+
+      // 価格データ取得開始（初期化エラーが起きても必ず実行）
       startPriceMonitoring();
 
       console.log('[TheOption Analyzer] ✅ 初期化完了');
@@ -2811,6 +2866,12 @@ function initializeAnalyzer() {
     // ========================================
 
     function startPriceMonitoring() {
+      // 既存のintervalがあればクリア（2重実行防止）
+      if (priceUpdateInterval) {
+        clearInterval(priceUpdateInterval);
+        priceUpdateInterval = null;
+        console.error('[TheOption Analyzer] ⚠️ 既存の価格監視を停止して再開');
+      }
       console.log('[TheOption Analyzer] 📡 価格監視開始');
 
       let tickCount = 0;
@@ -2822,6 +2883,13 @@ function initializeAnalyzer() {
       let lastDisplayedCountdown = -1;
 
       priceUpdateInterval = setInterval(async () => {
+        // Extension context無効化時はインターバルを停止
+        if (contextInvalidated) {
+          clearInterval(priceUpdateInterval);
+          priceUpdateInterval = null;
+          return;
+        }
+
         // ページが非アクティブの場合は何もしない（タブ切り替え対策）
         if (!isPageActive) {
           return;
@@ -2834,10 +2902,15 @@ function initializeAnalyzer() {
         if (now - lastAssetCheck > 1000) {
           const detectedAsset = getCurrentAssetPair();
 
-          if (detectedAsset !== currentAsset) {
-            if (currentAsset !== null) {
+          if (detectedAsset !== currentAsset && detectedAsset !== 'UNKNOWN') {
+            // 即座にcurrentAssetを更新（awaitによるレースコンディション防止）
+            const previousAsset = currentAsset;
+            currentAsset = detectedAsset;
+            console.log(`[TheOption Analyzer] ✅ currentAsset更新: ${previousAsset} → ${currentAsset}`);
+
+            if (previousAsset !== null) {
               // 通貨ペアが切り替わった
-              console.log(`[TheOption Analyzer] 🔄 通貨ペア切り替え検出: ${currentAsset} → ${detectedAsset}`);
+              console.log(`[TheOption Analyzer] 🔄 通貨ペア切り替え検出: ${previousAsset} → ${detectedAsset}`);
 
               // v5.6.6: 通貨ペア変更時に予測値ロックを解除
               if (lockedPrediction.isLocked) {
@@ -2859,6 +2932,9 @@ function initializeAnalyzer() {
               // UI更新キャッシュもリセット
               lastDisplayedCount = -1;
               lastDisplayedCountdown = -1;
+              // REQUEST_ANALYSIS_DATA レスポンスキャッシュもクリア
+              lastAnalysisDataCache = null;
+              lastAnalysisDataCacheTimestamp = 0;
               console.log('[TheOption Analyzer] 🗑️ 表示キャッシュをクリアしました');
 
               // ローディング表示
@@ -2868,9 +2944,9 @@ function initializeAnalyzer() {
                 timeframe: currentTimeframe
               });
 
-              // 現在のデータをストレージに保存
-              if (currentAsset && priceHistory.length > 0) {
-                savePriceData(currentAsset, {
+              // 前の通貨ペアのデータをストレージに保存
+              if (previousAsset && priceHistory.length > 0) {
+                savePriceData(previousAsset, {
                   priceHistory: priceHistory,
                   tickData: tickData,
                   candles: candles
@@ -2952,7 +3028,10 @@ function initializeAnalyzer() {
               tickCount = 0;
               priceDetectionLogged = false;
             } else {
-              // 初回検出時 - ストレージから復元を試みる
+              // 初回検出時 - ML初期化前でもカウントダウンを即座に送信開始
+              sendStatusToSidePanel(getSecondsUntilNextTiming(currentTimeframe));
+
+              // ストレージから復元を試みる
               const savedData = await loadPriceData(detectedAsset);
               if (savedData) {
                 priceHistory = [...savedData.priceHistory];
@@ -3040,8 +3119,6 @@ function initializeAnalyzer() {
               });
             }
 
-            const previousAsset = currentAsset;
-            currentAsset = detectedAsset;
             updateAssetDisplay(currentAsset, priceHistory.length);
 
             // サイドパネルに即座に通貨ペア変更を通知（mlStats初期化前でもassetとdataCountは即反映）
@@ -3056,12 +3133,6 @@ function initializeAnalyzer() {
               // ステータス更新も即時送信（通貨ペア情報を含む）
               sendStatusToSidePanel(getSecondsUntilNextTiming(currentTimeframe));
             } catch (e) { }
-
-            // 通貨ペアが変更された場合、UI表示をクリア
-            if (previousAsset !== currentAsset) {
-              // オーバーレイ削除のため、DOM操作は行わない
-              // サイドパネルへのデータ更新は sendAnalysisToSidePanel() で実施
-            }
           }
 
           lastAssetCheck = now;
@@ -4685,6 +4756,33 @@ function initializeAnalyzer() {
     function getCurrentAssetPair() {
       let detectedPairs = [];
 
+      // 方法0: TheOption取引画面のヘッダーから直接取得（最優先）
+      // 「取引銘柄 BTC/USD」のようなメイン表示を検出
+      try {
+        // TheOptionの取引画面で通貨ペアが大きく表示されているエリアを探す
+        // ページ内の全テキストノードからメインの通貨ペア表示を特定
+        const allElements = document.querySelectorAll('*');
+        for (const el of allElements) {
+          // 子要素がない末端ノード、またはテキストが直接含まれるノードを探す
+          if (el.children.length > 3) continue;  // 子要素が多い親要素はスキップ
+          const text = el.textContent.trim();
+          // 「BTC/USD」のような通貨ペアのみを含む要素（余計なテキストなし）
+          if (/^[A-Z]{3}\/[A-Z]{3}$/.test(text)) {
+            // この要素のフォントサイズや位置から「メイン表示」かどうかを判定
+            const style = window.getComputedStyle(el);
+            const fontSize = parseFloat(style.fontSize);
+            // メイン取引エリアの通貨ペアは大きいフォントで表示される（20px以上）
+            if (fontSize >= 20) {
+              const pair = normalizeAssetName(text);
+              console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${pair} (メイン表示, fontSize=${fontSize}px)`);
+              return pair;
+            }
+          }
+        }
+      } catch (e) {
+        // エラーを無視
+      }
+
       // 方法1: 通貨ペア表示要素から取得（拡張版）
       const assetSelectors = [
         '.asset-name', '.pair-name', '.currency-pair', '.symbol', '.asset', '.pair',
@@ -4710,16 +4808,25 @@ function initializeAnalyzer() {
       }
 
       // 方法2: activeクラスを持つ要素から優先的に取得
+      // テキストが短い（通貨ペア名のみ）要素を優先し、タブバー全体などの広い要素を除外
       const activeElements = document.querySelectorAll('.active, [class*="active"], [class*="selected"], [class*="current"]');
+      let bestActivePair = null;
+      let bestActiveTextLen = Infinity;
       for (const el of activeElements) {
         const text = el.textContent.trim();
         const pairMatch = text.match(/\b([A-Z]{3})[\/\s-]?([A-Z]{3})\b/);
         if (pairMatch && text.length < 30) {
           const pair = normalizeAssetName(`${pairMatch[1]}/${pairMatch[2]}`);
-          // activeな要素は最優先
-          console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${pair} (active要素, 正規化済み)`);
-          return pair;
+          // テキストが最も短い（最も具体的な）active要素を選択
+          if (text.length < bestActiveTextLen) {
+            bestActivePair = pair;
+            bestActiveTextLen = text.length;
+          }
         }
+      }
+      if (bestActivePair) {
+        console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${bestActivePair} (active要素, textLen=${bestActiveTextLen})`);
+        return bestActivePair;
       }
 
       // 方法3: data属性から取得
@@ -4736,7 +4843,7 @@ function initializeAnalyzer() {
                 ? `${asset.substring(0, 3)}/${asset.substring(3, 6)}`
                 : asset;
               const normalized = normalizeAssetName(formatted);
-              console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (data属性: ${selector}, 正規化済み)`);
+              console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (data属性: ${selector})`);
               return normalized;
             }
           }
@@ -4755,7 +4862,7 @@ function initializeAnalyzer() {
             ? `${value.substring(0, 3)}/${value.substring(3, 6)}`
             : value;
           const normalized = normalizeAssetName(formatted);
-          console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (URL: ${param}, 正規化済み)`);
+          console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (URL: ${param})`);
           return normalized;
         }
       }
@@ -4765,11 +4872,11 @@ function initializeAnalyzer() {
         // 最初に見つかったものを使用
         const selected = detectedPairs[0];
         const normalized = normalizeAssetName(selected.pair);
-        console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (${selected.method}, 正規化済み)`);
+        console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${normalized} (${selected.method})`);
 
         // デバッグ情報: 他に見つかった通貨ペアも表示
         if (detectedPairs.length > 1) {
-          console.log(`[TheOption Analyzer] 📋 他の候補: ${detectedPairs.slice(1, 5).map(d => d.pair).join(', ')}`);
+          console.error(`[TheOption Analyzer] 📋 他の候補: ${detectedPairs.slice(1, 5).map(d => d.pair).join(', ')}`);
         }
 
         return normalized;
@@ -4785,7 +4892,7 @@ function initializeAnalyzer() {
           const pairMatch = text.match(/\b([A-Z]{3})[\/\s-]?([A-Z]{3})\b/);
           if (pairMatch && text.length < 100) {
             const pair = normalizeAssetName(`${pairMatch[1]}/${pairMatch[2]}`);
-            console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${pair} (価格要素の親, 正規化済み)`);
+            console.log(`[TheOption Analyzer] 💱 通貨ペア検出: ${pair} (価格要素の親)`);
             return pair;
           }
           parent = parent.parentElement;
@@ -6290,3 +6397,5 @@ function initializeAnalyzer() {
   })();
 
 } // initializeAnalyzer() の終了
+
+} // 2重実行防止 if の終了（ファイル先頭のガード）

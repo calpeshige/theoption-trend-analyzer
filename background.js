@@ -20,13 +20,16 @@ chrome.action.onClicked.addListener((tab) => {
 
 // 拡張機能の更新（リロード）時にTheOptionタブを自動リロード
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'update' || details.reason === 'install') {
-    chrome.tabs.query({ url: ['*://jp.theoption.com/trading*', '*://theoption.com/trading*'] }, (tabs) => {
-      for (const tab of tabs) {
-        chrome.tabs.reload(tab.id);
-        debugLog(`[Background] TheOptionタブ自動リロード: tabId=${tab.id}`);
-      }
-    });
+  if (details.reason === 'update') {
+    // 少し遅延させてからリロード（古いスクリプトの完全終了を待つ）
+    setTimeout(() => {
+      chrome.tabs.query({ url: ['*://jp.theoption.com/trading*', '*://theoption.com/trading*'] }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.reload(tab.id);
+          debugLog(`[Background] TheOptionタブ自動リロード: tabId=${tab.id}`);
+        }
+      });
+    }, 500);
   }
 });
 

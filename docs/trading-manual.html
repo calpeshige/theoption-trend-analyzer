@@ -524,7 +524,7 @@
 
   <header class="site-header">
     <h1>Theoption Trading System</h1>
-    <div class="version">v5.12.8</div>
+    <div class="version">v5.12.9</div>
   </header>
 
   <nav class="tab-nav">
@@ -1042,6 +1042,18 @@
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
 
+      <!-- === v5.12.9 === -->
+      <div class="update-card">
+        <div class="update-version">2026年3月 — v5.12.9</div>
+        <h3>起動安定性・通貨ペア検出・エラー耐性の改善</h3>
+        <ul>
+          <li><strong>カウントダウン即時開始</strong>: システム起動時にML初期化完了を待たずカウントダウンを即座に表示開始</li>
+          <li><strong>通貨ペア検出の精度向上</strong>: 通貨ペア切替時にサイドパネルに正しい銘柄が反映されない問題を修正</li>
+          <li><strong>ページクラッシュ防止</strong>: 分析データのキャッシュ化とポーリング最適化によりCPU負荷を軽減</li>
+          <li><strong>Extension context無効化時の安全停止</strong>: 自動リロードを廃止し、エラー蓄積によるページクラッシュを防止</li>
+        </ul>
+      </div>
+
       <!-- === v5.12.8 === -->
       <div class="update-card">
         <div class="update-version">2026年3月 — v5.12.8</div>
@@ -1286,20 +1298,20 @@
         <!-- 最新バージョン -->
         <div class="release-card latest">
           <div class="release-header">
-            <span class="release-version">v5.12.8</span>
+            <span class="release-version">v5.12.9</span>
             <span class="release-latest-badge">最新</span>
             <span class="release-date">2026年3月28日</span>
           </div>
           <div class="release-notes">
             <ul>
-              <li>AI学習データの件数表示をDB実件数に統一</li>
-              <li>重複データ収集の解消（15秒に1件に統一）</li>
-              <li>通貨ペア別の正確なカウント表示</li>
+              <li>起動時カウントダウン即時開始</li>
+              <li>通貨ペア検出精度の向上</li>
+              <li>ページクラッシュ防止（負荷軽減・エラー耐性強化）</li>
             </ul>
           </div>
-          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.8/theoption_trend_release.zip">
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.12.9/theoption_trend_release.zip">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            ダウンロード（v5.12.8）
+            ダウンロード（v5.12.9）
           </a>
         </div>
 
@@ -1327,7 +1339,7 @@
   </div>
 
   <footer class="site-footer">
-    Theoption Trading System v5.12.8<br>
+    Theoption Trading System v5.12.9<br>
     本マニュアルの内容は予告なく変更される場合があります。
   </footer>
 
