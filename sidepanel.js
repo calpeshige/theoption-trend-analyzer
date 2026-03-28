@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.sendMessage({ type: 'TIMEFRAME_CHANGED', timeframe: currentTimeframe });
   requestAnalysisData();
 
-  // 定期的にデータを要求（2秒間隔、カウントダウンはSTATUS_UPDATEで毎秒更新）
+  // 定期的にデータを要求
   setInterval(requestAnalysisData, 2000);
 
   // カードの初期展開状態を適用
@@ -1694,13 +1694,10 @@ function updateRealtimeStatus(data) {
       } else if (lastDisplayedSignal) {
         updateSignalCardsFromStatus(lastDisplayedSignal);
       }
-    } else if (countdown <= prepTime && countdown > 0 && (hasSignal || signalDisplayed)) {
+    } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
       // 準備：シグナルがあり、残り秒数がprepTime以内
-      // signalDisplayed=trueなら、currentSignalがnullでも準備フェーズを維持（チカチカ防止）
-      const displaySignal = signal || lastDisplayedSignal;
-
       // シグナルが初めて表示されるタイミングでアラート音を再生
-      if (!signalDisplayed && hasSignal) {
+      if (!signalDisplayed) {
         const hasTech = hasValidTech && (currentSettings.signalMode === 'standard' || latestSignal20 !== null);
         const triggerType = (hasTech && hasValidAI) ? 'both' : (hasTech ? 'tech' : 'ai');
         if (currentSettings.alertSoundMode !== 'off') {
@@ -1715,23 +1712,23 @@ function updateRealtimeStatus(data) {
         }
       }
       signalDisplayed = true;
-      if (signal) lastDisplayedSignal = signal;
+      lastDisplayedSignal = signal;
       nextAnalysisEl.textContent = countdown;
       if (countdownContainer) {
         countdownContainer.classList.remove('phase-analyzing', 'phase-trading', 'phase-entry');
         countdownContainer.classList.add('phase-ready');
       }
       if (countdownLabel) countdownLabel.textContent = '準備';
-      if (displaySignal) updateSignalCardsFromStatus(displaySignal);
+      updateSignalCardsFromStatus(signal);
       // AI予測詳細をロック
-      if (!aiPredictionLock.isLocked && displaySignal) {
+      if (!aiPredictionLock.isLocked) {
         aiPredictionLock.isLocked = true;
         aiPredictionLock.lockTime = Date.now();
         aiPredictionLock.lastCountdown = countdown;
         aiPredictionLock.lockedData = {
-          upRate: displaySignal.aiUpRate,
-          downRate: displaySignal.aiDownRate,
-          matchCount: displaySignal.aiMatchCount
+          upRate: signal.aiUpRate,
+          downRate: signal.aiDownRate,
+          matchCount: signal.aiMatchCount
         };
         debugLog('[SidePanel] 🔒 AI予測詳細をロック:', aiPredictionLock.lockedData);
       }
@@ -1805,10 +1802,6 @@ function requestAnalysisData() {
       latestAnalysisData = response;
       updateDisplay(response);
       updateStatus('connected', 'データ受信中');
-      // realtimeStatusからカウントダウンを更新
-      if (response.realtimeStatus) {
-        updateRealtimeStatus(response.realtimeStatus);
-      }
     }
   });
 }
@@ -1844,33 +1837,29 @@ function updateDisplay(data) {
   if (timeframeData) {
     // シグナルカードは常に「準備中」として表示
     // 実際のシグナル表示は updateRealtimeStatus で prepTime 以内の時のみ行う
-    // 準備期間中・取引中は詳細カードの更新をスキップ（チカチカ防止）
-    // → STATUS_UPDATEのシグナルデータで表示される内容がポーリングで上書きされるのを防ぐ
-    if (!signalDisplayed && !isInTrading) {
-      updateTechnicalCard(timeframeData.technical);
-      updateAICard(timeframeData.ai, data.stratification);
-      updateStratificationInsights(data.stratification);
-    }
-    // マーケット概況カードは常に更新
+    // ここでは詳細カード（相場状況、AI予測詳細）のみ更新
+    updateTechnicalCard(timeframeData.technical);
+    updateAICard(timeframeData.ai, data.stratification);
+    updateStratificationInsights(data.stratification);
+    // マーケット概況カードを更新
     updateMarketOverview(timeframeData.enhanced, timeframeData.technical);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
-    // 準備期間中・取引中は詳細カードのリセットをスキップ（チカチカ防止）
-    if (!signalDisplayed && !isInTrading) {
-      debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
-      const techDetailBox = document.getElementById('tech-detail');
-      if (techDetailBox) techDetailBox.innerHTML = '';
-      const probUp = document.getElementById('prob-up');
-      const probDown = document.getElementById('prob-down');
-      const probBarUp = document.getElementById('prob-bar-up');
-      const probBarDown = document.getElementById('prob-bar-down');
-      const aiDetailBox = document.getElementById('ai-detail');
-      if (probUp) probUp.textContent = '上昇 --%';
-      if (probDown) probDown.textContent = '下降 --%';
-      if (probBarUp) probBarUp.style.width = '0%';
-      if (probBarDown) probBarDown.style.width = '0%';
-      if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
-    }
+    debugLog('[SidePanel] 時間枠のデータなし - 詳細カードのみリセット');
+    // v5.10.3: resetSignalCards()を呼ぶとテクニカルカードの残り時間表示が消えるため
+    // ここでは詳細カードのみリセット（テクニカルカードはポーリングが制御）
+    const techDetailBox = document.getElementById('tech-detail');
+    if (techDetailBox) techDetailBox.innerHTML = '';
+    const probUp = document.getElementById('prob-up');
+    const probDown = document.getElementById('prob-down');
+    const probBarUp = document.getElementById('prob-bar-up');
+    const probBarDown = document.getElementById('prob-bar-down');
+    const aiDetailBox = document.getElementById('ai-detail');
+    if (probUp) probUp.textContent = '上昇 --%';
+    if (probDown) probDown.textContent = '下降 --%';
+    if (probBarUp) probBarUp.style.width = '0%';
+    if (probBarDown) probBarDown.style.width = '0%';
+    if (aiDetailBox) aiDetailBox.innerHTML = '<p class="detail-text">学習データ収集中...</p>';
     // マーケット概況はリセットしない（カウントダウン継続のため）
   }
 
