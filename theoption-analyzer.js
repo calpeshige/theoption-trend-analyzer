@@ -420,33 +420,23 @@ function initializeAnalyzer() {
       console.log(`[TheOption Analyzer] 🔤 フォントサイズを変更: ${size}`);
     }
 
-    let contextFailCount = 0;  // コンテキスト無効の連続検出回数
-
     function checkExtensionContext() {
-      try {
-        if (!chrome.runtime?.id) {
-          contextFailCount++;
-          // 3回連続で無効を検出した場合のみ停止（一時的な失敗を無視）
-          if (contextFailCount >= 3 && !contextInvalidated) {
-            contextInvalidated = true;
+      if (!chrome.runtime?.id && !contextInvalidated) {
+        contextInvalidated = true;
+        // コンテキスト無効化を検出 → 静かに自動リロード（ユーザーへの警告は不要）
 
-            if (contextCheckInterval) {
-              clearInterval(contextCheckInterval);
-              contextCheckInterval = null;
-            }
-            if (priceUpdateInterval) {
-              clearInterval(priceUpdateInterval);
-              priceUpdateInterval = null;
-            }
+        // 5秒後に自動リロード
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000);
 
-            console.error('[TheOption Analyzer] ⚠️ Extension contextが無効化されました。ページをリロードしてください。');
-          }
-        } else {
-          // 正常 → カウンターリセット
-          contextFailCount = 0;
+        // 監視を停止
+        if (contextCheckInterval) {
+          clearInterval(contextCheckInterval);
         }
-      } catch (e) {
-        // checkExtensionContext自体のエラーも安全に処理
+        if (priceUpdateInterval) {
+          clearInterval(priceUpdateInterval);
+        }
       }
     }
 
@@ -2723,7 +2713,6 @@ function initializeAnalyzer() {
       try {
         // Extension contextが有効かチェック
         if (!chrome.runtime?.id) {
-          // コンテキスト無効化を即座にチェック関数に通知
           if (!contextInvalidated) {
             checkExtensionContext();
           }
