@@ -1841,11 +1841,14 @@ function updateDisplay(data) {
   if (timeframeData) {
     // シグナルカードは常に「準備中」として表示
     // 実際のシグナル表示は updateRealtimeStatus で prepTime 以内の時のみ行う
-    // ここでは詳細カード（相場状況、AI予測詳細）のみ更新
-    updateTechnicalCard(timeframeData.technical);
-    updateAICard(timeframeData.ai, data.stratification);
-    updateStratificationInsights(data.stratification);
-    // マーケット概況カードを更新
+    // 準備期間中・取引中は詳細カードの更新をスキップ（チカチカ防止）
+    // → STATUS_UPDATEのシグナルデータで表示される内容がポーリングで上書きされるのを防ぐ
+    if (!signalDisplayed && !isInTrading) {
+      updateTechnicalCard(timeframeData.technical);
+      updateAICard(timeframeData.ai, data.stratification);
+      updateStratificationInsights(data.stratification);
+    }
+    // マーケット概況カードは常に更新
     updateMarketOverview(timeframeData.enhanced, timeframeData.technical);
     debugLog('[SidePanel] 詳細カードのみ更新');
   } else {
