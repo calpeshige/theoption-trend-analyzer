@@ -442,6 +442,9 @@ class DataCollectionSystem {
     // メモリキャッシュに追加
     this.trainingData.push(situation);
 
+    // DB総件数も即座に更新（UI表示のリアルタイム反映用）
+    this.totalDataCount = (this.totalDataCount || 0) + 1;
+
     // 時間帯別モードの場合、新データを timeFilteredData にも追加
     let timeFilterUpdated = false;
     if (this.timeFilterMode !== 'all' && this.timeFilteredData) {
@@ -473,9 +476,13 @@ class DataCollectionSystem {
       this.onTimeFilterUpdated(this.getTimeFilterInfo());
     }
 
-    // DB保存（非同期、totalDataCountはsaveToStorage内で更新）
+    // DB保存（非同期、totalDataCountはsaveToStorage内でDB実件数に同期）
     this.saveToStorage(situation).then(() => {
       console.log(`[ML] ✅ データ追加: メモリ${this.trainingData.length}件, DB総計${this.totalDataCount}件, 時間帯別${this.timeFilteredData?.length || 0}件 (価格: ${situation.price})`);
+      // DB保存完了後にUI通知（件数の正確な同期）
+      if (this.onStatsUpdatedExternal) {
+        this.onStatsUpdatedExternal(this.totalDataCount);
+      }
     });
 
     // 結果記録スケジュール
