@@ -1694,10 +1694,13 @@ function updateRealtimeStatus(data) {
       } else if (lastDisplayedSignal) {
         updateSignalCardsFromStatus(lastDisplayedSignal);
       }
-    } else if (countdown <= prepTime && countdown > 0 && hasSignal) {
+    } else if (countdown <= prepTime && countdown > 0 && (hasSignal || signalDisplayed)) {
       // 準備：シグナルがあり、残り秒数がprepTime以内
+      // signalDisplayed=trueなら、currentSignalがnullでも準備フェーズを維持（チカチカ防止）
+      const displaySignal = signal || lastDisplayedSignal;
+
       // シグナルが初めて表示されるタイミングでアラート音を再生
-      if (!signalDisplayed) {
+      if (!signalDisplayed && hasSignal) {
         const hasTech = hasValidTech && (currentSettings.signalMode === 'standard' || latestSignal20 !== null);
         const triggerType = (hasTech && hasValidAI) ? 'both' : (hasTech ? 'tech' : 'ai');
         if (currentSettings.alertSoundMode !== 'off') {
@@ -1712,23 +1715,23 @@ function updateRealtimeStatus(data) {
         }
       }
       signalDisplayed = true;
-      lastDisplayedSignal = signal;
+      if (signal) lastDisplayedSignal = signal;
       nextAnalysisEl.textContent = countdown;
       if (countdownContainer) {
         countdownContainer.classList.remove('phase-analyzing', 'phase-trading', 'phase-entry');
         countdownContainer.classList.add('phase-ready');
       }
       if (countdownLabel) countdownLabel.textContent = '準備';
-      updateSignalCardsFromStatus(signal);
+      if (displaySignal) updateSignalCardsFromStatus(displaySignal);
       // AI予測詳細をロック
-      if (!aiPredictionLock.isLocked) {
+      if (!aiPredictionLock.isLocked && displaySignal) {
         aiPredictionLock.isLocked = true;
         aiPredictionLock.lockTime = Date.now();
         aiPredictionLock.lastCountdown = countdown;
         aiPredictionLock.lockedData = {
-          upRate: signal.aiUpRate,
-          downRate: signal.aiDownRate,
-          matchCount: signal.aiMatchCount
+          upRate: displaySignal.aiUpRate,
+          downRate: displaySignal.aiDownRate,
+          matchCount: displaySignal.aiMatchCount
         };
         debugLog('[SidePanel] 🔒 AI予測詳細をロック:', aiPredictionLock.lockedData);
       }
