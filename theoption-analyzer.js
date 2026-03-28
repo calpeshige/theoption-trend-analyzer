@@ -2900,7 +2900,7 @@ function initializeAnalyzer() {
               }
 
               // 機械学習システムも通貨ペア別に切り替え
-              mlSystem.setCurrentAsset(detectedAsset);
+              await mlSystem.setCurrentAsset(detectedAsset);
 
               // シグナル強化システムにも通貨ペアを設定（仮想通貨/法定通貨の特性別処理）
               if (signalEnhancer && signalEnhancer.setSymbol) {
@@ -2969,7 +2969,7 @@ function initializeAnalyzer() {
                 }
               }
 
-              mlSystem.setCurrentAsset(detectedAsset);
+              await mlSystem.setCurrentAsset(detectedAsset);
 
               // シグナル強化システムにも通貨ペアを設定（仮想通貨/法定通貨の特性別処理）
               if (signalEnhancer && signalEnhancer.setSymbol) {
@@ -3264,7 +3264,7 @@ function initializeAnalyzer() {
       // 最低データ数チェック（15秒判定の要件を満たせば全判定時間のデータ収集可能）
       const minConfig = TIMEFRAME_CONFIGS[15];
       if (priceHistory.length < minConfig.minDataPoints) {
-        console.log('[TheOption Analyzer] ⏳ データ不足のためMLデータ収集スキップ');
+        console.log(`[TheOption Analyzer] ⏳ データ不足のためMLデータ収集スキップ (${priceHistory.length}/${minConfig.minDataPoints})`);
         return;
       }
 

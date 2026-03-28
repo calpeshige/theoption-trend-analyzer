@@ -442,9 +442,6 @@ class DataCollectionSystem {
     // メモリキャッシュに追加
     this.trainingData.push(situation);
 
-    // DB総件数も更新（UI表示用）
-    this.totalDataCount = (this.totalDataCount || 0) + 1;
-
     // 時間帯別モードの場合、新データを timeFilteredData にも追加
     let timeFilterUpdated = false;
     if (this.timeFilterMode !== 'all' && this.timeFilteredData) {
@@ -471,15 +468,15 @@ class DataCollectionSystem {
       }
     }
 
-    console.log(`[ML] ✅ データ追加: メモリ${this.trainingData.length}件, DB総計${this.totalDataCount}件, 時間帯別${this.timeFilteredData?.length || 0}件 (価格: ${situation.price})`);
-
     // 時間帯別データが更新された場合、UIに通知
     if (timeFilterUpdated && this.onTimeFilterUpdated) {
       this.onTimeFilterUpdated(this.getTimeFilterInfo());
     }
 
-    // DB保存（非同期）
-    this.saveToStorage(situation);
+    // DB保存（非同期、totalDataCountはsaveToStorage内で更新）
+    this.saveToStorage(situation).then(() => {
+      console.log(`[ML] ✅ データ追加: メモリ${this.trainingData.length}件, DB総計${this.totalDataCount}件, 時間帯別${this.timeFilteredData?.length || 0}件 (価格: ${situation.price})`);
+    });
 
     // 結果記録スケジュール
     this.scheduleResultRecording(situation);
@@ -860,8 +857,8 @@ class MachineLearningSystem {
     }
   }
 
-  setCurrentAsset(assetName) {
-    this.dataSystem.setAssetName(assetName);
+  async setCurrentAsset(assetName) {
+    await this.dataSystem.setAssetName(assetName);
   }
 
   startCollecting(marketData, indicators) {
