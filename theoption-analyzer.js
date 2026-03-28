@@ -996,15 +996,9 @@ function initializeAnalyzer() {
           }
         });
 
-        // ML学習状況を取得（timeframeResultsから取得、なければgetStatistics()を使用）
+        // ML学習状況を取得（常にgetStatistics()からリアルタイム取得）
         let mlStats = null;
-
-        // まずtimeframeResultsに保存されたmlStatsを探す（オーバーレイと同じデータソース）
-        const currentResult = timeframeResults[currentTimeframe];
-        if (currentResult && currentResult.mlStats) {
-          mlStats = currentResult.mlStats;
-        } else if (mlSystem && mlSystem.getStatistics) {
-          // フォールバック: 直接getStatistics()を呼び出す
+        if (mlSystem && mlSystem.getStatistics) {
           const stats = mlSystem.getStatistics();
           const learningLevel = stats.learningLevel !== undefined
             ? stats.learningLevel
@@ -1766,12 +1760,10 @@ function initializeAnalyzer() {
             lastAnalysisDataCacheTimestamp = now;
           }
 
-          // mlStats: v5.12.8と同じロジック（timeframeResults優先、フォールバックでgetStatistics()）
+          // mlStats: 常にgetStatistics()からリアルタイム取得
+          // （timeframeResultsのキャッシュは分析実行時のスナップショットで古いため使わない）
           let mlStats = null;
-          const currentResult = timeframeResults[currentTimeframe];
-          if (currentResult && currentResult.mlStats) {
-            mlStats = currentResult.mlStats;
-          } else if (mlSystem && mlSystem.getStatistics) {
+          if (mlSystem && mlSystem.getStatistics) {
             const stats = mlSystem.getStatistics();
             const learningLevel = stats.learningLevel !== undefined
               ? stats.learningLevel
