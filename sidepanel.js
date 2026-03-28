@@ -1802,10 +1802,9 @@ function requestAnalysisData() {
       latestAnalysisData = response;
       updateDisplay(response);
       updateStatus('connected', 'データ受信中');
-      // リアルタイムステータスが含まれている場合、カウントダウン等を更新
-      if (response.realtimeStatus) {
-        updateRealtimeStatus(response.realtimeStatus);
-      }
+      // カウントダウン・フェーズ表示はSTATUS_UPDATEに任せる
+      // （realtimeStatusにはisTrading/currentSignalが含まれず、
+      //  ポーリングで「分析中」に上書きされてチカチカする問題を防止）
     }
   });
 }
