@@ -1792,7 +1792,7 @@ function initializeAnalyzer() {
           if (isTradingForReq && tradingState.signal) {
             currentSignalForReq = tradingState.signal;
           } else {
-            // 現在の分析結果からシグナルを取得
+            // 現在の分析結果からシグナルを取得（STATUS_UPDATEと同じフォーマット）
             const reqResult = timeframeResults[currentTimeframe];
             if (reqResult && reqResult.multiDim) {
               const reqStratification = cachedStratificationResults[currentTimeframe];
@@ -1800,10 +1800,20 @@ function initializeAnalyzer() {
               const signal20Data = reqResult.multiDim?.signal20 || null;
               const signal20Ready = currentSignalMode === 'standard' || (signal20Data && signal20Data.signal !== 'WAIT');
               const techSig = signal20Ready ? (reqSignals.technical ? reqSignals.technical.signal : null) : 'NEUTRAL';
+              const techConf = signal20Ready ? (reqSignals.technical ? reqSignals.technical.confidence : null) : 0;
+              const techGradeReq = reqResult.enhanced?.grade || null;
               currentSignalForReq = {
                 tech: techSig,
-                ai: reqSignals.ai ? reqSignals.ai.signal : null,
-                aiAvailable: reqSignals.ai ? reqSignals.ai.available : false
+                techConfidence: techConf,
+                techGrade: techGradeReq,
+                ai: reqSignals.ai && reqSignals.ai.available ? reqSignals.ai.signal : null,
+                aiConfidence: reqSignals.ai && reqSignals.ai.available ? reqSignals.ai.confidence : null,
+                aiDiff: reqSignals.ai ? reqSignals.ai.diff : null,
+                aiStarLevel: null,
+                aiUpRate: reqSignals.ai ? reqSignals.ai.upRate : null,
+                aiDownRate: reqSignals.ai ? reqSignals.ai.downRate : null,
+                aiMatchCount: reqResult.ml?.predictions?.[`${currentTimeframe}s`]?.sampleSize || 0,
+                signal20: signal20Data
               };
             }
           }

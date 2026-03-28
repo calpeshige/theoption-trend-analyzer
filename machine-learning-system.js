@@ -443,7 +443,10 @@ class DataCollectionSystem {
     this.trainingData.push(situation);
 
     // DB総件数も即座に更新（UI表示のリアルタイム反映用）
-    this.totalDataCount = (this.totalDataCount || 0) + 1;
+    // ただしDB同期前（totalDataCount未設定or0）はインクリメントしない（起動時チカチカ防止）
+    if (this.totalDataCount > 0) {
+      this.totalDataCount += 1;
+    }
 
     // 時間帯別モードの場合、新データを timeFilteredData にも追加
     let timeFilterUpdated = false;
