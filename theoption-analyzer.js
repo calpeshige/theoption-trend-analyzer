@@ -420,34 +420,38 @@ function initializeAnalyzer() {
       console.log(`[TheOption Analyzer] 🔤 フォントサイズを変更: ${size}`);
     }
 
+    let contextFailCount = 0;  // コンテキスト無効の連続検出回数
+
     function checkExtensionContext() {
       try {
-        if (!chrome.runtime?.id && !contextInvalidated) {
-          contextInvalidated = true;
-          // コンテキスト無効化を検出 → すべてのインターバルを停止
+        if (!chrome.runtime?.id) {
+          contextFailCount++;
+          // 3回連続で無効を検出した場合のみ停止（一時的な失敗を無視）
+          if (contextFailCount >= 3 && !contextInvalidated) {
+            contextInvalidated = true;
 
-          // 監視を停止
-          if (contextCheckInterval) {
-            clearInterval(contextCheckInterval);
-            contextCheckInterval = null;
-          }
-          if (priceUpdateInterval) {
-            clearInterval(priceUpdateInterval);
-            priceUpdateInterval = null;
-          }
+            if (contextCheckInterval) {
+              clearInterval(contextCheckInterval);
+              contextCheckInterval = null;
+            }
+            if (priceUpdateInterval) {
+              clearInterval(priceUpdateInterval);
+              priceUpdateInterval = null;
+            }
 
-          // chrome APIを使う処理をすべて停止するためにフラグを設定
-          // （自動リロードはせず、ユーザーが手動でリロードするのを待つ）
-          // ※自動リロードはTheOptionのセッション管理と干渉してエラーコード5を引き起こす可能性がある
-          console.error('[TheOption Analyzer] ⚠️ Extension contextが無効化されました。ページをリロードしてください。');
+            console.error('[TheOption Analyzer] ⚠️ Extension contextが無効化されました。ページをリロードしてください。');
+          }
+        } else {
+          // 正常 → カウンターリセット
+          contextFailCount = 0;
         }
       } catch (e) {
         // checkExtensionContext自体のエラーも安全に処理
       }
     }
 
-    // 30秒ごとにコンテキストをチェック（頻度を下げてオーバーヘッド削減）
-    contextCheckInterval = setInterval(checkExtensionContext, 30000);
+    // 10秒ごとにコンテキストをチェック
+    contextCheckInterval = setInterval(checkExtensionContext, 10000);
 
     // ========================================
     // グローバル変数

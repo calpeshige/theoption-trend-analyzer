@@ -105,6 +105,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage(message).catch(() => {});
   }
 
+  // 時間帯別データ更新をサイドパネルに転送
+  if (message.type === 'TIME_FILTER_UPDATE') {
+    chrome.runtime.sendMessage(message).catch(() => {});
+  }
+
   // 通貨ペア変更の即時通知
   if (message.type === 'ASSET_UPDATE') {
     // キャッシュの通貨ペア情報を更新（GET_ANALYSIS_DATA で古いデータが返らないように）
