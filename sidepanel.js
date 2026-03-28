@@ -1803,9 +1803,7 @@ function requestAnalysisData() {
       updateDisplay(response);
       updateStatus('connected', 'データ受信中');
       // realtimeStatusからカウントダウンを更新
-      // ただし取引中・準備中フェーズの情報はSTATUS_UPDATEにしか含まれないため、
-      // realtimeStatusでは「分析中」フェーズの時のみカウントダウンを更新する
-      if (response.realtimeStatus && !isInTrading && !signalDisplayed) {
+      if (response.realtimeStatus) {
         updateRealtimeStatus(response.realtimeStatus);
       }
     }

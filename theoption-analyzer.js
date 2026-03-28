@@ -1791,6 +1791,33 @@ function initializeAnalyzer() {
           const config = TIMEFRAME_CONFIGS[currentTimeframe];
           const countdown = getSecondsUntilNextTiming(currentTimeframe);
           const prepTime = config.prepTime || 5;
+
+          // 取引中の状態を計算（STATUS_UPDATEと同じ情報をrealtimeStatusにも含める）
+          const isTradingForReq = tradingState.isTrading && tradingState.timeframe === currentTimeframe;
+          let currentSignalForReq = null;
+          if (isTradingForReq && tradingState.signal) {
+            currentSignalForReq = tradingState.signal;
+          } else {
+            // 現在の分析結果からシグナルを取得
+            const reqResult = timeframeResults[currentTimeframe];
+            if (reqResult && reqResult.multiDim) {
+              const reqStratification = cachedStratificationResults[currentTimeframe];
+              const reqSignals = getCurrentTimeframeSignal(reqResult.multiDim, reqResult.ml, reqStratification);
+              const signal20Data = reqResult.multiDim?.signal20 || null;
+              const signal20Ready = currentSignalMode === 'standard' || (signal20Data && signal20Data.signal !== 'WAIT');
+              const techSig = signal20Ready ? (reqSignals.technical ? reqSignals.technical.signal : null) : 'NEUTRAL';
+              currentSignalForReq = {
+                tech: techSig,
+                ai: reqSignals.ai ? reqSignals.ai.signal : null,
+                aiAvailable: reqSignals.ai ? reqSignals.ai.available : false
+              };
+            }
+          }
+          const shouldSendSignalForReq = (
+            isTradingForReq ||
+            (countdown <= prepTime && countdown > 0)
+          );
+
           sendResponse({
             asset: currentAsset,
             dataCount: priceHistory.length,
@@ -1803,6 +1830,10 @@ function initializeAnalyzer() {
               countdown: countdown,
               prepTime: prepTime,
               currentTimeframe: currentTimeframe,
+              currentSignal: shouldSendSignalForReq ? currentSignalForReq : null,
+              isTrading: isTradingForReq,
+              tradingRemaining: isTradingForReq ? tradingState.remainingTime : 0,
+              tradingDuration: isTradingForReq ? tradingState.duration : currentTimeframe,
               mlStats: lastAnalysisDataCache.mlStats,
               signal20: latestSignal20Result || null,
               signalMode: currentSignalMode,
@@ -1819,7 +1850,7 @@ function initializeAnalyzer() {
                 if (current >= required) return { ready: true };
                 return { ready: false, currentCandles: current, requiredCandles: required, remainingSec: (required - current) * s20Cfg.candleSize, candleLabel: s20Cfg.label };
               })(),
-              reversalAlert: { detected: false }
+              reversalAlert: shouldSendSignalForReq ? detectPriceReversal() : { detected: false }
             }
           });
         }
