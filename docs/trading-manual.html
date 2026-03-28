@@ -1042,41 +1042,6 @@
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
 
-      <!-- === v5.12.9 === -->
-      <div class="update-card">
-        <div class="update-version">2026年3月 — v5.12.9</div>
-        <h3>起動安定性・通貨ペア検出・エラー耐性の改善</h3>
-        <ul>
-          <li><strong>カウントダウン即時開始</strong>: システム起動時にML初期化完了を待たずカウントダウンを即座に表示開始</li>
-          <li><strong>通貨ペア検出の精度向上</strong>: 通貨ペア切替時にサイドパネルに正しい銘柄が反映されない問題を修正</li>
-          <li><strong>ページクラッシュ防止</strong>: 分析データのキャッシュ化とポーリング最適化によりCPU負荷を軽減</li>
-          <li><strong>Extension context無効化時の安全停止</strong>: 自動リロードを廃止し、エラー蓄積によるページクラッシュを防止</li>
-        </ul>
-      </div>
-
-      <!-- === v5.12.8 === -->
-      <div class="update-card">
-        <div class="update-version">2026年3月 — v5.12.8</div>
-        <h3>AI学習データの精度・表示改善</h3>
-        <ul>
-          <li><strong>データ件数の正確な表示</strong>: UI上の収集データ件数が常にDB実件数（現在の通貨ペアのみ）と一致するよう修正</li>
-          <li><strong>重複データ収集の解消</strong>: 同一タイミングで2件記録されるバグを修正し、15秒に1件の正確な収集に統一</li>
-          <li><strong>データカウントの二重加算修正</strong>: 件数表示が実際の2倍になるバグを修正</li>
-          <li><strong>通貨ペア切替時の安定化</strong>: 切替時にデータが正しく同期されるよう改善</li>
-        </ul>
-      </div>
-
-      <!-- === v5.12.7 === -->
-      <div class="update-card">
-        <div class="update-version">2026年3月 — v5.12.7</div>
-        <h3>AI学習データ収集の安定性改善</h3>
-        <ul>
-          <li><strong>データカウントの修正</strong>: AI学習データの件数が二重にカウントされるバグを修正</li>
-          <li><strong>通貨ペア切替時の安定化</strong>: 切替時にデータ件数が不正に表示される問題を修正</li>
-          <li><strong>データ収集の継続性改善</strong>: 収集が停止する場合のログ情報を強化</li>
-        </ul>
-      </div>
-
       <!-- === v5.12.6 === -->
       <div class="update-card">
         <div class="update-version">2026年3月 — v5.12.6</div>
