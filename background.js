@@ -389,15 +389,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ============================================================================
-// バックアップ完了通知をサイドパネルに転送
+// バックアップ完了通知について
 // ============================================================================
-// (起動時催促方式に変更後、自動実行スケジュールは廃止。
-//  実行はサイドパネルからの REQUEST_DOWNLOAD で行う)
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'BACKUP_COMPLETED') {
-    chrome.runtime.sendMessage(message).catch(() => {});
-    return false;
-  }
-});
+// 起動時催促方式に変更後、自動実行スケジュールは廃止。
+// バックアップ実行はサイドパネルからの REQUEST_DOWNLOAD で行う。
+//
+// 注意: コンテンツスクリプトが chrome.runtime.sendMessage(BACKUP_COMPLETED)
+// を送ると、サイドパネルへ自動的に届くため、background.js での再転送は不要。
+// 過去に再転送していたが、サイドパネル側で重複受信し alert が複数回出る
+// 問題があったため削除。
 
 debugLog('[Background] Service Worker 起動完了');

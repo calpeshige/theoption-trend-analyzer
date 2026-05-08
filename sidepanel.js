@@ -3354,9 +3354,25 @@ function saveBackupAssetsSelection() {
 }
 
 
-// バックアップ完了通知の受信(background.js から転送)
+// バックアップ完了通知の受信
+// 重複処理防止: 同一バックアップ完了通知が複数経路から来ても1回しか処理しない
+const _processedBackupCompletions = new Set();
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'BACKUP_COMPLETED') {
+    // 重複チェック: timestamp で識別 (同じ完了通知を2回以上処理しない)
+    const completionId = String(message.timestamp || Date.now());
+    if (_processedBackupCompletions.has(completionId)) {
+      return; // すでに処理済み
+    }
+    _processedBackupCompletions.add(completionId);
+
+    // 古いIDを掃除 (メモリリーク防止: 100件超えたら古いものから削除)
+    if (_processedBackupCompletions.size > 100) {
+      const firstKey = _processedBackupCompletions.values().next().value;
+      _processedBackupCompletions.delete(firstKey);
+    }
+
     const btn = document.getElementById('manual-backup-button');
     if (btn) {
       btn.disabled = false;
