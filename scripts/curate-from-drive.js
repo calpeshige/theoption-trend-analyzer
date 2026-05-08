@@ -126,14 +126,11 @@ async function main() {
     // メタデータ生成
     const meta = generateMeta(assetName, top);
 
-    // gzip圧縮ファイル作成
+    // gzip圧縮ファイル作成 (大量データ対応: JSON.stringifyを一括で呼ばず分割書き出し)
     const safeAsset = assetName.replace(/\//g, '');
-    const exportObj = { [`theoption_ml_${assetName.replace(/\//g, '_')}`]: top };
-    const json = JSON.stringify(exportObj);
-    const compressed = gzipSync(Buffer.from(json));
-
     const releaseFilename = `${safeAsset}_${RECORDS_PER_ASSET}.json.gz`;
     const releaseFilePath = join(RELEASE_DIR, releaseFilename);
+    const compressed = buildCompressedJson(assetName, top);
     writeFileSync(releaseFilePath, compressed);
 
     // メタデータJSON保存
@@ -379,6 +376,34 @@ async function processSession(drive, sessionKey, group) {
     }
     return records;
   }
+}
+
+/**
+ * 大量レコードを巨大な文字列に一括 stringify することなく、
+ * レコードごとに分割して JSON 配列を組み立てて gzip 圧縮する。
+ *
+ * 出力形式 (拡張機能側のインポートが期待する形式):
+ *   { "theoption_ml_<ASSET>": [ {record1}, {record2}, ... ] }
+ *
+ * メモリ使用量: 1レコードずつ stringify するため、最大でも数KB分しか
+ * 一時的に文字列化されない。最後に Buffer.concat で全部結合する。
+ */
+function buildCompressedJson(assetName, records) {
+  const key = `theoption_ml_${assetName.replace(/\//g, '_')}`;
+  const buffers = [];
+
+  buffers.push(Buffer.from(`{${JSON.stringify(key)}:[`));
+
+  for (let i = 0; i < records.length; i++) {
+    const sep = i === 0 ? '' : ',';
+    // 1レコードずつ stringify (これは小さいので OK)
+    buffers.push(Buffer.from(sep + JSON.stringify(records[i])));
+  }
+
+  buffers.push(Buffer.from(']}'));
+
+  const combined = Buffer.concat(buffers);
+  return gzipSync(combined);
 }
 
 /**

@@ -35,7 +35,9 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           APPS_SCRIPT_WEBHOOK_URL: ${{ secrets.APPS_SCRIPT_WEBHOOK_URL }}
           DELETE_SECRET: ${{ secrets.DELETE_SECRET }}
-        run: node scripts/curate-from-drive.js
+        # 大容量データ処理のためヒープサイズを 6GB に拡張
+        # (GitHub Actions ubuntu-latest のメモリは約7GB)
+        run: node --max-old-space-size=6144 scripts/curate-from-drive.js
 
       - name: Commit changes
         run: |
