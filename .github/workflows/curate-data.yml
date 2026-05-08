@@ -37,7 +37,8 @@ jobs:
           DELETE_SECRET: ${{ secrets.DELETE_SECRET }}
         # 大容量データ処理のためヒープサイズを 6GB に拡張
         # (GitHub Actions ubuntu-latest のメモリは約7GB)
-        run: node --max-old-space-size=6144 scripts/curate-from-drive.js
+        # --expose-gc で通貨ペア処理ごとに明示的にGCを呼べるようにする
+        run: node --max-old-space-size=6144 --expose-gc scripts/curate-from-drive.js
 
       - name: Commit changes
         run: |

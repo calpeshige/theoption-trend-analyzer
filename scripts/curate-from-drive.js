@@ -74,64 +74,79 @@ async function main() {
   const sessionGroups = groupByUploadSession(files);
   log(`📦 ${Object.keys(sessionGroups).length} アップロードセッションを検出`);
 
-  // 3. 各セッションの全チャンクを連結 → 解凍 → JSON化 → 構造検証
-  const recordsByAsset = new Map(); // assetName → Map(timestamp → record)
-  const processedFileIds = []; // 処理に成功したファイル(Drive上で削除する)
-
+  // 3. 通貨ペア別にセッションをグルーピング (メタ情報のみ、レコード本体はまだ読まない)
+  // assetName → [sessionKey, ...]
+  const sessionsByAsset = new Map();
   for (const [sessionKey, group] of Object.entries(sessionGroups)) {
-    try {
-      const records = await processSession(drive, sessionKey, group);
-      if (records && records.length > 0) {
-        const assetName = group.assetName;
-        if (!recordsByAsset.has(assetName)) recordsByAsset.set(assetName, new Map());
-        const assetMap = recordsByAsset.get(assetName);
-        let added = 0;
-        for (const record of records) {
-          if (!assetMap.has(record.timestamp)) {
-            assetMap.set(record.timestamp, record);
-            added++;
-          } else {
-            // 重複: 既存と新規でレコード内容が異なる場合は新しい方を採用
-            assetMap.set(record.timestamp, record);
-          }
-        }
-        log(`  ✓ ${sessionKey}: ${assetName} ${records.length}件取得 (新規${added}件)`);
-
-        // 処理成功したセッションのファイルIDを記録
-        for (const file of group.chunks) {
-          processedFileIds.push(file.id);
-        }
-      }
-    } catch (err) {
-      log(`  ✗ ${sessionKey} 処理エラー: ${err.message}`);
+    if (!sessionsByAsset.has(group.assetName)) {
+      sessionsByAsset.set(group.assetName, []);
     }
+    sessionsByAsset.get(group.assetName).push({ sessionKey, group });
   }
 
-  if (recordsByAsset.size === 0) {
-    log('⚠ 有効なレコードが0件のため、公開処理をスキップ');
-    return;
-  }
+  log(`📦 ${sessionsByAsset.size} 通貨ペア検出`);
 
-  // 4. 通貨ペアごとに新しい順20,000件にトリミング & 公開ファイル作成
+  // 4. 通貨ペアごとに完結処理: ロード → 統合 → トリミング → 圧縮 → 即座に破棄
+  // この方式により、複数通貨ペアを処理しても合計メモリ使用量が抑えられる
   mkdirSync(DATA_META_DIR, { recursive: true });
   mkdirSync(RELEASE_DIR, { recursive: true });
 
   const allMeta = [];
-  for (const [assetName, recordMap] of recordsByAsset) {
-    const sorted = [...recordMap.values()].sort((a, b) => b.timestamp - a.timestamp);
-    const top = sorted.slice(0, RECORDS_PER_ASSET);
+  const processedFileIds = []; // 処理に成功したファイル(Drive上で削除する)
 
-    log(`📊 ${assetName}: 総ユニーク件数 ${sorted.length}件 → 上位 ${top.length}件採用`);
+  for (const [assetName, sessions] of sessionsByAsset) {
+    log(`\n🔄 ${assetName} 処理開始 (${sessions.length}セッション)`);
+
+    // この通貨ペアだけのレコードMapを一時的に作る (関数スコープで自動GC対象になる)
+    let recordMap = new Map();
+    const successfulFileIds = [];
+
+    for (const { sessionKey, group } of sessions) {
+      try {
+        const records = await processSession(drive, sessionKey, group);
+        if (records && records.length > 0) {
+          let added = 0;
+          for (const record of records) {
+            if (!recordMap.has(record.timestamp)) {
+              recordMap.set(record.timestamp, record);
+              added++;
+            } else {
+              recordMap.set(record.timestamp, record); // 後勝ち
+            }
+          }
+          log(`  ✓ ${sessionKey}: ${records.length}件取得 (新規${added}件)`);
+          for (const file of group.chunks) {
+            successfulFileIds.push(file.id);
+          }
+        }
+      } catch (err) {
+        log(`  ✗ ${sessionKey} 処理エラー: ${err.message}`);
+      }
+    }
+
+    if (recordMap.size === 0) {
+      log(`  ⚠ ${assetName} 有効レコードなし、スキップ`);
+      recordMap = null;
+      continue;
+    }
+
+    // ソート → トリミング
+    let sorted = [...recordMap.values()].sort((a, b) => b.timestamp - a.timestamp);
+    recordMap = null; // 参照を切ってGC対象に
+    const top = sorted.slice(0, RECORDS_PER_ASSET);
+    sorted = null;
+    log(`  📊 ${assetName}: 上位 ${top.length}件採用`);
 
     // メタデータ生成
     const meta = generateMeta(assetName, top);
 
-    // gzip圧縮ファイル作成 (大量データ対応: JSON.stringifyを一括で呼ばず分割書き出し)
+    // gzip圧縮ファイル作成
     const safeAsset = assetName.replace(/\//g, '');
     const releaseFilename = `${safeAsset}_${RECORDS_PER_ASSET}.json.gz`;
     const releaseFilePath = join(RELEASE_DIR, releaseFilename);
     const compressed = buildCompressedJson(assetName, top);
     writeFileSync(releaseFilePath, compressed);
+    log(`  💾 ${assetName}: ${(compressed.length / 1024 / 1024).toFixed(1)} MB 圧縮ファイル作成`);
 
     // メタデータJSON保存
     const metaFilename = `${safeAsset}.meta.json`;
@@ -144,6 +159,20 @@ async function main() {
       releaseFilePath,
       compressedSize: compressed.length
     });
+
+    // 処理成功したセッションをDriveから削除リストに追加
+    processedFileIds.push(...successfulFileIds);
+
+    // ループ末尾でtop, compressedの参照は次のイテレーションで上書きされてGC対象に。
+    // 明示的にgc()を呼べる場合は呼ぶ (--expose-gc 必要、なければスキップ)
+    if (typeof global.gc === 'function') {
+      global.gc();
+    }
+  }
+
+  if (allMeta.length === 0) {
+    log('⚠ 公開対象データなし、終了');
+    return;
   }
 
   // 5. GitHub Releases にアップロード
