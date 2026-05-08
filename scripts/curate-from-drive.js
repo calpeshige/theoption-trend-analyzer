@@ -161,19 +161,23 @@ async function main() {
   log('📝 trading-manual.html を更新中...');
   updateManualHtml(allMeta);
 
-  // 7. 処理済みのDriveファイルを削除
+  // 7. 処理済みのDriveファイルをゴミ箱に移動 (30日後に完全削除される)
+  // サービスアカウントは他人がオーナーのファイルを完全削除できないため、ゴミ箱に移動する方式を採用
   if (processedFileIds.length > 0) {
-    log(`🗑️ 処理済みファイル ${processedFileIds.length} 件を Drive から削除中...`);
-    let deleted = 0;
+    log(`🗑️ 処理済みファイル ${processedFileIds.length} 件をゴミ箱に移動中...`);
+    let trashed = 0;
     for (const fileId of processedFileIds) {
       try {
-        await drive.files.delete({ fileId });
-        deleted++;
+        await drive.files.update({
+          fileId,
+          requestBody: { trashed: true }
+        });
+        trashed++;
       } catch (err) {
-        log(`  ✗ 削除失敗 ${fileId}: ${err.message}`);
+        log(`  ✗ ゴミ箱移動失敗 ${fileId}: ${err.message}`);
       }
     }
-    log(`  ✓ ${deleted}/${processedFileIds.length} 件削除完了`);
+    log(`  ✓ ${trashed}/${processedFileIds.length} 件をゴミ箱に移動完了 (30日後に自動完全削除)`);
   }
 
   // クリーンアップ
