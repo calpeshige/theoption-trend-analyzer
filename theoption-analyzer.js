@@ -6420,15 +6420,22 @@ function initializeAnalyzer() {
     const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB (Apps Scriptの50MB制限を考慮し安全マージン)
 
     // 自動バックアップ実行
-    async function executeAutoBackup() {
-      console.log('[AutoBackup] 🤝 自動バックアップ開始');
+    // @param {string[]} [filterAssetNames] - 対象通貨ペアのフィルタ。指定がない場合は全通貨ペア。
+    async function executeAutoBackup(filterAssetNames) {
+      console.log('[AutoBackup] 🤝 自動バックアップ開始', filterAssetNames ? `(対象: ${filterAssetNames.length}件)` : '(全通貨ペア)');
       const startTime = Date.now();
 
       try {
         const dbManager = new DBManager();
         await dbManager.init();
 
-        const assetList = await dbManager.getAssetList();
+        let assetList = await dbManager.getAssetList();
+
+        // 通貨ペアフィルタ
+        if (Array.isArray(filterAssetNames) && filterAssetNames.length > 0) {
+          const filterSet = new Set(filterAssetNames);
+          assetList = assetList.filter(item => filterSet.has(item.assetName));
+        }
 
         if (assetList.length === 0) {
           console.log('[AutoBackup] バックアップ対象データなし');
@@ -6696,7 +6703,7 @@ function initializeAnalyzer() {
               importDataFromJSON();
               break;
             case 'AUTO_BACKUP':
-              executeAutoBackup();
+              executeAutoBackup(message.assetNames);
               break;
             default:
               console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
@@ -6704,6 +6711,23 @@ function initializeAnalyzer() {
           sendResponse({ success: true });
           return true;
         }
+
+        // 通貨ペア一覧の取得 (バックアップ対象選択用)
+        if (message.type === 'GET_ASSET_LIST') {
+          (async () => {
+            try {
+              const dbManager = new DBManager();
+              await dbManager.init();
+              const assetList = await dbManager.getAssetList();
+              sendResponse({ success: true, assetList: assetList });
+            } catch (err) {
+              console.error('[TheOption Analyzer] GET_ASSET_LIST エラー:', err);
+              sendResponse({ success: false, error: err.message });
+            }
+          })();
+          return true; // 非同期レスポンス
+        }
+
         return false; // 他のリスナーに処理を渡す
       });
       console.log('[TheOption Analyzer] ✅ メッセージリスナー登録完了');

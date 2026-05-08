@@ -221,7 +221,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         debugLog('[Background] ダウンロード指示送信先:', targetTab.id, targetTab.url);
         chrome.tabs.sendMessage(targetTab.id, {
           type: 'EXECUTE_DOWNLOAD',
-          downloadType: message.downloadType
+          downloadType: message.downloadType,
+          assetNames: message.assetNames  // 通貨ペアフィルタ (オプション)
         }).then(() => {
           debugLog('[Background] EXECUTE_DOWNLOAD送信成功');
           sendResponse({ success: true });
@@ -235,6 +236,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     });
     return true; // 非同期レスポンス
+  }
+
+  // 通貨ペア一覧取得 (バックアップ対象選択用)
+  if (message.type === 'GET_ASSET_LIST_FOR_BACKUP') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_ASSET_LIST' })
+          .then(response => sendResponse(response || { success: false, error: 'No response' }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
   }
 
   // v5.10.6: モメンタムフィルタ強度変更
@@ -409,11 +424,18 @@ async function checkAndExecuteBackup() {
       'nextBackupTime',
       'backupIntervalDays',
       'lastBackupTime',
-      'backupInProgress'
+      'backupInProgress',
+      'autoBackupAssets'
     ]);
 
     // 自動バックアップが無効
     if (!settings.autoBackupEnabled) return;
+
+    // 対象通貨ペアが未設定 (空配列)
+    if (!Array.isArray(settings.autoBackupAssets) || settings.autoBackupAssets.length === 0) {
+      debugLog('[Background] 対象通貨ペアが未設定のため自動バックアップをスキップ');
+      return;
+    }
 
     // 既に実行中
     if (settings.backupInProgress) {
@@ -444,7 +466,7 @@ async function checkAndExecuteBackup() {
     // 起動時遅延 (0〜10分のランダム遅延)
     const startupDelay = Math.random() * 10 * 60 * 1000;
     setTimeout(() => {
-      executeAutoBackup(tabs[0].id);
+      executeAutoBackup(tabs[0].id, settings.autoBackupAssets);
     }, startupDelay);
 
   } catch (error) {
@@ -464,15 +486,16 @@ function isLikelyTrading(analysisData) {
 }
 
 // 自動バックアップ実行
-async function executeAutoBackup(tabId) {
+async function executeAutoBackup(tabId, assetNames) {
   await chrome.storage.local.set({ backupInProgress: true });
 
   try {
     chrome.tabs.sendMessage(tabId, {
       type: 'EXECUTE_DOWNLOAD',
-      downloadType: 'AUTO_BACKUP'
+      downloadType: 'AUTO_BACKUP',
+      assetNames: assetNames
     });
-    debugLog('[Background] 自動バックアップ実行指示送信');
+    debugLog('[Background] 自動バックアップ実行指示送信', assetNames ? `(対象: ${assetNames.length}件)` : '');
   } catch (error) {
     console.error('[Background] 自動バックアップ実行失敗:', error);
     await chrome.storage.local.set({ backupInProgress: false });

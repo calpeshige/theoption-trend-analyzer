@@ -35,7 +35,8 @@ let currentSettings = {
   backupIntervalDays: 7,           // バックアップ頻度 (3 | 7 | 14)
   lastBackupTime: 0,               // 最終バックアップ時刻 (UNIXタイムスタンプ ms)
   nextBackupTime: 0,               // 次回バックアップ予定時刻 (UNIXタイムスタンプ ms)
-  backupConsentShown: false        // 初回ウェルカムダイアログ表示済みフラグ
+  backupConsentShown: false,       // 初回ウェルカムダイアログ表示済みフラグ
+  autoBackupAssets: []             // 自動バックアップ対象通貨ペア (例: ["USD/JPY", "EUR/USD"])
 };
 
 // 状態管理
@@ -295,13 +296,15 @@ function loadAutoBackupSettings() {
     'backupIntervalDays',
     'lastBackupTime',
     'nextBackupTime',
-    'backupConsentShown'
+    'backupConsentShown',
+    'autoBackupAssets'
   ], (result) => {
     currentSettings.autoBackupEnabled = result.autoBackupEnabled === true;
     currentSettings.backupIntervalDays = result.backupIntervalDays || 7;
     currentSettings.lastBackupTime = result.lastBackupTime || 0;
     currentSettings.nextBackupTime = result.nextBackupTime || 0;
     currentSettings.backupConsentShown = result.backupConsentShown === true;
+    currentSettings.autoBackupAssets = Array.isArray(result.autoBackupAssets) ? result.autoBackupAssets : [];
 
     // UIに反映
     const toggle = document.getElementById('auto-backup-toggle');
@@ -312,8 +315,27 @@ function loadAutoBackupSettings() {
     if (intervalSelect) {
       intervalSelect.value = String(currentSettings.backupIntervalDays);
     }
+    updateBackupAssetsSummary();
     updateBackupTimeDisplay();
   });
+}
+
+// 「対象通貨ペア」のサマリ表示更新
+function updateBackupAssetsSummary() {
+  const summaryEl = document.getElementById('backup-assets-summary');
+  if (!summaryEl) return;
+
+  const assets = currentSettings.autoBackupAssets;
+  if (!assets || assets.length === 0) {
+    summaryEl.textContent = '未設定 (タップして選択)';
+    summaryEl.style.color = 'var(--md-sys-color-error, #d93025)';
+  } else if (assets.length <= 3) {
+    summaryEl.textContent = assets.join(', ');
+    summaryEl.style.color = '';
+  } else {
+    summaryEl.textContent = `${assets.slice(0, 2).join(', ')} ほか${assets.length - 2}件`;
+    summaryEl.style.color = '';
+  }
 }
 
 // 最終バックアップ・次回予定の表示更新
@@ -367,7 +389,6 @@ function setupEventListeners() {
   document.getElementById('download-ml-data').addEventListener('click', () => requestDownload('ML_DATA'));
   document.getElementById('download-predictions').addEventListener('click', () => requestDownload('PREDICTIONS'));
   document.getElementById('download-trends').addEventListener('click', () => requestDownload('TRENDS'));
-  document.getElementById('export-json').addEventListener('click', () => requestDownload('EXPORT_JSON'));
   document.getElementById('import-json').addEventListener('click', () => requestDownload('IMPORT_JSON'));
 
   // シグナルモード設定
@@ -513,6 +534,36 @@ function setupEventListeners() {
   const manualBtn = document.getElementById('manual-backup-button');
   if (manualBtn) {
     manualBtn.addEventListener('click', handleManualBackup);
+  }
+
+  // 対象通貨ペア選択モーダル
+  const selectAssetsBtn = document.getElementById('select-backup-assets-button');
+  if (selectAssetsBtn) {
+    selectAssetsBtn.addEventListener('click', openBackupAssetsModal);
+  }
+  const closeAssetsBtn = document.getElementById('close-backup-assets');
+  if (closeAssetsBtn) {
+    closeAssetsBtn.addEventListener('click', closeBackupAssetsModal);
+  }
+  const assetsOverlay = document.getElementById('backup-assets-overlay');
+  if (assetsOverlay) {
+    assetsOverlay.addEventListener('click', closeBackupAssetsModal);
+  }
+  const selectAllBtn = document.getElementById('backup-assets-select-all');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      document.querySelectorAll('#backup-assets-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+    });
+  }
+  const deselectAllBtn = document.getElementById('backup-assets-deselect-all');
+  if (deselectAllBtn) {
+    deselectAllBtn.addEventListener('click', () => {
+      document.querySelectorAll('#backup-assets-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+    });
+  }
+  const saveBtn = document.getElementById('backup-assets-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', saveBackupAssetsSelection);
   }
 }
 
@@ -3108,8 +3159,24 @@ function handleManualBackup() {
   const btn = document.getElementById('manual-backup-button');
   if (!btn) return;
 
+  // 通貨ペア選択ダイアログを表示
+  openBackupAssetsModal({ mode: 'manual' });
+}
+
+// 手動バックアップ用: 通貨ペア選択後の実行
+function executeManualBackupWithAssets(selectedAssets) {
+  const btn = document.getElementById('manual-backup-button');
+  if (!btn) return;
+
+  if (selectedAssets.length === 0) {
+    alert('通貨ペアを選択してください');
+    return;
+  }
+
   const confirmed = confirm(
     '🤝 手動バックアップを実行します\n\n' +
+    `対象通貨ペア: ${selectedAssets.length}件\n` +
+    `${selectedAssets.slice(0, 5).join(', ')}${selectedAssets.length > 5 ? ' ほか' : ''}\n\n` +
     '・あなたのPCに学習データのJSONがダウンロードされます\n' +
     '・同時にコミュニティへも自動共有されます\n\n' +
     '実行しますか？'
@@ -3120,24 +3187,27 @@ function handleManualBackup() {
   btn.disabled = true;
   btn.textContent = 'バックアップ実行中...';
 
-  // background.js経由でtheoption-analyzer.jsの実行関数を呼び出す
   chrome.runtime.sendMessage(
-    { type: 'REQUEST_DOWNLOAD', downloadType: 'AUTO_BACKUP' },
+    {
+      type: 'REQUEST_DOWNLOAD',
+      downloadType: 'AUTO_BACKUP',
+      assetNames: selectedAssets
+    },
     (response) => {
       if (chrome.runtime.lastError) {
         console.error('[SidePanel] バックアップ要求エラー:', chrome.runtime.lastError.message);
         alert('❌ バックアップ要求に失敗しました\n' + chrome.runtime.lastError.message);
+        btn.disabled = false;
+        btn.textContent = '今すぐ手動バックアップ';
       } else {
         debugLog('[SidePanel] バックアップ要求送信完了');
       }
-      // ボタン状態は完了通知で更新するため、ここでは戻さない
-      // タイムアウト保険: 5分後に強制リセット
       setTimeout(() => {
         if (btn.disabled) {
           btn.disabled = false;
           btn.textContent = '今すぐ手動バックアップ';
         }
-      }, 5 * 60 * 1000);
+      }, 30 * 60 * 1000);
     }
   );
 }
@@ -3227,6 +3297,122 @@ function recalculateNextBackupTime() {
 
   chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_UPDATED', nextBackupTime: nextBackup });
 }
+
+// ============================================================================
+// 対象通貨ペア選択モーダル
+// ============================================================================
+
+let backupAssetsModalMode = 'config'; // 'config' (自動バックアップ設定) | 'manual' (手動実行用)
+let availableAssetsCache = [];
+
+function openBackupAssetsModal(options = {}) {
+  backupAssetsModalMode = options.mode === 'manual' ? 'manual' : 'config';
+
+  const overlay = document.getElementById('backup-assets-overlay');
+  const sheet = document.getElementById('backup-assets-sheet');
+  const list = document.getElementById('backup-assets-list');
+  const saveBtn = document.getElementById('backup-assets-save');
+  const titleEl = document.querySelector('#backup-assets-sheet .bottom-sheet-title');
+  const noteEl = document.querySelector('.backup-assets-note');
+
+  if (!overlay || !sheet || !list) return;
+
+  // モードによってタイトルとボタンラベルを変える
+  if (titleEl) {
+    titleEl.textContent = backupAssetsModalMode === 'manual'
+      ? '手動バックアップ - 通貨ペア選択'
+      : '対象通貨ペアを選択';
+  }
+  if (saveBtn) {
+    saveBtn.textContent = backupAssetsModalMode === 'manual' ? 'バックアップ実行' : '保存';
+  }
+  if (noteEl) {
+    noteEl.textContent = backupAssetsModalMode === 'manual'
+      ? 'バックアップする通貨ペアを選択してください'
+      : '自動バックアップする通貨ペアを選択してください';
+  }
+
+  overlay.classList.add('active');
+  sheet.classList.add('active');
+
+  list.innerHTML = '<div class="backup-assets-loading">通貨ペア一覧を取得中...</div>';
+
+  // コンテンツスクリプトに通貨ペア一覧を要求
+  chrome.runtime.sendMessage({ type: 'REQUEST_ASSET_LIST' }, (response) => {
+    // background.jsの転送を待つ別経路: 一旦は chrome.tabs 経由で取得
+  });
+
+  // 現在は theoption-analyzer.js が assetList を保持していないため、
+  // background.js 経由で要求する必要がある。
+  // 暫定: chrome.tabs.sendMessage で直接 TheOption タブに要求を送る (background経由)
+  requestAssetListForBackup();
+}
+
+function requestAssetListForBackup() {
+  chrome.runtime.sendMessage({ type: 'GET_ASSET_LIST_FOR_BACKUP' }, (response) => {
+    if (response && response.success && Array.isArray(response.assetList)) {
+      availableAssetsCache = response.assetList;
+      renderBackupAssetsList(response.assetList);
+    } else {
+      const list = document.getElementById('backup-assets-list');
+      if (list) {
+        list.innerHTML = `<div class="backup-assets-loading">${
+          response?.error || '通貨ペア一覧の取得に失敗しました'
+        }</div>`;
+      }
+    }
+  });
+}
+
+function renderBackupAssetsList(assetList) {
+  const list = document.getElementById('backup-assets-list');
+  if (!list) return;
+
+  if (!assetList || assetList.length === 0) {
+    list.innerHTML = '<div class="backup-assets-loading">登録されている通貨ペアがありません</div>';
+    return;
+  }
+
+  // 設定済みの選択状態を反映
+  const selectedAssets = new Set(currentSettings.autoBackupAssets || []);
+
+  list.innerHTML = assetList.map(({ assetName, count }) => {
+    const safeId = `backup-asset-cb-${assetName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const checked = backupAssetsModalMode === 'manual'
+      ? (selectedAssets.has(assetName) || selectedAssets.size === 0)  // 手動時、未設定なら全選択をデフォルト
+      : selectedAssets.has(assetName);
+    return `
+      <label class="backup-asset-item" for="${safeId}">
+        <input type="checkbox" id="${safeId}" data-asset="${assetName}" ${checked ? 'checked' : ''}>
+        <span class="backup-asset-item-name">${assetName}</span>
+        <span class="backup-asset-item-count">${count.toLocaleString()}件</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function closeBackupAssetsModal() {
+  document.getElementById('backup-assets-overlay').classList.remove('active');
+  document.getElementById('backup-assets-sheet').classList.remove('active');
+}
+
+function saveBackupAssetsSelection() {
+  const checkboxes = document.querySelectorAll('#backup-assets-list input[type="checkbox"]:checked');
+  const selected = Array.from(checkboxes).map(cb => cb.dataset.asset);
+
+  if (backupAssetsModalMode === 'manual') {
+    // 手動バックアップ: 選択した通貨ペアでバックアップ実行
+    closeBackupAssetsModal();
+    executeManualBackupWithAssets(selected);
+  } else {
+    // 自動バックアップ設定: 永続保存
+    currentSettings.autoBackupAssets = selected;
+    chrome.storage.local.set({ autoBackupAssets: selected });
+    updateBackupAssetsSummary();
+    closeBackupAssetsModal();
+  }
+}
+
 
 // バックアップ完了通知の受信(background.js から転送)
 chrome.runtime.onMessage.addListener((message) => {

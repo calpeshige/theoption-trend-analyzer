@@ -2870,27 +2870,28 @@ body {
   transform: scale(0.95);
 }
 
-/* 自動バックアップ セクション */
-.setting-section-header {
-  padding: 24px 0 8px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  margin-bottom: 4px;
-}
-
-.setting-section-title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--md-sys-color-primary);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.setting-section-description {
-  display: block;
+/* 自動バックアップ セクション (ダウンロードボトムシート内) */
+.download-section-note {
   font-size: 12px;
   color: var(--md-sys-color-on-surface-variant);
-  margin-top: 2px;
+  margin: -8px 4px 12px;
+  line-height: 1.5;
+}
+
+.setting-link-button {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-sys-color-primary);
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.setting-link-button:hover {
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .manual-backup-button {
@@ -2920,6 +2921,100 @@ body {
   color: var(--md-sys-color-on-surface-variant);
   cursor: not-allowed;
   transform: none;
+}
+
+/* 対象通貨ペア選択モーダル */
+.backup-assets-note {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.backup-assets-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 8px;
+  margin-bottom: 16px;
+}
+
+.backup-assets-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+}
+
+.backup-asset-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.backup-asset-item:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.backup-asset-item input[type="checkbox"] {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.backup-asset-item-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface);
+}
+
+.backup-asset-item-count {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.backup-assets-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.backup-assets-secondary {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--md-sys-color-primary);
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.backup-assets-secondary:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.backup-assets-primary {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  border: none;
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.backup-assets-primary:hover {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
 /* ================================================
