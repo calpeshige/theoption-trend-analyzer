@@ -14,7 +14,7 @@
 
 import { google } from 'googleapis';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
@@ -197,8 +197,13 @@ async function main() {
   }
 
   // 6. trading-manual.html を自動更新
+  // 「ブース方式」: 過去に公開済みの通貨ペアも保持するため、
+  // data-meta/ 配下の全メタを読み込んでからHTMLを再構築する。
+  // 今回更新された通貨ペアのメタは新しい内容で上書きされている (ステップ4-5で保存済)
   log('📝 trading-manual.html を更新中...');
-  updateManualHtml(allMeta);
+  const allBoothMeta = loadAllBoothMeta();
+  log(`  📚 全ブース数: ${allBoothMeta.length} 通貨ペア (今回更新: ${allMeta.length} 通貨ペア)`);
+  updateManualHtml(allBoothMeta);
 
   // 7. 処理済みのDriveファイルを Apps Script 経由でゴミ箱移動
   // サービスアカウントは他人がオーナーのファイルを操作できないため、
@@ -669,6 +674,39 @@ function generateReleaseBody(meta) {
     'このリリースは GitHub Actions により自動生成されています。',
     '拡張機能の「JSONインポート」機能でファイルを取り込めます。'
   ].join('\n');
+}
+
+// =============================================================================
+// 全通貨ペアの「ブース」メタを読み込む
+// data-meta/ 配下の *.meta.json をすべて読んで配列化する
+// 今回のキュレーションで更新されなかった通貨ペアも、過去のメタが残っていれば
+// HTMLに表示され続ける(ブース方式)
+// =============================================================================
+
+function loadAllBoothMeta() {
+  if (!existsSync(DATA_META_DIR)) {
+    return [];
+  }
+
+  const files = readdirSync(DATA_META_DIR);
+  const result = [];
+
+  for (const filename of files) {
+    if (!filename.endsWith('.meta.json')) continue;
+    const filepath = join(DATA_META_DIR, filename);
+    try {
+      const content = readFileSync(filepath, 'utf8');
+      const meta = JSON.parse(content);
+      // 必須フィールドチェック
+      if (meta.assetName && meta.recordCount && meta.lastUpdated) {
+        result.push(meta);
+      }
+    } catch (err) {
+      log(`  ⚠ メタファイル読み込みエラー ${filename}: ${err.message}`);
+    }
+  }
+
+  return result;
 }
 
 // =============================================================================
