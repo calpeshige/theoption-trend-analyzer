@@ -40,6 +40,21 @@ const RECORDS_PER_ASSET = 20000;
 const MIN_TIMESTAMP = Date.now() - 5 * 365 * 24 * 3600 * 1000; // 5年前
 const MAX_TIMESTAMP = Date.now() + 24 * 3600 * 1000;            // 1日後 (時計ずれ許容)
 
+// TheOption で取引可能な11通貨ペア (この順で表示される)
+const SUPPORTED_ASSETS = [
+  'AUD/JPY',
+  'AUD/USD',
+  'EUR/JPY',
+  'EUR/USD',
+  'GBP/JPY',
+  'NZD/JPY',
+  'USD/JPY',
+  'BTC/JPY',
+  'BTC/USD',
+  'ETH/JPY',
+  'ETH/USD'
+];
+
 // =============================================================================
 // メイン処理
 // =============================================================================
@@ -733,21 +748,26 @@ function updateManualHtml(allMeta) {
   const before = html.substring(0, startIdx + startMarker.length);
   const after = html.substring(endIdx);
 
+  // メタを通貨ペア名でマップ化
+  const metaByAsset = new Map();
+  for (const meta of allMeta) {
+    metaByAsset.set(meta.assetName, meta);
+  }
+
   let inner = '\n        <!-- このセクションはGitHub Actionsで自動生成されます。手動編集禁止 -->\n';
-  if (allMeta.length === 0) {
-    inner += '        <p style="text-align: center; padding: 40px 0; color: var(--text-secondary);">\n';
-    inner += '          現在、提供されたデータはまだありません。<br>\n';
-    inner += '          自動バックアップに参加して、コミュニティを育てていきましょう。\n';
-    inner += '        </p>\n        ';
-  } else {
-    // 通貨ペア順にソート
-    const sortedMeta = [...allMeta].sort((a, b) => a.assetName.localeCompare(b.assetName));
-    for (const meta of sortedMeta) {
+
+  // SUPPORTED_ASSETS の順番で11ブースを常時表示
+  let activeCount = 0;
+  let pendingCount = 0;
+  for (const assetName of SUPPORTED_ASSETS) {
+    const meta = metaByAsset.get(assetName);
+    if (meta) {
+      // データあり: 通常のダウンロードカード
       const sizeMB = (meta.compressedSize / 1024 / 1024).toFixed(1);
       const downloadUrl = meta.downloadUrl || '#';
       inner += `        <div class="release-card">\n`;
       inner += `          <div class="release-header">\n`;
-      inner += `            <span class="release-version">${escapeHtml(meta.assetName)}</span>\n`;
+      inner += `            <span class="release-version">${escapeHtml(assetName)}</span>\n`;
       inner += `            <span class="release-date">最終更新: ${meta.lastUpdated.slice(0, 10)}</span>\n`;
       inner += `          </div>\n`;
       inner += `          <div class="release-notes">\n`;
@@ -760,16 +780,35 @@ function updateManualHtml(allMeta) {
       inner += `          </div>\n`;
       inner += `          <a class="download-btn" href="${escapeHtml(downloadUrl)}">\n`;
       inner += `            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>\n`;
-      inner += `            ダウンロード（${escapeHtml(meta.assetName)}）\n`;
+      inner += `            ダウンロード（${escapeHtml(assetName)}）\n`;
       inner += `          </a>\n`;
       inner += `        </div>\n`;
+      activeCount++;
+    } else {
+      // データなし: 「処理中」プレースホルダカード
+      inner += `        <div class="release-card" style="opacity: 0.6;">\n`;
+      inner += `          <div class="release-header">\n`;
+      inner += `            <span class="release-version">${escapeHtml(assetName)}</span>\n`;
+      inner += `            <span class="release-date" style="color: var(--text-secondary);">処理中</span>\n`;
+      inner += `          </div>\n`;
+      inner += `          <div class="release-notes">\n`;
+      inner += `            <p style="margin: 8px 0; color: var(--text-secondary); font-size: 13px;">\n`;
+      inner += `              ⏳ コミュニティからのデータを収集中です。<br>\n`;
+      inner += `              データが集まり次第、ダウンロード可能になります。\n`;
+      inner += `            </p>\n`;
+      inner += `          </div>\n`;
+      inner += `          <button class="download-btn" disabled style="background: var(--text-secondary); cursor: not-allowed; opacity: 0.7;">\n`;
+      inner += `            データ準備中\n`;
+      inner += `          </button>\n`;
+      inner += `        </div>\n`;
+      pendingCount++;
     }
-    inner += '        ';
   }
+  inner += '        ';
 
   const newHtml = before + inner + after;
   writeFileSync(MANUAL_HTML_PATH, newHtml);
-  log(`  ✓ trading-manual.html を更新 (${allMeta.length}件)`);
+  log(`  ✓ trading-manual.html を更新 (公開${activeCount}件、準備中${pendingCount}件)`);
 }
 
 function escapeHtml(str) {
