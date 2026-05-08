@@ -30,14 +30,13 @@ let currentSettings = {
   momentumFilterLevel: 2,  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
   pricePositionFilterLevel: 2,  // v5.12.4: 0=OFF, 1=弱, 2=中, 3=強
   signalMode: 'majority',  // 'majority'（多数決モード）| 'standard'（標準モード）
-  // 自動バックアップ設定
-  autoBackupEnabled: false,        // 自動バックアップ ON/OFF
-  backupIntervalDays: 7,           // バックアップ頻度 (3 | 7 | 14)
+  // 自動バックアップ設定 (5日固定の起動時催促方式)
+  autoBackupEnabled: false,        // 起動時の催促 ON/OFF
   lastBackupTime: 0,               // 最終バックアップ時刻 (UNIXタイムスタンプ ms)
-  nextBackupTime: 0,               // 次回バックアップ予定時刻 (UNIXタイムスタンプ ms)
-  backupConsentShown: false,       // 初回ウェルカムダイアログ表示済みフラグ
-  autoBackupAssets: []             // 自動バックアップ対象通貨ペア (例: ["USD/JPY", "EUR/USD"])
+  backupConsentShown: false        // 初回ウェルカムダイアログ表示済みフラグ
 };
+
+const BACKUP_INTERVAL_DAYS = 5; // 5日固定
 
 // 状態管理
 let currentTimeframe = 60;
@@ -293,71 +292,94 @@ function loadSettings() {
 function loadAutoBackupSettings() {
   chrome.storage.local.get([
     'autoBackupEnabled',
-    'backupIntervalDays',
     'lastBackupTime',
-    'nextBackupTime',
     'backupConsentShown',
-    'autoBackupAssets'
+    'forceShowBackupPrompt'
   ], (result) => {
     currentSettings.autoBackupEnabled = result.autoBackupEnabled === true;
-    currentSettings.backupIntervalDays = result.backupIntervalDays || 7;
     currentSettings.lastBackupTime = result.lastBackupTime || 0;
-    currentSettings.nextBackupTime = result.nextBackupTime || 0;
     currentSettings.backupConsentShown = result.backupConsentShown === true;
-    currentSettings.autoBackupAssets = Array.isArray(result.autoBackupAssets) ? result.autoBackupAssets : [];
 
     // UIに反映
     const toggle = document.getElementById('auto-backup-toggle');
     if (toggle) {
       toggle.classList.toggle('active', currentSettings.autoBackupEnabled);
     }
-    const intervalSelect = document.getElementById('backup-interval-select');
-    if (intervalSelect) {
-      intervalSelect.value = String(currentSettings.backupIntervalDays);
-    }
-    updateBackupAssetsSummary();
     updateBackupTimeDisplay();
+
+    // 拡張機能リロード後の強制表示フラグをチェック
+    const forceShow = result.forceShowBackupPrompt === true;
+    if (forceShow) {
+      // フラグを消費 (1回限り)
+      chrome.storage.local.remove('forceShowBackupPrompt');
+    }
+
+    // 起動時に催促判定 (少し遅延させて初期化を待つ)
+    setTimeout(() => checkAndShowBackupPrompt(forceShow), 1500);
   });
 }
 
-// 「対象通貨ペア」のサマリ表示更新
-function updateBackupAssetsSummary() {
-  const summaryEl = document.getElementById('backup-assets-summary');
-  if (!summaryEl) return;
+// 起動時の催促判定: 5日経過 & 自動催促ON & 未通知ならモーダル表示
+// @param {boolean} force - true の場合、5日判定をスキップして強制表示 (拡張機能リロード時など)
+function checkAndShowBackupPrompt(force = false) {
+  if (!currentSettings.autoBackupEnabled) return;
 
-  const assets = currentSettings.autoBackupAssets;
-  if (!assets || assets.length === 0) {
-    summaryEl.textContent = '未設定 (タップして選択)';
-    summaryEl.style.color = 'var(--md-sys-color-error, #d93025)';
-  } else if (assets.length <= 3) {
-    summaryEl.textContent = assets.join(', ');
-    summaryEl.style.color = '';
-  } else {
-    summaryEl.textContent = `${assets.slice(0, 2).join(', ')} ほか${assets.length - 2}件`;
-    summaryEl.style.color = '';
+  // このセッションで既に表示したかチェック (sessionStorage相当)
+  if (sessionStorage.getItem('backupPromptShown') === '1') {
+    return;
   }
+
+  if (!force) {
+    const now = Date.now();
+    const lastBackup = currentSettings.lastBackupTime || 0;
+    const intervalMs = BACKUP_INTERVAL_DAYS * 24 * 3600 * 1000;
+
+    // 最終バックアップから5日経過しているかチェック
+    // lastBackupTime=0(未実施)の場合も催促対象
+    if (lastBackup > 0 && (now - lastBackup) < intervalMs) {
+      return; // まだ催促タイミングではない
+    }
+  }
+
+  showBackupPromptDialog();
 }
 
-// 最終バックアップ・次回予定の表示更新
+// 催促モーダル表示
+function showBackupPromptDialog() {
+  const overlay = document.getElementById('backup-prompt-overlay');
+  const dialog = document.getElementById('backup-prompt-dialog');
+  const messageEl = document.getElementById('backup-prompt-message');
+
+  if (!overlay || !dialog) return;
+
+  // メッセージカスタマイズ(初回 or 経過日数表示)
+  if (currentSettings.lastBackupTime === 0) {
+    messageEl.innerHTML = 'コミュニティバックアップに参加しましょう。<br>あなたのデータが他のユーザーの役に立ちます。';
+  } else {
+    const daysAgo = Math.floor((Date.now() - currentSettings.lastBackupTime) / (24 * 3600 * 1000));
+    messageEl.innerHTML = `前回のバックアップから${daysAgo}日が経過しました。<br>データをバックアップしますか？`;
+  }
+
+  overlay.style.display = 'block';
+  dialog.style.display = 'block';
+
+  sessionStorage.setItem('backupPromptShown', '1');
+}
+
+// 催促モーダルを閉じる
+function closeBackupPromptDialog() {
+  document.getElementById('backup-prompt-overlay').style.display = 'none';
+  document.getElementById('backup-prompt-dialog').style.display = 'none';
+}
+
+// 最終バックアップの表示更新
 function updateBackupTimeDisplay() {
   const lastEl = document.getElementById('last-backup-time');
-  const nextEl = document.getElementById('next-backup-time');
-
   if (lastEl) {
     if (currentSettings.lastBackupTime > 0) {
       lastEl.textContent = formatBackupDateTime(currentSettings.lastBackupTime);
     } else {
       lastEl.textContent = '未実施';
-    }
-  }
-
-  if (nextEl) {
-    if (currentSettings.autoBackupEnabled && currentSettings.nextBackupTime > 0) {
-      nextEl.textContent = formatBackupDateTime(currentSettings.nextBackupTime);
-    } else if (!currentSettings.autoBackupEnabled) {
-      nextEl.textContent = '無効';
-    } else {
-      nextEl.textContent = '計算中...';
     }
   }
 }
@@ -518,29 +540,19 @@ function setupEventListeners() {
   document.getElementById('close-session-data').addEventListener('click', closeSessionDataModal);
   document.getElementById('session-data-overlay').addEventListener('click', closeSessionDataModal);
 
-  // 自動バックアップ: トグルクリック
+  // 自動バックアップ催促: ON/OFFトグル
   const autoBackupToggle = document.getElementById('auto-backup-toggle');
   if (autoBackupToggle) {
     autoBackupToggle.addEventListener('click', handleAutoBackupToggle);
   }
 
-  // 自動バックアップ: 頻度変更
-  const intervalSelect = document.getElementById('backup-interval-select');
-  if (intervalSelect) {
-    intervalSelect.addEventListener('change', handleBackupIntervalChange);
-  }
-
-  // 自動バックアップ: 手動実行ボタン
+  // 手動バックアップボタン
   const manualBtn = document.getElementById('manual-backup-button');
   if (manualBtn) {
     manualBtn.addEventListener('click', handleManualBackup);
   }
 
-  // 対象通貨ペア選択モーダル
-  const selectAssetsBtn = document.getElementById('select-backup-assets-button');
-  if (selectAssetsBtn) {
-    selectAssetsBtn.addEventListener('click', openBackupAssetsModal);
-  }
+  // 通貨ペア選択モーダル(手動・催促共通)
   const closeAssetsBtn = document.getElementById('close-backup-assets');
   if (closeAssetsBtn) {
     closeAssetsBtn.addEventListener('click', closeBackupAssetsModal);
@@ -564,6 +576,19 @@ function setupEventListeners() {
   const saveBtn = document.getElementById('backup-assets-save');
   if (saveBtn) {
     saveBtn.addEventListener('click', saveBackupAssetsSelection);
+  }
+
+  // 催促モーダルのボタン
+  const promptLater = document.getElementById('backup-prompt-later');
+  if (promptLater) {
+    promptLater.addEventListener('click', closeBackupPromptDialog);
+  }
+  const promptExecute = document.getElementById('backup-prompt-execute');
+  if (promptExecute) {
+    promptExecute.addEventListener('click', () => {
+      closeBackupPromptDialog();
+      openBackupAssetsModal();
+    });
   }
 }
 
@@ -3118,7 +3143,7 @@ function startSignal20Polling() {
 // 自動バックアップ ハンドラ群
 // ============================================================================
 
-// 自動バックアップ ON/OFF トグル
+// 自動催促 ON/OFF トグル
 function handleAutoBackupToggle() {
   const toggle = document.getElementById('auto-backup-toggle');
   if (!toggle) return;
@@ -3138,29 +3163,13 @@ function handleAutoBackupToggle() {
   }
 }
 
-// バックアップ頻度変更
-function handleBackupIntervalChange(e) {
-  const days = parseInt(e.target.value);
-  if (![3, 7, 14].includes(days)) return;
-
-  currentSettings.backupIntervalDays = days;
-  chrome.storage.local.set({ backupIntervalDays: days });
-
-  // 自動バックアップが有効なら次回予定を再計算
-  if (currentSettings.autoBackupEnabled) {
-    recalculateNextBackupTime();
-  }
-  updateBackupTimeDisplay();
-  debugLog('[SidePanel] バックアップ頻度変更:', days, '日');
-}
-
 // 手動バックアップボタン
 function handleManualBackup() {
   const btn = document.getElementById('manual-backup-button');
   if (!btn) return;
 
   // 通貨ペア選択ダイアログを表示
-  openBackupAssetsModal({ mode: 'manual' });
+  openBackupAssetsModal();
 }
 
 // 手動バックアップ用: 通貨ペア選択後の実行
@@ -3198,14 +3207,14 @@ function executeManualBackupWithAssets(selectedAssets) {
         console.error('[SidePanel] バックアップ要求エラー:', chrome.runtime.lastError.message);
         alert('❌ バックアップ要求に失敗しました\n' + chrome.runtime.lastError.message);
         btn.disabled = false;
-        btn.textContent = '今すぐ手動バックアップ';
+        btn.textContent = '今すぐバックアップ';
       } else {
         debugLog('[SidePanel] バックアップ要求送信完了');
       }
       setTimeout(() => {
         if (btn.disabled) {
           btn.disabled = false;
-          btn.textContent = '今すぐ手動バックアップ';
+          btn.textContent = '今すぐバックアップ';
         }
       }, 30 * 60 * 1000);
     }
@@ -3215,19 +3224,19 @@ function executeManualBackupWithAssets(selectedAssets) {
 // 初回ウェルカムダイアログ
 function showBackupWelcomeDialog() {
   const message =
-    '🎁 自動バックアップ機能のご案内\n\n' +
-    'この機能を有効にすると、AI学習データが自動でバックアップされ、\n' +
-    'データ消失のリスクから守られます。\n\n' +
+    '🤝 コミュニティバックアップのご案内\n\n' +
     '【動作内容】\n' +
-    '・7日に1回（変更可能）、自動でバックアップを実行\n' +
-    '・バックアップファイルがあなたのPCに保存される\n' +
-    '・同時にコミュニティへも匿名で共有される\n' +
-    '・他のユーザーが提供したデータも、後でダウンロードして取り込める\n\n' +
+    '・5日に1回、起動時にバックアップを促す通知が表示されます\n' +
+    '・通知は取引中には表示されず、起動時のみです\n' +
+    '・バックアップ時は通貨ペアを毎回選択できます\n' +
+    '・選んだ通貨ペアのデータがあなたのPCに保存されます\n' +
+    '・同時にコミュニティへも匿名で共有されます\n' +
+    '・他のユーザーが提供したデータも、後でダウンロードして取り込めます\n\n' +
     '【ご注意】\n' +
     '・データには個人を特定する情報は含まれません\n' +
-    '・取引中はバックアップが実行されないよう自動制御されます\n' +
-    '・いつでも設定からOFFにできます\n\n' +
-    'コミュニティに貢献するため、自動バックアップを有効化しますか？';
+    '・いつでも設定からOFFにできます\n' +
+    '・「今すぐバックアップ」ボタンでいつでも実行可能です\n\n' +
+    '催促を有効化しますか？';
 
   if (confirm(message)) {
     currentSettings.backupConsentShown = true;
@@ -3240,36 +3249,19 @@ function showBackupWelcomeDialog() {
   }
 }
 
-// 自動バックアップを有効化
+// 自動催促を有効化
 function enableAutoBackup() {
   currentSettings.autoBackupEnabled = true;
+  chrome.storage.local.set({ autoBackupEnabled: true });
 
-  // 初回バックアップ時刻 = 今から3〜10日後のランダム
-  const now = Date.now();
-  const initialDelayDays = 3 + Math.random() * 7;  // 3〜10日のランダム
-  const initialJitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000; // ±2時間
-  const nextBackup = now + initialDelayDays * 24 * 3600 * 1000 + initialJitterMs;
-
-  currentSettings.nextBackupTime = nextBackup;
-
-  chrome.storage.local.set({
-    autoBackupEnabled: true,
-    nextBackupTime: nextBackup,
-    backupIntervalDays: currentSettings.backupIntervalDays
-  });
-
-  // UI更新
   const toggle = document.getElementById('auto-backup-toggle');
   if (toggle) toggle.classList.add('active');
   updateBackupTimeDisplay();
 
-  // background.js にスケジュール開始を通知
-  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_UPDATED', nextBackupTime: nextBackup });
-
-  debugLog('[SidePanel] 自動バックアップ有効化, 次回:', new Date(nextBackup).toISOString());
+  debugLog('[SidePanel] 起動時催促を有効化');
 }
 
-// 自動バックアップを無効化
+// 自動催促を無効化
 function disableAutoBackup() {
   currentSettings.autoBackupEnabled = false;
   chrome.storage.local.set({ autoBackupEnabled: false });
@@ -3278,36 +3270,16 @@ function disableAutoBackup() {
   if (toggle) toggle.classList.remove('active');
   updateBackupTimeDisplay();
 
-  // background.js にスケジュール停止を通知
-  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_DISABLED' });
-
-  debugLog('[SidePanel] 自動バックアップ無効化');
-}
-
-// 次回バックアップ時刻を再計算（頻度変更時など）
-function recalculateNextBackupTime() {
-  const now = Date.now();
-  const lastBackup = currentSettings.lastBackupTime || now;
-  const intervalMs = currentSettings.backupIntervalDays * 24 * 3600 * 1000;
-  const jitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000; // ±2時間
-  const nextBackup = lastBackup + intervalMs + jitterMs;
-
-  currentSettings.nextBackupTime = nextBackup;
-  chrome.storage.local.set({ nextBackupTime: nextBackup });
-
-  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_UPDATED', nextBackupTime: nextBackup });
+  debugLog('[SidePanel] 起動時催促を無効化');
 }
 
 // ============================================================================
 // 対象通貨ペア選択モーダル
 // ============================================================================
 
-let backupAssetsModalMode = 'config'; // 'config' (自動バックアップ設定) | 'manual' (手動実行用)
 let availableAssetsCache = [];
 
-function openBackupAssetsModal(options = {}) {
-  backupAssetsModalMode = options.mode === 'manual' ? 'manual' : 'config';
-
+function openBackupAssetsModal() {
   const overlay = document.getElementById('backup-assets-overlay');
   const sheet = document.getElementById('backup-assets-sheet');
   const list = document.getElementById('backup-assets-list');
@@ -3317,34 +3289,16 @@ function openBackupAssetsModal(options = {}) {
 
   if (!overlay || !sheet || !list) return;
 
-  // モードによってタイトルとボタンラベルを変える
-  if (titleEl) {
-    titleEl.textContent = backupAssetsModalMode === 'manual'
-      ? '手動バックアップ - 通貨ペア選択'
-      : '対象通貨ペアを選択';
-  }
-  if (saveBtn) {
-    saveBtn.textContent = backupAssetsModalMode === 'manual' ? 'バックアップ実行' : '保存';
-  }
-  if (noteEl) {
-    noteEl.textContent = backupAssetsModalMode === 'manual'
-      ? 'バックアップする通貨ペアを選択してください'
-      : '自動バックアップする通貨ペアを選択してください';
-  }
+  if (titleEl) titleEl.textContent = 'バックアップする通貨ペア';
+  if (saveBtn) saveBtn.textContent = 'バックアップ実行';
+  if (noteEl) noteEl.textContent = 'バックアップする通貨ペアを選択してください（不要なものはチェックを外してください）';
 
   overlay.classList.add('active');
   sheet.classList.add('active');
 
   list.innerHTML = '<div class="backup-assets-loading">通貨ペア一覧を取得中...</div>';
 
-  // コンテンツスクリプトに通貨ペア一覧を要求
-  chrome.runtime.sendMessage({ type: 'REQUEST_ASSET_LIST' }, (response) => {
-    // background.jsの転送を待つ別経路: 一旦は chrome.tabs 経由で取得
-  });
-
-  // 現在は theoption-analyzer.js が assetList を保持していないため、
-  // background.js 経由で要求する必要がある。
-  // 暫定: chrome.tabs.sendMessage で直接 TheOption タブに要求を送る (background経由)
+  // 通貨ペア一覧を取得
   requestAssetListForBackup();
 }
 
@@ -3373,17 +3327,12 @@ function renderBackupAssetsList(assetList) {
     return;
   }
 
-  // 設定済みの選択状態を反映
-  const selectedAssets = new Set(currentSettings.autoBackupAssets || []);
-
+  // デフォルトで全て選択(ユーザーは不要なものだけチェックを外せばよい)
   list.innerHTML = assetList.map(({ assetName, count }) => {
     const safeId = `backup-asset-cb-${assetName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const checked = backupAssetsModalMode === 'manual'
-      ? (selectedAssets.has(assetName) || selectedAssets.size === 0)  // 手動時、未設定なら全選択をデフォルト
-      : selectedAssets.has(assetName);
     return `
       <label class="backup-asset-item" for="${safeId}">
-        <input type="checkbox" id="${safeId}" data-asset="${assetName}" ${checked ? 'checked' : ''}>
+        <input type="checkbox" id="${safeId}" data-asset="${assetName}" checked>
         <span class="backup-asset-item-name">${assetName}</span>
         <span class="backup-asset-item-count">${count.toLocaleString()}件</span>
       </label>
@@ -3400,17 +3349,8 @@ function saveBackupAssetsSelection() {
   const checkboxes = document.querySelectorAll('#backup-assets-list input[type="checkbox"]:checked');
   const selected = Array.from(checkboxes).map(cb => cb.dataset.asset);
 
-  if (backupAssetsModalMode === 'manual') {
-    // 手動バックアップ: 選択した通貨ペアでバックアップ実行
-    closeBackupAssetsModal();
-    executeManualBackupWithAssets(selected);
-  } else {
-    // 自動バックアップ設定: 永続保存
-    currentSettings.autoBackupAssets = selected;
-    chrome.storage.local.set({ autoBackupAssets: selected });
-    updateBackupAssetsSummary();
-    closeBackupAssetsModal();
-  }
+  closeBackupAssetsModal();
+  executeManualBackupWithAssets(selected);
 }
 
 
@@ -3420,23 +3360,12 @@ chrome.runtime.onMessage.addListener((message) => {
     const btn = document.getElementById('manual-backup-button');
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '今すぐ手動バックアップ';
+      btn.textContent = '今すぐバックアップ';
     }
 
     if (message.success) {
       currentSettings.lastBackupTime = message.timestamp || Date.now();
-      // 自動バックアップが有効なら、次回時刻も更新する
-      if (currentSettings.autoBackupEnabled) {
-        const intervalMs = currentSettings.backupIntervalDays * 24 * 3600 * 1000;
-        const jitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000;
-        currentSettings.nextBackupTime = currentSettings.lastBackupTime + intervalMs + jitterMs;
-        chrome.storage.local.set({
-          lastBackupTime: currentSettings.lastBackupTime,
-          nextBackupTime: currentSettings.nextBackupTime
-        });
-      } else {
-        chrome.storage.local.set({ lastBackupTime: currentSettings.lastBackupTime });
-      }
+      chrome.storage.local.set({ lastBackupTime: currentSettings.lastBackupTime });
       updateBackupTimeDisplay();
 
       const recordCount = message.recordCount || 0;

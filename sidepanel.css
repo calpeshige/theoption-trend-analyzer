@@ -3017,6 +3017,99 @@ body {
   color: var(--md-sys-color-on-primary-container);
 }
 
+/* バックアップ催促モーダル(起動時) */
+.backup-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.backup-prompt-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--md-sys-color-surface-container);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 28px 24px;
+  width: calc(100% - 32px);
+  max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  text-align: center;
+}
+
+.backup-prompt-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.backup-prompt-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  margin: 0 0 12px 0;
+}
+
+.backup-prompt-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--md-sys-color-on-surface);
+  margin: 0 0 16px 0;
+}
+
+.backup-prompt-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-high);
+  padding: 12px 16px;
+  border-radius: var(--md-sys-shape-corner-small);
+  text-align: left;
+  margin: 0 0 20px 0;
+}
+
+.backup-prompt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.backup-prompt-cancel {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.backup-prompt-cancel:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.backup-prompt-ok {
+  flex: 2;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  border: none;
+  border-radius: var(--md-sys-shape-corner-small);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.backup-prompt-ok:hover {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
 /* ================================================
    Font Size Variants
    ================================================ */

@@ -31,6 +31,13 @@ chrome.runtime.onInstalled.addListener((details) => {
       });
     }, 500);
   }
+
+  // 拡張機能のインストール / 更新 / リロード時に、次回サイドパネル起動時に
+  // 催促モーダルを必ず表示するためのフラグを立てる (5日判定をスキップ)
+  if (details.reason === 'install' || details.reason === 'update' || details.reason === 'chrome_update') {
+    chrome.storage.local.set({ forceShowBackupPrompt: true });
+    debugLog('[Background] 起動時催促強制表示フラグを設定');
+  }
 });
 
 // TheOptionのトレーディングページでサイドパネルを有効化/無効化
@@ -382,142 +389,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ============================================================================
-// 自動バックアップ スケジュール管理
-// ============================================================================
-
-const BACKUP_ALARM_NAME = 'auto-backup-check';
-const BACKUP_CHECK_INTERVAL_MINUTES = 60; // 1時間に1回スケジュールチェック
-
-// 起動時にバックアップアラームを初期化
-chrome.runtime.onStartup.addListener(() => {
-  initBackupAlarm();
-});
-chrome.runtime.onInstalled.addListener(() => {
-  initBackupAlarm();
-});
-
-function initBackupAlarm() {
-  chrome.alarms.get(BACKUP_ALARM_NAME, (alarm) => {
-    if (!alarm) {
-      // 1時間ごとにチェック実行
-      chrome.alarms.create(BACKUP_ALARM_NAME, {
-        delayInMinutes: BACKUP_CHECK_INTERVAL_MINUTES,
-        periodInMinutes: BACKUP_CHECK_INTERVAL_MINUTES
-      });
-      debugLog('[Background] バックアップアラーム作成完了');
-    }
-  });
-}
-
-// アラーム発火時のハンドラ
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === BACKUP_ALARM_NAME) {
-    checkAndExecuteBackup();
-  }
-});
-
-// バックアップ実行判定
-async function checkAndExecuteBackup() {
-  try {
-    const settings = await chrome.storage.local.get([
-      'autoBackupEnabled',
-      'nextBackupTime',
-      'backupIntervalDays',
-      'lastBackupTime',
-      'backupInProgress',
-      'autoBackupAssets'
-    ]);
-
-    // 自動バックアップが無効
-    if (!settings.autoBackupEnabled) return;
-
-    // 対象通貨ペアが未設定 (空配列)
-    if (!Array.isArray(settings.autoBackupAssets) || settings.autoBackupAssets.length === 0) {
-      debugLog('[Background] 対象通貨ペアが未設定のため自動バックアップをスキップ');
-      return;
-    }
-
-    // 既に実行中
-    if (settings.backupInProgress) {
-      debugLog('[Background] バックアップ実行中のためスキップ');
-      return;
-    }
-
-    // 予定時刻にまだ達していない
-    const now = Date.now();
-    if (now < (settings.nextBackupTime || 0)) {
-      debugLog('[Background] 予定時刻未達のためスキップ');
-      return;
-    }
-
-    // TheOptionタブを探す
-    const tabs = await chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] });
-    if (!tabs || tabs.length === 0) {
-      debugLog('[Background] TheOptionタブが開かれていないためスキップ');
-      return;
-    }
-
-    // 取引中チェック (cachedAnalysisDataから判定)
-    if (cachedAnalysisData && isLikelyTrading(cachedAnalysisData)) {
-      debugLog('[Background] 取引中のためバックアップを延期');
-      return;
-    }
-
-    // 起動時遅延 (0〜10分のランダム遅延)
-    const startupDelay = Math.random() * 10 * 60 * 1000;
-    setTimeout(() => {
-      executeAutoBackup(tabs[0].id, settings.autoBackupAssets);
-    }, startupDelay);
-
-  } catch (error) {
-    console.error('[Background] バックアップチェックエラー:', error);
-  }
-}
-
-// 取引中判定 (シンプル: シグナルが発生中で残り時間が短い)
-function isLikelyTrading(analysisData) {
-  if (!analysisData) return false;
-  const countdown = analysisData.countdown;
-  // カウントダウンが10秒以内 = シグナル発生直前/直後の可能性
-  if (typeof countdown === 'number' && countdown <= 10 && countdown > 0) {
-    return true;
-  }
-  return false;
-}
-
-// 自動バックアップ実行
-async function executeAutoBackup(tabId, assetNames) {
-  await chrome.storage.local.set({ backupInProgress: true });
-
-  try {
-    chrome.tabs.sendMessage(tabId, {
-      type: 'EXECUTE_DOWNLOAD',
-      downloadType: 'AUTO_BACKUP',
-      assetNames: assetNames
-    });
-    debugLog('[Background] 自動バックアップ実行指示送信', assetNames ? `(対象: ${assetNames.length}件)` : '');
-  } catch (error) {
-    console.error('[Background] 自動バックアップ実行失敗:', error);
-    await chrome.storage.local.set({ backupInProgress: false });
-  }
-}
-
 // バックアップ完了通知をサイドパネルに転送
+// ============================================================================
+// (起動時催促方式に変更後、自動実行スケジュールは廃止。
+//  実行はサイドパネルからの REQUEST_DOWNLOAD で行う)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'BACKUP_COMPLETED') {
-    chrome.storage.local.set({ backupInProgress: false });
     chrome.runtime.sendMessage(message).catch(() => {});
-    return false;
-  }
-
-  // スケジュール更新通知 (情報のみ、特に処理不要だがログ用)
-  if (message.type === 'BACKUP_SCHEDULE_UPDATED') {
-    debugLog('[Background] バックアップ予定更新:', new Date(message.nextBackupTime).toISOString());
-    return false;
-  }
-
-  if (message.type === 'BACKUP_SCHEDULE_DISABLED') {
-    debugLog('[Background] バックアップ無効化');
     return false;
   }
 });

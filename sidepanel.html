@@ -337,42 +337,20 @@
           </button>
         </div>
 
-        <!-- コミュニティ自動バックアップ セクション -->
+        <!-- コミュニティバックアップ セクション -->
         <div class="download-section">
-          <h3 class="download-section-title">🤝 コミュニティ自動バックアップ</h3>
-          <p class="download-section-note">学習データを定期的にバックアップしつつ、コミュニティに共有します</p>
+          <h3 class="download-section-title">🤝 コミュニティバックアップ</h3>
+          <p class="download-section-note">起動時に5日に1回、バックアップを促す通知を表示します（取引中は中断しません）</p>
 
-          <!-- 自動バックアップ ON/OFF -->
+          <!-- 自動催促 ON/OFF -->
           <div class="setting-item">
             <div class="setting-item-content">
-              <span class="setting-item-label">自動バックアップ</span>
-              <span class="setting-item-description">PCに保存＆コミュニティへ提供</span>
+              <span class="setting-item-label">起動時の催促</span>
+              <span class="setting-item-description">5日に1回バックアップを促す</span>
             </div>
             <div class="toggle-switch" id="auto-backup-toggle">
               <div class="toggle-thumb"></div>
             </div>
-          </div>
-
-          <!-- バックアップ頻度 -->
-          <div class="setting-item">
-            <div class="setting-item-content">
-              <span class="setting-item-label">バックアップ頻度</span>
-              <span class="setting-item-description">どのくらいの間隔で実行するか</span>
-            </div>
-            <select class="select-input" id="backup-interval-select">
-              <option value="3">3日に1回</option>
-              <option value="7" selected>7日に1回</option>
-              <option value="14">14日に1回</option>
-            </select>
-          </div>
-
-          <!-- 対象通貨ペア -->
-          <div class="setting-item" id="backup-assets-row">
-            <div class="setting-item-content">
-              <span class="setting-item-label">対象通貨ペア</span>
-              <span class="setting-item-description" id="backup-assets-summary">未設定</span>
-            </div>
-            <button class="setting-link-button" id="select-backup-assets-button">設定</button>
           </div>
 
           <!-- 最終バックアップ -->
@@ -383,18 +361,10 @@
             </div>
           </div>
 
-          <!-- 次回バックアップ予定 -->
-          <div class="setting-item">
-            <div class="setting-item-content">
-              <span class="setting-item-label">次回バックアップ予定</span>
-              <span class="setting-item-description" id="next-backup-time">--</span>
-            </div>
-          </div>
-
           <!-- 今すぐ手動バックアップ -->
           <div class="setting-item">
             <button class="manual-backup-button" id="manual-backup-button">
-              今すぐ手動バックアップ
+              今すぐバックアップ
             </button>
           </div>
         </div>
@@ -597,6 +567,26 @@
     <div class="trim-overlay-content">
       <div class="trim-spinner"></div>
       <div class="trim-overlay-text">データ整理中...</div>
+    </div>
+  </div>
+
+  <!-- バックアップ催促モーダル(起動時のみ表示) -->
+  <div class="backup-prompt-overlay" id="backup-prompt-overlay" style="display: none;"></div>
+  <div class="backup-prompt-dialog" id="backup-prompt-dialog" style="display: none;">
+    <div class="backup-prompt-icon">🤝</div>
+    <h3 class="backup-prompt-title">そろそろバックアップの時期です</h3>
+    <p class="backup-prompt-message" id="backup-prompt-message">
+      前回のバックアップから5日が経過しました。<br>
+      データをバックアップしますか？
+    </p>
+    <p class="backup-prompt-note">
+      ・選んだ通貨ペアのデータがあなたのPCに保存されます<br>
+      ・同時にコミュニティへも共有されます<br>
+      ・後でも再度催促されます
+    </p>
+    <div class="backup-prompt-actions">
+      <button class="backup-prompt-cancel" id="backup-prompt-later">後で</button>
+      <button class="backup-prompt-ok" id="backup-prompt-execute">バックアップする</button>
     </div>
   </div>
 
