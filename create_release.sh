@@ -1,9 +1,14 @@
 #!/bin/bash
 
 # 配布用パッケージ作成スクリプト
+# manifest.json から自動的にバージョンを取得
 RELEASE_DIR="theoption_trend_release"
-VERSION="5.4.1"
+VERSION=$(grep '"version"' manifest.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 ZIP_NAME="Theoption_Trading_System_v${VERSION}.zip"
+# サイトのダウンロードリンクと一致する固定名のZIPも作る
+GENERIC_ZIP_NAME="theoption_trend_release.zip"
+
+echo "📋 バージョン: v${VERSION}"
 
 echo "📦 配布用パッケージ作成開始..."
 
@@ -37,6 +42,9 @@ cp db-manager.js "$RELEASE_DIR/"
 cp pattern-matching-system.js "$RELEASE_DIR/"
 cp pattern-stratification-system.js "$RELEASE_DIR/"
 cp signal-enhancer-system.js "$RELEASE_DIR/"
+cp enhanced-technical-analysis.js "$RELEASE_DIR/"
+cp advanced-signal-engine.js "$RELEASE_DIR/"
+cp signal-engine-20.js "$RELEASE_DIR/"
 cp theoption-analyzer.js "$RELEASE_DIR/"
 
 # scriptsフォルダ（Web Worker）
@@ -68,11 +76,17 @@ cp -r icons "$RELEASE_DIR/"
 echo "✅ soundフォルダをコピー"
 cp -r sound "$RELEASE_DIR/"
 
-# ZIPファイル作成
+# ZIPファイル作成 (バージョン付き名前と固定名の両方を作成)
 echo "🗜️  ZIPファイルを作成中..."
+# 既存のZIPを削除
+[ -f "$ZIP_NAME" ] && rm "$ZIP_NAME"
+[ -f "$GENERIC_ZIP_NAME" ] && rm "$GENERIC_ZIP_NAME"
+
 cd "$RELEASE_DIR"
 zip -r "../$ZIP_NAME" . > /dev/null 2>&1
 cd ..
+# サイトのダウンロードリンクと一致する固定名でもコピー
+cp "$ZIP_NAME" "$GENERIC_ZIP_NAME"
 
 # 完了メッセージ
 echo ""
@@ -80,7 +94,8 @@ echo "✅ 配布用パッケージ作成完了！"
 echo ""
 echo "📦 作成されたファイル:"
 echo "   フォルダ: $RELEASE_DIR/"
-echo "   ZIP: $ZIP_NAME"
+echo "   ZIP1 (バージョン付き): $ZIP_NAME"
+echo "   ZIP2 (固定名): $GENERIC_ZIP_NAME"
 echo ""
 echo "📊 含まれるファイル:"
 ls -1 "$RELEASE_DIR/" | sed 's/^/   - /'
