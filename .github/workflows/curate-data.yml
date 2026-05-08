@@ -1,0 +1,46 @@
+name: Curate Community Data
+
+on:
+  schedule:
+    # 毎日 03:00 JST (UTC 18:00)
+    - cron: '0 18 * * *'
+  # 手動実行可能
+  workflow_dispatch:
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install googleapis
+
+      - name: Run curation script
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/curate-from-drive.js
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/trading-manual.html data-meta/ || true
+          if git diff --staged --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "🤖 Auto-update community data $(date -u +%Y-%m-%d)"
+            git push
+          fi
