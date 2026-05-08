@@ -29,7 +29,13 @@ let currentSettings = {
   timeFilterMode: 'all', // 'all' | 'session'
   momentumFilterLevel: 2,  // v5.10.6: 0=OFF, 1=弱, 2=中, 3=強
   pricePositionFilterLevel: 2,  // v5.12.4: 0=OFF, 1=弱, 2=中, 3=強
-  signalMode: 'majority'  // 'majority'（多数決モード）| 'standard'（標準モード）
+  signalMode: 'majority',  // 'majority'（多数決モード）| 'standard'（標準モード）
+  // 自動バックアップ設定
+  autoBackupEnabled: false,        // 自動バックアップ ON/OFF
+  backupIntervalDays: 7,           // バックアップ頻度 (3 | 7 | 14)
+  lastBackupTime: 0,               // 最終バックアップ時刻 (UNIXタイムスタンプ ms)
+  nextBackupTime: 0,               // 次回バックアップ予定時刻 (UNIXタイムスタンプ ms)
+  backupConsentShown: false        // 初回ウェルカムダイアログ表示済みフラグ
 };
 
 // 状態管理
@@ -277,6 +283,72 @@ function loadSettings() {
     // v5.6.5: データ範囲のヒントを初期化
     updateDataLimitHint(dataLimit);
   });
+
+  // 自動バックアップ設定の読み込み
+  loadAutoBackupSettings();
+}
+
+// 自動バックアップ設定の読み込み
+function loadAutoBackupSettings() {
+  chrome.storage.local.get([
+    'autoBackupEnabled',
+    'backupIntervalDays',
+    'lastBackupTime',
+    'nextBackupTime',
+    'backupConsentShown'
+  ], (result) => {
+    currentSettings.autoBackupEnabled = result.autoBackupEnabled === true;
+    currentSettings.backupIntervalDays = result.backupIntervalDays || 7;
+    currentSettings.lastBackupTime = result.lastBackupTime || 0;
+    currentSettings.nextBackupTime = result.nextBackupTime || 0;
+    currentSettings.backupConsentShown = result.backupConsentShown === true;
+
+    // UIに反映
+    const toggle = document.getElementById('auto-backup-toggle');
+    if (toggle) {
+      toggle.classList.toggle('active', currentSettings.autoBackupEnabled);
+    }
+    const intervalSelect = document.getElementById('backup-interval-select');
+    if (intervalSelect) {
+      intervalSelect.value = String(currentSettings.backupIntervalDays);
+    }
+    updateBackupTimeDisplay();
+  });
+}
+
+// 最終バックアップ・次回予定の表示更新
+function updateBackupTimeDisplay() {
+  const lastEl = document.getElementById('last-backup-time');
+  const nextEl = document.getElementById('next-backup-time');
+
+  if (lastEl) {
+    if (currentSettings.lastBackupTime > 0) {
+      lastEl.textContent = formatBackupDateTime(currentSettings.lastBackupTime);
+    } else {
+      lastEl.textContent = '未実施';
+    }
+  }
+
+  if (nextEl) {
+    if (currentSettings.autoBackupEnabled && currentSettings.nextBackupTime > 0) {
+      nextEl.textContent = formatBackupDateTime(currentSettings.nextBackupTime);
+    } else if (!currentSettings.autoBackupEnabled) {
+      nextEl.textContent = '無効';
+    } else {
+      nextEl.textContent = '計算中...';
+    }
+  }
+}
+
+// バックアップ日時のフォーマット (例: "2026-05-15 14:30")
+function formatBackupDateTime(timestamp) {
+  const d = new Date(timestamp);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
 // イベントリスナー設定
@@ -424,6 +496,24 @@ function setupEventListeners() {
   });
   document.getElementById('close-session-data').addEventListener('click', closeSessionDataModal);
   document.getElementById('session-data-overlay').addEventListener('click', closeSessionDataModal);
+
+  // 自動バックアップ: トグルクリック
+  const autoBackupToggle = document.getElementById('auto-backup-toggle');
+  if (autoBackupToggle) {
+    autoBackupToggle.addEventListener('click', handleAutoBackupToggle);
+  }
+
+  // 自動バックアップ: 頻度変更
+  const intervalSelect = document.getElementById('backup-interval-select');
+  if (intervalSelect) {
+    intervalSelect.addEventListener('change', handleBackupIntervalChange);
+  }
+
+  // 自動バックアップ: 手動実行ボタン
+  const manualBtn = document.getElementById('manual-backup-button');
+  if (manualBtn) {
+    manualBtn.addEventListener('click', handleManualBackup);
+  }
 }
 
 // 設定パネル開閉
@@ -2971,6 +3061,210 @@ function startSignal20Polling() {
     });
   }, 2000); // 2秒ごと
 }
+
+
+// ============================================================================
+// 自動バックアップ ハンドラ群
+// ============================================================================
+
+// 自動バックアップ ON/OFF トグル
+function handleAutoBackupToggle() {
+  const toggle = document.getElementById('auto-backup-toggle');
+  if (!toggle) return;
+
+  const currentlyEnabled = currentSettings.autoBackupEnabled;
+
+  if (!currentlyEnabled) {
+    // OFF → ON: 初回または同意未取得ならウェルカムダイアログを表示
+    if (!currentSettings.backupConsentShown) {
+      showBackupWelcomeDialog();
+    } else {
+      enableAutoBackup();
+    }
+  } else {
+    // ON → OFF: 確認なしで無効化
+    disableAutoBackup();
+  }
+}
+
+// バックアップ頻度変更
+function handleBackupIntervalChange(e) {
+  const days = parseInt(e.target.value);
+  if (![3, 7, 14].includes(days)) return;
+
+  currentSettings.backupIntervalDays = days;
+  chrome.storage.local.set({ backupIntervalDays: days });
+
+  // 自動バックアップが有効なら次回予定を再計算
+  if (currentSettings.autoBackupEnabled) {
+    recalculateNextBackupTime();
+  }
+  updateBackupTimeDisplay();
+  debugLog('[SidePanel] バックアップ頻度変更:', days, '日');
+}
+
+// 手動バックアップボタン
+function handleManualBackup() {
+  const btn = document.getElementById('manual-backup-button');
+  if (!btn) return;
+
+  const confirmed = confirm(
+    '🤝 手動バックアップを実行します\n\n' +
+    '・あなたのPCに学習データのJSONがダウンロードされます\n' +
+    '・同時にコミュニティへも自動共有されます\n\n' +
+    '実行しますか？'
+  );
+
+  if (!confirmed) return;
+
+  btn.disabled = true;
+  btn.textContent = 'バックアップ実行中...';
+
+  // background.js経由でtheoption-analyzer.jsの実行関数を呼び出す
+  chrome.runtime.sendMessage(
+    { type: 'REQUEST_DOWNLOAD', downloadType: 'AUTO_BACKUP' },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('[SidePanel] バックアップ要求エラー:', chrome.runtime.lastError.message);
+        alert('❌ バックアップ要求に失敗しました\n' + chrome.runtime.lastError.message);
+      } else {
+        debugLog('[SidePanel] バックアップ要求送信完了');
+      }
+      // ボタン状態は完了通知で更新するため、ここでは戻さない
+      // タイムアウト保険: 5分後に強制リセット
+      setTimeout(() => {
+        if (btn.disabled) {
+          btn.disabled = false;
+          btn.textContent = '今すぐ手動バックアップ';
+        }
+      }, 5 * 60 * 1000);
+    }
+  );
+}
+
+// 初回ウェルカムダイアログ
+function showBackupWelcomeDialog() {
+  const message =
+    '🎁 自動バックアップ機能のご案内\n\n' +
+    'この機能を有効にすると、AI学習データが自動でバックアップされ、\n' +
+    'データ消失のリスクから守られます。\n\n' +
+    '【動作内容】\n' +
+    '・7日に1回（変更可能）、自動でバックアップを実行\n' +
+    '・バックアップファイルがあなたのPCに保存される\n' +
+    '・同時にコミュニティへも匿名で共有される\n' +
+    '・他のユーザーが提供したデータも、後でダウンロードして取り込める\n\n' +
+    '【ご注意】\n' +
+    '・データには個人を特定する情報は含まれません\n' +
+    '・取引中はバックアップが実行されないよう自動制御されます\n' +
+    '・いつでも設定からOFFにできます\n\n' +
+    'コミュニティに貢献するため、自動バックアップを有効化しますか？';
+
+  if (confirm(message)) {
+    currentSettings.backupConsentShown = true;
+    chrome.storage.local.set({ backupConsentShown: true });
+    enableAutoBackup();
+  } else {
+    // 拒否時は同意未取得のままにし、トグルは引き続きOFF
+    const toggle = document.getElementById('auto-backup-toggle');
+    if (toggle) toggle.classList.remove('active');
+  }
+}
+
+// 自動バックアップを有効化
+function enableAutoBackup() {
+  currentSettings.autoBackupEnabled = true;
+
+  // 初回バックアップ時刻 = 今から3〜10日後のランダム
+  const now = Date.now();
+  const initialDelayDays = 3 + Math.random() * 7;  // 3〜10日のランダム
+  const initialJitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000; // ±2時間
+  const nextBackup = now + initialDelayDays * 24 * 3600 * 1000 + initialJitterMs;
+
+  currentSettings.nextBackupTime = nextBackup;
+
+  chrome.storage.local.set({
+    autoBackupEnabled: true,
+    nextBackupTime: nextBackup,
+    backupIntervalDays: currentSettings.backupIntervalDays
+  });
+
+  // UI更新
+  const toggle = document.getElementById('auto-backup-toggle');
+  if (toggle) toggle.classList.add('active');
+  updateBackupTimeDisplay();
+
+  // background.js にスケジュール開始を通知
+  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_UPDATED', nextBackupTime: nextBackup });
+
+  debugLog('[SidePanel] 自動バックアップ有効化, 次回:', new Date(nextBackup).toISOString());
+}
+
+// 自動バックアップを無効化
+function disableAutoBackup() {
+  currentSettings.autoBackupEnabled = false;
+  chrome.storage.local.set({ autoBackupEnabled: false });
+
+  const toggle = document.getElementById('auto-backup-toggle');
+  if (toggle) toggle.classList.remove('active');
+  updateBackupTimeDisplay();
+
+  // background.js にスケジュール停止を通知
+  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_DISABLED' });
+
+  debugLog('[SidePanel] 自動バックアップ無効化');
+}
+
+// 次回バックアップ時刻を再計算（頻度変更時など）
+function recalculateNextBackupTime() {
+  const now = Date.now();
+  const lastBackup = currentSettings.lastBackupTime || now;
+  const intervalMs = currentSettings.backupIntervalDays * 24 * 3600 * 1000;
+  const jitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000; // ±2時間
+  const nextBackup = lastBackup + intervalMs + jitterMs;
+
+  currentSettings.nextBackupTime = nextBackup;
+  chrome.storage.local.set({ nextBackupTime: nextBackup });
+
+  chrome.runtime.sendMessage({ type: 'BACKUP_SCHEDULE_UPDATED', nextBackupTime: nextBackup });
+}
+
+// バックアップ完了通知の受信(background.js から転送)
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'BACKUP_COMPLETED') {
+    const btn = document.getElementById('manual-backup-button');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '今すぐ手動バックアップ';
+    }
+
+    if (message.success) {
+      currentSettings.lastBackupTime = message.timestamp || Date.now();
+      // 自動バックアップが有効なら、次回時刻も更新する
+      if (currentSettings.autoBackupEnabled) {
+        const intervalMs = currentSettings.backupIntervalDays * 24 * 3600 * 1000;
+        const jitterMs = (Math.random() - 0.5) * 4 * 3600 * 1000;
+        currentSettings.nextBackupTime = currentSettings.lastBackupTime + intervalMs + jitterMs;
+        chrome.storage.local.set({
+          lastBackupTime: currentSettings.lastBackupTime,
+          nextBackupTime: currentSettings.nextBackupTime
+        });
+      } else {
+        chrome.storage.local.set({ lastBackupTime: currentSettings.lastBackupTime });
+      }
+      updateBackupTimeDisplay();
+
+      const recordCount = message.recordCount || 0;
+      const fileCount = message.fileCount || 0;
+      alert(
+        '✅ バックアップが完了しました\n\n' +
+        `処理した通貨ペア: ${fileCount}件\n` +
+        `処理したレコード: ${recordCount.toLocaleString()}件`
+      );
+    } else {
+      alert('❌ バックアップに失敗しました\n\n' + (message.error || '不明なエラー'));
+    }
+  }
+});
 
 
 debugLog('[SidePanel] Material Design 3 スクリプト読み込み完了');

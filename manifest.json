@@ -6,7 +6,9 @@
   "permissions": [
     "storage",
     "unlimitedStorage",
-    "sidePanel"
+    "sidePanel",
+    "alarms",
+    "downloads"
   ],
   "side_panel": {
     "default_path": "sidepanel.html"
@@ -18,7 +20,9 @@
     "https://jp.theoption.com/*",
     "https://theoption.com/*",
     "https://platformapi.theoption.com/*",
-    "https://firestore.googleapis.com/*"
+    "https://firestore.googleapis.com/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
   ],
   "content_scripts": [
     {

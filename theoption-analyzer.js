@@ -6029,7 +6029,7 @@ function initializeAnalyzer() {
       // ファイル入力要素を動的に作成（複数ファイル選択可能）
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
-      fileInput.accept = '.json';
+      fileInput.accept = '.json,.gz';
       fileInput.multiple = true; // 複数ファイル選択を有効化
       fileInput.style.display = 'none';
       document.body.appendChild(fileInput);
@@ -6120,13 +6120,32 @@ function initializeAnalyzer() {
 
     // 単一ファイルの処理（ストリーミング対応）
     async function processImportFile(file, dbManager) {
-      const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
-      console.log(`[JSON Import] ファイル処理開始: ${file.name} (${fileSizeMB}MB)`);
+      const originalSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      console.log(`[JSON Import] ファイル処理開始: ${file.name} (${originalSizeMB}MB)`);
+
+      // gzip圧縮ファイル(.json.gz)の場合は解凍してから処理
+      let actualFile = file;
+      if (file.name.endsWith('.gz')) {
+        console.log(`[JSON Import] 🗜️ gzipファイル検出 - 解凍中...`);
+        try {
+          const decompressedStream = file.stream().pipeThrough(new DecompressionStream('gzip'));
+          const decompressedBlob = await new Response(decompressedStream).blob();
+          const decompressedName = file.name.replace(/\.gz$/, '');
+          actualFile = new File([decompressedBlob], decompressedName, { type: 'application/json' });
+          const decompressedSizeMB = (actualFile.size / 1024 / 1024).toFixed(2);
+          console.log(`[JSON Import] ✅ 解凍完了: ${originalSizeMB}MB → ${decompressedSizeMB}MB`);
+        } catch (err) {
+          console.error('[JSON Import] gzip解凍エラー:', err);
+          return { imported: 0, errors: 1 };
+        }
+      }
+
+      const fileSizeMB = (actualFile.size / 1024 / 1024).toFixed(2);
 
       // 100MB以上のファイルはストリーミング処理
-      if (file.size > 100 * 1024 * 1024) {
+      if (actualFile.size > 100 * 1024 * 1024) {
         console.log(`[JSON Import] 大容量ファイル検出 - ストリーミングモードで処理`);
-        return processLargeImportFile(file, dbManager);
+        return processLargeImportFile(actualFile, dbManager);
       }
 
       return new Promise((resolve, reject) => {
@@ -6139,7 +6158,7 @@ function initializeAnalyzer() {
             // データ検証
             const validation = validateImportData(data);
             if (!validation.valid) {
-              console.error(`[JSON Import] 検証エラー (${file.name}):`, validation.error);
+              console.error(`[JSON Import] 検証エラー (${actualFile.name}):`, validation.error);
               resolve({ imported: 0, errors: 1 });
               return;
             }
@@ -6164,17 +6183,17 @@ function initializeAnalyzer() {
               }
             }
 
-            console.log(`[JSON Import] ${file.name}: ${importedCount}件インポート`);
+            console.log(`[JSON Import] ${actualFile.name}: ${importedCount}件インポート`);
             resolve({ imported: importedCount, errors: errorCount });
 
           } catch (error) {
-            console.error(`[JSON Import] パースエラー (${file.name}):`, error);
+            console.error(`[JSON Import] パースエラー (${actualFile.name}):`, error);
             reject(error);
           }
         };
 
         reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
+        reader.readAsText(actualFile);
       });
     }
 
@@ -6392,6 +6411,264 @@ function initializeAnalyzer() {
       };
     }
 
+    // ========================================
+    // 自動バックアップ機能 (Phase 2-5/6)
+    // ========================================
+
+    // Webhook URL (Phase 1で取得したApps ScriptのデプロイURL)
+    const COMMUNITY_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzHcPy5Fosqv7jPCTDInqAAgV-0P8YOnLIQy8cpQvxnqt2L7m9H_eS55jJ5NqWd7eSaQg/exec';
+    const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB (Apps Scriptの50MB制限を考慮し安全マージン)
+
+    // 自動バックアップ実行
+    async function executeAutoBackup() {
+      console.log('[AutoBackup] 🤝 自動バックアップ開始');
+      const startTime = Date.now();
+
+      try {
+        const dbManager = new DBManager();
+        await dbManager.init();
+
+        const assetList = await dbManager.getAssetList();
+
+        if (assetList.length === 0) {
+          console.log('[AutoBackup] バックアップ対象データなし');
+          notifyBackupCompleted({
+            success: false,
+            error: 'バックアップ可能なデータがありません',
+            recordCount: 0,
+            fileCount: 0
+          });
+          return;
+        }
+
+        // ユニークID(同一バックアップセッションを識別)
+        const uploadId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        let totalRecords = 0;
+        let processedAssets = 0;
+        let failedAssets = 0;
+
+        // 進捗表示
+        const progressId = 'auto-backup-progress-' + Date.now();
+        showAutoBackupProgress(progressId, assetList.length);
+
+        for (const { assetName, count } of assetList) {
+          try {
+            updateAutoBackupProgress(progressId, processedAssets, assetList.length, assetName);
+
+            // 1. ストリーミングエクスポート (既存のメソッド流用)
+            const result = await dbManager.streamExport(assetName);
+            if (!result || !result.blob) {
+              console.warn(`[AutoBackup] ${assetName}: データ取得失敗`);
+              failedAssets++;
+              processedAssets++;
+              continue;
+            }
+
+            // 2. ローカル保存(ユーザーのDLフォルダへ)
+            const safeAssetName = assetName.replace(/\//g, '_');
+            const filename = `theoption_backup_${safeAssetName}_${dateStr}.json`;
+            const localUrl = URL.createObjectURL(result.blob);
+            const link = document.createElement('a');
+            link.href = localUrl;
+            link.download = filename;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(localUrl);
+
+            console.log(`[AutoBackup] 💾 ${assetName}: ローカル保存完了 (${result.recordCount}件)`);
+
+            // 3. gzip圧縮
+            const compressedBlob = await compressBlob(result.blob);
+            const compressionRatio = ((1 - compressedBlob.size / result.blob.size) * 100).toFixed(1);
+            console.log(`[AutoBackup] 🗜️ ${assetName}: gzip圧縮完了 (${(compressedBlob.size / 1024 / 1024).toFixed(2)}MB, 圧縮率${compressionRatio}%)`);
+
+            // 4. Webhook送信(チャンク分割)
+            const sentSuccess = await uploadInChunks(uploadId, assetName, compressedBlob);
+            if (sentSuccess) {
+              console.log(`[AutoBackup] ☁️ ${assetName}: コミュニティ提供完了`);
+              totalRecords += result.recordCount;
+            } else {
+              console.warn(`[AutoBackup] ☁️ ${assetName}: コミュニティ提供失敗`);
+              failedAssets++;
+            }
+            processedAssets++;
+
+          } catch (assetError) {
+            console.error(`[AutoBackup] ${assetName} 処理エラー:`, assetError);
+            failedAssets++;
+            processedAssets++;
+          }
+        }
+
+        hideAutoBackupProgress(progressId);
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[AutoBackup] ✅ 完了: ${processedAssets - failedAssets}/${assetList.length} 成功, ${totalRecords}件, ${duration}秒`);
+
+        notifyBackupCompleted({
+          success: failedAssets < assetList.length,
+          recordCount: totalRecords,
+          fileCount: processedAssets - failedAssets,
+          failedCount: failedAssets,
+          timestamp: Date.now()
+        });
+
+      } catch (error) {
+        console.error('[AutoBackup] エラー:', error);
+        notifyBackupCompleted({
+          success: false,
+          error: error.message,
+          recordCount: 0,
+          fileCount: 0
+        });
+      }
+    }
+
+    // チャンク分割してWebhookに送信
+    async function uploadInChunks(uploadId, assetName, compressedBlob) {
+      const totalSize = compressedBlob.size;
+      const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+
+      console.log(`[AutoBackup] 📤 ${assetName}: ${totalChunks}チャンクで送信開始`);
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, totalSize);
+        const chunkBlob = compressedBlob.slice(start, end);
+        const base64 = await blobToBase64(chunkBlob);
+
+        try {
+          const response = await fetch(COMMUNITY_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              uploadId,
+              chunkIndex: i,
+              totalChunks,
+              assetName,
+              dataBase64: base64
+            })
+          });
+
+          const result = await response.json();
+          if (!result.success) {
+            console.error(`[AutoBackup] チャンク${i + 1}/${totalChunks} 送信失敗:`, result.error);
+            return false;
+          }
+
+          console.log(`[AutoBackup] ✓ ${assetName} チャンク${i + 1}/${totalChunks} 送信完了`);
+        } catch (err) {
+          console.error(`[AutoBackup] チャンク${i + 1}/${totalChunks} 通信エラー:`, err);
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    // Blob を gzip 圧縮 (CompressionStream使用)
+    async function compressBlob(blob) {
+      try {
+        const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+        return await new Response(stream).blob();
+      } catch (err) {
+        console.error('[AutoBackup] gzip圧縮エラー:', err);
+        throw err;
+      }
+    }
+
+    // Blob を Base64 文字列に変換
+    async function blobToBase64(blob) {
+      const buffer = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      const CHUNK = 8192;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      return btoa(binary);
+    }
+
+    // バックアップ完了通知 (background.js経由でサイドパネルに転送)
+    function notifyBackupCompleted(result) {
+      chrome.runtime.sendMessage({
+        type: 'BACKUP_COMPLETED',
+        ...result
+      }).catch(err => {
+        console.warn('[AutoBackup] 完了通知送信失敗:', err);
+      });
+    }
+
+    // 進捗表示 UI
+    function showAutoBackupProgress(id, totalAssets) {
+      const html = `
+        <div id="${id}" style="
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #1a1a2e;
+          border-radius: 12px;
+          padding: 16px 20px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          z-index: 999999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          color: #fff;
+          min-width: 280px;
+        ">
+          <div style="margin-bottom: 8px; font-size: 14px; color: #a0aec0;">
+            🤝 自動バックアップ実行中...
+          </div>
+          <div id="${id}-asset" style="
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #718096;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          ">準備中...</div>
+          <div style="
+            background: #2d3748;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+          ">
+            <div id="${id}-bar" style="
+              background: linear-gradient(90deg, #667eea, #764ba2);
+              height: 100%;
+              width: 0%;
+              transition: width 0.3s;
+            "></div>
+          </div>
+          <div id="${id}-text" style="
+            margin-top: 6px;
+            font-size: 12px;
+            color: #718096;
+            text-align: right;
+          ">0 / ${totalAssets} 通貨ペア</div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    function updateAutoBackupProgress(id, current, total, assetName) {
+      const percent = Math.round((current / total) * 100);
+      const bar = document.getElementById(`${id}-bar`);
+      const text = document.getElementById(`${id}-text`);
+      const assetEl = document.getElementById(`${id}-asset`);
+      if (bar) bar.style.width = `${percent}%`;
+      if (text) text.textContent = `${current} / ${total} 通貨ペア`;
+      if (assetEl) assetEl.textContent = `処理中: ${assetName}`;
+    }
+
+    function hideAutoBackupProgress(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
 
     // ========================================
     // メッセージリスナーを登録（関数定義後）
@@ -6417,6 +6694,9 @@ function initializeAnalyzer() {
               break;
             case 'IMPORT_JSON':
               importDataFromJSON();
+              break;
+            case 'AUTO_BACKUP':
+              executeAutoBackup();
               break;
             default:
               console.warn('[TheOption Analyzer] 不明なダウンロードタイプ:', message.downloadType);
