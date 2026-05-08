@@ -387,13 +387,34 @@ async function processSession(drive, sessionKey, group) {
  *
  * stream-json v2 の chain() パターンを使用してパイプラインを構築:
  *   Readable → parser → pick (theoption_ml_*) → streamArray → records
+ *
+ * 注意: 大容量バッファをそのまま Readable.from に渡すと、内部で文字列化を
+ * 試みて Node.js の文字列上限(0x1fffffe8)を超えてしまうため、
+ * 16MBずつのチャンクに分割した自作Readableを使う。
  */
 function parseRecordsStreaming(buffer) {
   return new Promise((resolve, reject) => {
     const records = [];
 
+    // 16MB チャンクで送り出す Readable を作成 (文字列化を回避)
+    const CHUNK_SIZE = 16 * 1024 * 1024;
+    let offset = 0;
+
+    const source = new Readable({
+      read() {
+        if (offset >= buffer.length) {
+          this.push(null); // ストリーム終端
+          return;
+        }
+        const end = Math.min(offset + CHUNK_SIZE, buffer.length);
+        const chunk = buffer.subarray(offset, end);
+        offset = end;
+        this.push(chunk);
+      }
+    });
+
     const pipeline = chain([
-      Readable.from(buffer),
+      source,
       parser(),
       pick({ filter: /^theoption_ml_/ }),
       streamArray()
