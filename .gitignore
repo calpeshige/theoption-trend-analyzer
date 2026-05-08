@@ -32,3 +32,12 @@ Theoption_Trading_System_v*.zip
 # Landing page (separate repository)
 landing_page/
 json check/
+
+# Secret credentials (NEVER commit)
+key/
+*-credentials.json
+*-service-account.json
+**/*service-account*.json
+**/*serviceAccount*.json
+.env
+.env.local
