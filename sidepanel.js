@@ -2895,7 +2895,11 @@ function updateMLStatus(mlStats) {
     }
   }
 
-  // 値が変わっていない場合は更新をスキップ
+  // データ鮮度・データ整理ボタンは件数変動と無関係に毎回更新する
+  // (件数が安定している間も freshness が更新される可能性があるため)
+  updateMLFreshnessAndTrimButton(mlStats, displayDataCount);
+
+  // 値が変わっていない場合は件数・学習レベルの更新をスキップ
   if (lastMLStats.dataCount === displayDataCount &&
       lastMLStats.learningLevel === learningLevel) {
     return;
@@ -2918,7 +2922,11 @@ function updateMLStatus(mlStats) {
     const progress = Math.min(100, (displayDataCount / 25000) * 100);
     progressBar.style.width = `${progress}%`;
   }
+}
 
+// データ鮮度の星表示と「データ整理」ボタンを更新
+// データ件数が変わらなくても毎回呼ぶ (鮮度は時間経過で変わるため)
+function updateMLFreshnessAndTrimButton(mlStats, displayDataCount) {
   // v5.10.4: データ鮮度表示
   const freshnessEl = document.getElementById('ml-freshness');
   const freshnessStarsEl = document.getElementById('ml-freshness-stars');
