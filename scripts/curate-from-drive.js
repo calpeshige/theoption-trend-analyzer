@@ -13,10 +13,15 @@
  */
 
 import { google } from 'googleapis';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync, createGunzip } from 'node:zlib';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Readable } from 'node:stream';
+import { parser } from 'stream-json';
+import StreamArray from 'stream-json/streamers/StreamArray.js';
+import StreamObject from 'stream-json/streamers/StreamObject.js';
+import { pick } from 'stream-json/filters/Pick.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -161,23 +166,11 @@ async function main() {
   log('📝 trading-manual.html を更新中...');
   updateManualHtml(allMeta);
 
-  // 7. 処理済みのDriveファイルをゴミ箱に移動 (30日後に完全削除される)
-  // サービスアカウントは他人がオーナーのファイルを完全削除できないため、ゴミ箱に移動する方式を採用
+  // 7. 処理済みのDriveファイルを Apps Script 経由でゴミ箱移動
+  // サービスアカウントは他人がオーナーのファイルを操作できないため、
+  // オーナー(Apps Scriptのデプロイユーザー)経由でゴミ箱に移動する
   if (processedFileIds.length > 0) {
-    log(`🗑️ 処理済みファイル ${processedFileIds.length} 件をゴミ箱に移動中...`);
-    let trashed = 0;
-    for (const fileId of processedFileIds) {
-      try {
-        await drive.files.update({
-          fileId,
-          requestBody: { trashed: true }
-        });
-        trashed++;
-      } catch (err) {
-        log(`  ✗ ゴミ箱移動失敗 ${fileId}: ${err.message}`);
-      }
-    }
-    log(`  ✓ ${trashed}/${processedFileIds.length} 件をゴミ箱に移動完了 (30日後に自動完全削除)`);
+    await deleteFilesViaAppsScript(processedFileIds);
   }
 
   // クリーンアップ
@@ -214,6 +207,71 @@ async function downloadDriveFile(drive, fileId) {
     { responseType: 'arraybuffer' }
   );
   return Buffer.from(res.data);
+}
+
+// =============================================================================
+// Apps Script 経由のファイル削除 (オーナー権限で実行)
+// =============================================================================
+
+async function deleteFilesViaAppsScript(fileIds) {
+  const webhookUrl = process.env.APPS_SCRIPT_WEBHOOK_URL;
+  const deleteSecret = process.env.DELETE_SECRET;
+
+  if (!webhookUrl || !deleteSecret) {
+    log(`  ⚠ APPS_SCRIPT_WEBHOOK_URL / DELETE_SECRET が未設定のため、ゴミ箱移動をスキップ`);
+    return;
+  }
+
+  log(`🗑️ 処理済みファイル ${fileIds.length} 件を Apps Script 経由でゴミ箱に移動中...`);
+
+  // 1リクエストあたり最大100件ずつ送る (Apps Scriptの実行時間制限考慮)
+  const BATCH_SIZE = 100;
+  let totalDeleted = 0;
+  let totalFailed = 0;
+
+  for (let i = 0; i < fileIds.length; i += BATCH_SIZE) {
+    const batch = fileIds.slice(i, i + BATCH_SIZE);
+    try {
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'delete',
+          secret: deleteSecret,
+          fileIds: batch
+        }),
+        redirect: 'follow'
+      });
+
+      if (!res.ok) {
+        log(`  ✗ バッチ削除失敗 HTTP ${res.status}`);
+        totalFailed += batch.length;
+        continue;
+      }
+
+      const json = await res.json();
+      if (json.success) {
+        totalDeleted += json.deleted || 0;
+        totalFailed += json.failed || 0;
+        if (json.errors && json.errors.length > 0) {
+          for (const err of json.errors.slice(0, 5)) {
+            log(`  ✗ ${err}`);
+          }
+          if (json.errors.length > 5) {
+            log(`  ... ほか ${json.errors.length - 5} 件のエラー`);
+          }
+        }
+      } else {
+        log(`  ✗ バッチ削除失敗: ${json.error}`);
+        totalFailed += batch.length;
+      }
+    } catch (err) {
+      log(`  ✗ バッチ削除リクエスト失敗: ${err.message}`);
+      totalFailed += batch.length;
+    }
+  }
+
+  log(`  ✓ ${totalDeleted}/${fileIds.length} 件をゴミ箱に移動完了 (失敗${totalFailed}件)`);
 }
 
 // =============================================================================
@@ -279,7 +337,7 @@ async function processSession(drive, sessionKey, group) {
   }
   const combined = Buffer.concat(buffers);
 
-  // gzip解凍
+  // gzip解凍 (バッファのまま、文字列化しない)
   let decompressed;
   try {
     decompressed = gunzipSync(combined);
@@ -287,21 +345,63 @@ async function processSession(drive, sessionKey, group) {
     throw new Error(`gzip解凍失敗: ${err.message}`);
   }
 
-  // JSONパース
-  let parsed;
-  try {
-    parsed = JSON.parse(decompressed.toString('utf8'));
-  } catch (err) {
-    throw new Error(`JSON.parse失敗: ${err.message}`);
-  }
+  // データサイズに応じてパース方法を選択
+  // 約400MB以上の文字列は Node.js の上限超過リスクがあるためストリーミング
+  const SIZE_THRESHOLD = 400 * 1024 * 1024;
 
-  // 構造検証
-  const validated = validateAndExtractRecords(parsed);
-  if (!validated.records.length) {
-    throw new Error('有効なレコードが0件');
+  if (decompressed.length < SIZE_THRESHOLD) {
+    // 通常サイズ: JSON.parse 一括
+    let parsed;
+    try {
+      parsed = JSON.parse(decompressed.toString('utf8'));
+    } catch (err) {
+      throw new Error(`JSON.parse失敗: ${err.message}`);
+    }
+    const validated = validateAndExtractRecords(parsed);
+    if (!validated.records.length) {
+      throw new Error('有効なレコードが0件');
+    }
+    return validated.records;
+  } else {
+    // 大容量: ストリーミングパース (文字列化しない)
+    log(`  ⚙ ${sessionKey}: 大容量データ(${(decompressed.length / 1024 / 1024).toFixed(0)}MB) ストリーミングモードでパース`);
+    const records = await parseRecordsStreaming(decompressed);
+    if (!records.length) {
+      throw new Error('有効なレコードが0件');
+    }
+    return records;
   }
+}
 
-  return validated.records;
+/**
+ * ストリーミングJSONパーサーで大容量データを処理する
+ * 期待構造: { "theoption_ml_<asset>": [ {timestamp, price, ...}, ... ] }
+ */
+function parseRecordsStreaming(buffer) {
+  return new Promise((resolve, reject) => {
+    const records = [];
+    const stream = Readable.from(buffer);
+
+    // pickで "theoption_ml_*" キーの値(配列)を選択 → StreamArrayで要素を1つずつ
+    const pipeline = stream
+      .pipe(parser())
+      .pipe(pick({ filter: /^theoption_ml_/ }))
+      .pipe(StreamArray.streamArray());
+
+    pipeline.on('data', ({ value }) => {
+      if (isValidRecord(value)) {
+        records.push(value);
+      }
+    });
+
+    pipeline.on('end', () => {
+      resolve(records);
+    });
+
+    pipeline.on('error', (err) => {
+      reject(new Error(`ストリーミングパース失敗: ${err.message}`));
+    });
+  });
 }
 
 /**
