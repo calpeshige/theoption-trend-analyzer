@@ -3355,45 +3355,42 @@ function saveBackupAssetsSelection() {
 
 
 // バックアップ完了通知の受信
-// 重複処理防止: 同一バックアップ完了通知が複数経路から来ても1回しか処理しない
-const _processedBackupCompletions = new Set();
+// 強固な重複処理防止: 直近10秒以内のBACKUP_COMPLETEDメッセージは無視する
+// (複数タブからの同時送信、サイドパネル再読み込み時のリスナー多重登録などへの対処)
+let _lastBackupAlertTime = 0;
+const BACKUP_ALERT_COOLDOWN_MS = 10000; // 10秒
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'BACKUP_COMPLETED') {
-    // 重複チェック: timestamp で識別 (同じ完了通知を2回以上処理しない)
-    const completionId = String(message.timestamp || Date.now());
-    if (_processedBackupCompletions.has(completionId)) {
-      return; // すでに処理済み
-    }
-    _processedBackupCompletions.add(completionId);
+  if (message.type !== 'BACKUP_COMPLETED') return;
 
-    // 古いIDを掃除 (メモリリーク防止: 100件超えたら古いものから削除)
-    if (_processedBackupCompletions.size > 100) {
-      const firstKey = _processedBackupCompletions.values().next().value;
-      _processedBackupCompletions.delete(firstKey);
-    }
+  const now = Date.now();
+  if (now - _lastBackupAlertTime < BACKUP_ALERT_COOLDOWN_MS) {
+    // 直前10秒以内に既に処理済み → 重複とみなしてスキップ
+    debugLog('[SidePanel] 重複BACKUP_COMPLETEDを抑制', message);
+    return;
+  }
+  _lastBackupAlertTime = now;
 
-    const btn = document.getElementById('manual-backup-button');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '今すぐバックアップ';
-    }
+  const btn = document.getElementById('manual-backup-button');
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = '今すぐバックアップ';
+  }
 
-    if (message.success) {
-      currentSettings.lastBackupTime = message.timestamp || Date.now();
-      chrome.storage.local.set({ lastBackupTime: currentSettings.lastBackupTime });
-      updateBackupTimeDisplay();
+  if (message.success) {
+    currentSettings.lastBackupTime = message.timestamp || Date.now();
+    chrome.storage.local.set({ lastBackupTime: currentSettings.lastBackupTime });
+    updateBackupTimeDisplay();
 
-      const recordCount = message.recordCount || 0;
-      const fileCount = message.fileCount || 0;
-      alert(
-        '✅ バックアップが完了しました\n\n' +
-        `処理した通貨ペア: ${fileCount}件\n` +
-        `処理したレコード: ${recordCount.toLocaleString()}件`
-      );
-    } else {
-      alert('❌ バックアップに失敗しました\n\n' + (message.error || '不明なエラー'));
-    }
+    const recordCount = message.recordCount || 0;
+    const fileCount = message.fileCount || 0;
+    alert(
+      '✅ バックアップが完了しました\n\n' +
+      `処理した通貨ペア: ${fileCount}件\n` +
+      `処理したレコード: ${recordCount.toLocaleString()}件`
+    );
+  } else {
+    alert('❌ バックアップに失敗しました\n\n' + (message.error || '不明なエラー'));
   }
 });
 

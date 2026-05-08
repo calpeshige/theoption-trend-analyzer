@@ -6600,8 +6600,18 @@ function initializeAnalyzer() {
       return btoa(binary);
     }
 
-    // バックアップ完了通知 (background.js経由でサイドパネルに転送)
+    // バックアップ完了通知 (サイドパネルへ送信)
+    // 短時間に同じ通知が複数回送られないようにクールダウンを設ける
+    let _lastBackupNotifyTime = 0;
     function notifyBackupCompleted(result) {
+      const now = Date.now();
+      if (now - _lastBackupNotifyTime < 5000) {
+        // 直前5秒以内に既に通知済み → スキップ
+        console.log('[AutoBackup] 完了通知の重複送信をスキップ');
+        return;
+      }
+      _lastBackupNotifyTime = now;
+
       chrome.runtime.sendMessage({
         type: 'BACKUP_COMPLETED',
         ...result
