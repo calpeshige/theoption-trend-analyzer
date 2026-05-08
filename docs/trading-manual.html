@@ -1585,15 +1585,41 @@
   </footer>
 
   <script>
-    // タブ切替
+    // タブ切替: URLハッシュに保存してリロード後も同じタブを保持
+    function activateTab(tabName) {
+      const validTab = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+      if (!validTab) return false;
+
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      validTab.classList.add('active');
+      const content = document.getElementById('tab-' + tabName);
+      if (content) content.classList.add('active');
+      return true;
+    }
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        const tabName = btn.dataset.tab;
+        activateTab(tabName);
+        // URLハッシュを更新 (履歴を増やさず置き換え)
+        history.replaceState(null, '', `#${tabName}`);
         window.scrollTo(0, 0);
       });
+    });
+
+    // ページロード時にURLハッシュからタブを復元
+    (function restoreTabFromHash() {
+      const hash = window.location.hash.replace(/^#/, '');
+      if (hash && activateTab(hash)) {
+        // 復元成功 (デフォルトの取扱説明書タブを上書き)
+      }
+    })();
+
+    // ブラウザの戻る/進むボタン対応
+    window.addEventListener('hashchange', () => {
+      const hash = window.location.hash.replace(/^#/, '');
+      if (hash) activateTab(hash);
     });
 
     // 目次のスムーススクロール
