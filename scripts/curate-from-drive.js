@@ -13,15 +13,23 @@
  */
 
 import { google } from 'googleapis';
-import { gunzipSync, gzipSync, createGunzip } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
-import { parser } from 'stream-json';
-import StreamArray from 'stream-json/streamers/StreamArray.js';
-import StreamObject from 'stream-json/streamers/StreamObject.js';
-import { pick } from 'stream-json/filters/Pick.js';
+
+// stream-json は CommonJS モジュールなので default export 経由でインポート
+// stream-json v2.x のパスは小文字ハイフン区切り(streamers/stream-array.js)
+import streamChainPkg from 'stream-chain';
+import streamJsonPkg from 'stream-json';
+import streamArrayPkg from 'stream-json/streamers/stream-array.js';
+import pickPkg from 'stream-json/filters/pick.js';
+
+const chain = streamChainPkg;  // default export が chain 関数そのもの
+const { parser } = streamJsonPkg;
+const { streamArray } = streamArrayPkg;
+const { pick } = pickPkg;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -376,17 +384,20 @@ async function processSession(drive, sessionKey, group) {
 /**
  * ストリーミングJSONパーサーで大容量データを処理する
  * 期待構造: { "theoption_ml_<asset>": [ {timestamp, price, ...}, ... ] }
+ *
+ * stream-json v2 の chain() パターンを使用してパイプラインを構築:
+ *   Readable → parser → pick (theoption_ml_*) → streamArray → records
  */
 function parseRecordsStreaming(buffer) {
   return new Promise((resolve, reject) => {
     const records = [];
-    const stream = Readable.from(buffer);
 
-    // pickで "theoption_ml_*" キーの値(配列)を選択 → StreamArrayで要素を1つずつ
-    const pipeline = stream
-      .pipe(parser())
-      .pipe(pick({ filter: /^theoption_ml_/ }))
-      .pipe(StreamArray.streamArray());
+    const pipeline = chain([
+      Readable.from(buffer),
+      parser(),
+      pick({ filter: /^theoption_ml_/ }),
+      streamArray()
+    ]);
 
     pipeline.on('data', ({ value }) => {
       if (isValidRecord(value)) {
