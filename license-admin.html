@@ -564,6 +564,32 @@
 
     const LICENSE_COLLECTION = 'licenses';
 
+    // Firestoreから全ライセンスをページネーション対応で取得
+    // (デフォルトpageSize=100だと101件目以降が取得できない問題に対応)
+    async function fetchAllLicenses() {
+      const allDocuments = [];
+      let pageToken = null;
+      const PAGE_SIZE = 300; // Firestore REST APIの最大値
+
+      do {
+        let url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}&pageSize=${PAGE_SIZE}`;
+        if (pageToken) {
+          url += `&pageToken=${encodeURIComponent(pageToken)}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        if (data.documents) {
+          allDocuments.push(...data.documents);
+        }
+        pageToken = data.nextPageToken || null;
+      } while (pageToken);
+
+      return allDocuments;
+    }
+
     // 現在選択中のライセンスキー
     let currentLicenseKey = null;
 
@@ -670,19 +696,13 @@
       }
     }
 
-    // 全ライセンスを読み込み
+    // 全ライセンスを読み込み (全ページ取得)
     async function loadAllLicenses() {
       const resultsEl = document.getElementById('searchResults');
       resultsEl.innerHTML = '<div class="loading">読み込み中</div>';
 
       try {
-        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}`;
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        const documents = data.documents || [];
+        const documents = await fetchAllLicenses();
 
         if (documents.length === 0) {
           resultsEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">ライセンスが見つかりません</p>';
@@ -708,14 +728,8 @@
       resultsEl.innerHTML = '<div class="loading">検索中</div>';
 
       try {
-        // まず全件取得してフィルタリング（Firestore REST APIの制限）
-        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}`;
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        const documents = data.documents || [];
+        // 全件取得してフィルタリング (ページネーション対応版)
+        const documents = await fetchAllLicenses();
 
         // フィルタリング
         const filtered = documents.filter(doc => {
@@ -1025,13 +1039,7 @@
       historyEl.innerHTML = '<div class="loading">読み込み中</div>';
 
       try {
-        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}?key=${FIREBASE_CONFIG.apiKey}&pageSize=100`;
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        const documents = data.documents || [];
+        const documents = await fetchAllLicenses();
 
         if (documents.length === 0) {
           historyEl.innerHTML = '<p style="color: #a0aec0; text-align: center;">ライセンスが見つかりません</p>';
