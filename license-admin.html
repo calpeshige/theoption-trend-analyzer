@@ -667,6 +667,57 @@
       return allDocuments;
     }
 
+    // クリップボードにテキストをコピー (PC/iOS/Android対応、HTTPSが必要)
+    // - モダンブラウザ: navigator.clipboard.writeText
+    // - フォールバック: document.execCommand('copy') (非HTTPSや古いブラウザ向け)
+    async function copyToClipboard(text) {
+      // 1. モダンAPIを試す (HTTPS かつ securityContext)
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[Clipboard] navigator.clipboard 失敗、フォールバック:', err);
+      }
+
+      // 2. フォールバック: 一時的な textarea を作って execCommand
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '0';
+        textarea.style.width = '1px';
+        textarea.style.height = '1px';
+        textarea.style.padding = '0';
+        textarea.style.border = 'none';
+        textarea.style.outline = 'none';
+        textarea.style.boxShadow = 'none';
+        textarea.style.background = 'transparent';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+
+        // iOS Safari 対応: contentEditable を true にしてから select
+        textarea.contentEditable = true;
+        textarea.readOnly = false;
+
+        const range = document.createRange();
+        range.selectNodeContents(textarea);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        textarea.setSelectionRange(0, text.length);
+
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return success;
+      } catch (err) {
+        console.error('[Clipboard] execCommand 失敗:', err);
+        return false;
+      }
+    }
+
     // 現在選択中のライセンスキー
     let currentLicenseKey = null;
 
@@ -759,8 +810,12 @@
           throw new Error(errorData.error?.message || `HTTP ${response.status}`);
         }
 
+        // 発行成功 → ライセンスキーをクリップボードに自動コピー
+        const copied = await copyToClipboard(licenseKey);
+        const copyInfo = copied ? '\n\n📋 ライセンスキーをクリップボードにコピーしました' : '\n\n⚠ クリップボードへのコピーに失敗しました (手動でコピーしてください)';
+
         const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
-        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}`);
+        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}${copyInfo}`);
 
         // 入力欄をクリア (ライセンスキーは自動生成しない - ユーザーが「ランダム生成」を明示的に押すまで空欄のまま)
         document.getElementById('userName').value = '';
