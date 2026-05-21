@@ -221,10 +221,26 @@
       display: flex;
       gap: 12px;
       margin-bottom: 24px;
+      flex-wrap: wrap;
     }
 
     .search-box input {
-      flex: 1;
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+
+    .search-box button {
+      flex: 1 1 auto;
+      white-space: nowrap;
+    }
+
+    @media (min-width: 640px) {
+      .search-box input {
+        flex: 1 1 0;
+      }
+      .search-box button {
+        flex: 0 0 auto;
+      }
     }
 
     /* ライセンス一覧テーブル */
@@ -439,6 +455,67 @@
       display: flex;
       gap: 12px;
       justify-content: center;
+    }
+
+    /* ============================================
+       スマホ向けレスポンシブ対応
+       ============================================ */
+    @media (max-width: 640px) {
+      .container {
+        padding: 16px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      /* タブ: スマホでは縦並び or 改行 */
+      .tabs {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .tab {
+        flex: 1 1 calc(50% - 4px);
+        padding: 10px 8px;
+        font-size: 14px;
+      }
+
+      /* 入力欄: 大きめのフォントでズーム回避 (iOSは16px未満だと自動ズーム) */
+      input[type="text"],
+      input[type="number"],
+      input[type="date"],
+      select,
+      textarea {
+        font-size: 16px;
+      }
+
+      /* ボタンのフォントもタッチしやすく */
+      button {
+        font-size: 15px;
+        padding: 12px 16px;
+        min-height: 44px;
+      }
+
+      /* テーブル: 横スクロール対応 */
+      .license-table {
+        font-size: 13px;
+      }
+      .license-table th,
+      .license-table td {
+        padding: 8px 6px;
+      }
+
+      /* 確認ボタングループ: 縦並び */
+      .confirm-buttons {
+        flex-direction: column;
+      }
+      .confirm-buttons button {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -685,8 +762,9 @@
         const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
         showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}`);
 
+        // 入力欄をクリア (ライセンスキーは自動生成しない - ユーザーが「ランダム生成」を明示的に押すまで空欄のまま)
         document.getElementById('userName').value = '';
-        generateLicenseKey();
+        document.getElementById('licenseKey').value = '';
 
       } catch (error) {
         showResult('error', `❌ エラー: ${error.message}`);
