@@ -2,10 +2,8 @@ name: Curate Community Data
 
 on:
   schedule:
-    # 【テスト用】毎日 13:30 JST (UTC 04:30) ← 動作確認後 03:00 JST (UTC 18:00) に戻すこと
-    - cron: '30 4 * * *'
-    # 本番用 (テスト後に有効化):
-    # - cron: '0 18 * * *'
+    # 毎日 06:00 JST (UTC 21:00 前日)
+    - cron: '0 21 * * *'
   # 手動実行可能
   workflow_dispatch:
 
