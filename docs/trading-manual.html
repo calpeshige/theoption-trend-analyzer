@@ -1100,8 +1100,13 @@
           <li><strong>JSONエクスポートを廃止</strong>: 「今すぐバックアップ」が上位互換のため、既存のJSONエクスポートボタンを削除しシンプル化</li>
           <li><strong>データ鮮度表示の修正</strong>: AI学習状況の「データ鮮度」表示が一部条件下で更新されない不具合を修正</li>
           <li><strong>取扱説明書ページのタブ状態保持</strong>: タブを切り替えてリロードしても同じタブが開いた状態を維持</li>
-          <li><strong>ライセンス管理ツール改善</strong>: 100件超過時の検索ヒット漏れ修正、スマホUI対応、発行時のクリップボード自動コピーなど</li>
         </ul>
+        <p style="margin-top: 16px;">
+          <a href="#videos" data-video-version="v5.13.0" style="display: inline-flex; align-items: center; gap: 6px; color: var(--primary); text-decoration: none; font-weight: 600; font-size: 14px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            このアップデートの解説動画を見る
+          </a>
+        </p>
       </div>
 
       <!-- === v5.12.6 === -->
@@ -1244,19 +1249,32 @@
 
       <!-- ===== アップデート別動画（アコーディオン） ===== -->
       <h3 style="margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--primary-light);">アップデート別の解説動画</h3>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">各バージョンで追加・変更された機能の解説動画です。次回のアップデートから順次動画を追加していきます。</p>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">各バージョンで追加・変更された機能の解説動画です。新しいバージョンが上に追加されていきます。</p>
 
-      <!-- ここに今後のアップデート動画を追加 -->
-      <!-- テンプレート:
-      <div class="video-accordion">
+      <!-- 新しいバージョンの動画はここに追加 (新しいものが上) -->
+
+      <div class="video-accordion" id="video-v5.13.0">
         <div class="video-accordion-header" onclick="this.parentElement.classList.toggle('open')">
-          <h3><span class="video-version-badge">vX.X.X</span>タイトル</h3>
+          <h3><span class="video-version-badge">v5.13.0</span></h3>
           <span class="video-accordion-arrow">▼</span>
         </div>
         <div class="video-accordion-body">
           <div class="video-card">
-            <h4>タイトル</h4>
-            <p>説明文</p>
+            <div class="video-embed">
+              <iframe src="https://www.youtube.com/embed/GzOxw0LxYqg" allowfullscreen></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- テンプレート (新バージョン追加時はここを上にコピーして使う):
+      <div class="video-accordion" id="video-vX.X.X">
+        <div class="video-accordion-header" onclick="this.parentElement.classList.toggle('open')">
+          <h3><span class="video-version-badge">vX.X.X</span></h3>
+          <span class="video-accordion-arrow">▼</span>
+        </div>
+        <div class="video-accordion-body">
+          <div class="video-card">
             <div class="video-embed">
               <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
             </div>
@@ -1629,6 +1647,27 @@
     window.addEventListener('hashchange', () => {
       const hash = window.location.hash.replace(/^#/, '');
       if (hash) activateTab(hash);
+    });
+
+    // 「このアップデートの解説動画を見る」リンク処理
+    // 説明動画タブを開いてから、該当バージョンのアコーディオンを自動で開く
+    document.querySelectorAll('a[data-video-version]').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const version = link.getAttribute('data-video-version');
+        // 説明動画タブを開く
+        activateTab('videos');
+        history.replaceState(null, '', '#videos');
+        window.scrollTo(0, 0);
+        // 該当アコーディオンを開いてスクロール (少し遅延させてレイアウト確定後に実行)
+        setTimeout(() => {
+          const accordion = document.getElementById('video-' + version);
+          if (accordion) {
+            accordion.classList.add('open');
+            accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      });
     });
 
     // 目次のスムーススクロール
