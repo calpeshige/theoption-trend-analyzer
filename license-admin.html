@@ -567,14 +567,6 @@
           <input type="date" id="expiryDate">
         </div>
 
-        <div class="form-group">
-          <div class="checkbox-group">
-            <input type="checkbox" id="mobileEnabled">
-            <label style="margin: 0;">📱 スマホ版を含む</label>
-          </div>
-          <p class="info-text">チェックすると、このライセンスでスマホPWAも利用可能になります</p>
-        </div>
-
         <button class="btn-full" onclick="createLicense()">✅ ライセンスを発行（Firestoreに自動登録）</button>
 
         <div class="result" id="result"></div>
@@ -778,7 +770,6 @@
       const maxDevices = parseInt(document.getElementById('maxDevices').value);
       const hasExpiry = document.getElementById('hasExpiry').checked;
       const expiryDate = document.getElementById('expiryDate').value;
-      const mobileEnabled = document.getElementById('mobileEnabled').checked;
 
       if (!licenseKey) {
         showResult('error', 'ライセンスキーを生成してください');
@@ -799,7 +790,6 @@
           active: { booleanValue: true },
           userName: { stringValue: userName },
           maxDevices: { integerValue: maxDevices.toString() },
-          mobileEnabled: { booleanValue: mobileEnabled },
           createdAt: { timestampValue: new Date().toISOString() }
         };
 
@@ -825,13 +815,11 @@
         const copyInfo = copied ? '\n\n📋 ライセンスキーをクリップボードにコピーしました' : '\n\n⚠ クリップボードへのコピーに失敗しました (手動でコピーしてください)';
 
         const expiryInfo = hasExpiry ? `\n有効期限: ${expiryDate}` : '\n有効期限: 無期限';
-        const mobileInfo = `\nスマホ版: ${mobileEnabled ? '有効 📱' : '無効'}`;
-        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}${mobileInfo}${copyInfo}`);
+        showResult('success', `✅ ライセンスキーを発行しました！\n\n${licenseKey}\n\n購入者: ${userName}\nデバイス数: ${maxDevices}台${expiryInfo}${copyInfo}`);
 
         // 入力欄をクリア (ライセンスキーは自動生成しない - ユーザーが「ランダム生成」を明示的に押すまで空欄のまま)
         document.getElementById('userName').value = '';
         document.getElementById('licenseKey').value = '';
-        document.getElementById('mobileEnabled').checked = false;
 
       } catch (error) {
         showResult('error', `❌ エラー: ${error.message}`);
@@ -907,7 +895,6 @@
               <th>ライセンスキー</th>
               <th>購入者</th>
               <th>デバイス</th>
-              <th>📱 スマホ</th>
               <th>状態</th>
               <th>有効期限</th>
             </tr>
@@ -924,7 +911,6 @@
         const devices = (devicesArr && devicesArr.values) ? devicesArr.values : [];
         const isActive = fields.active?.booleanValue ?? true;
         const expiryDate = fields.expiryDate?.timestampValue;
-        const mobileEnabled = fields.mobileEnabled?.booleanValue ?? false;
 
         let statusClass = 'status-active';
         let statusText = '有効';
@@ -938,16 +924,12 @@
         }
 
         const expiryText = expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限';
-        const mobileText = mobileEnabled
-          ? '<span style="color: #48bb78;">✅</span>'
-          : '<span style="color: #4a5568;">—</span>';
 
         html += `
           <tr>
             <td><span class="license-key" onclick="showLicenseDetail('${licenseKey}')">${licenseKey}</span></td>
             <td>${userName}</td>
             <td>${devices.length}/${maxDevices}</td>
-            <td style="text-align: center;">${mobileText}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>${expiryText}</td>
           </tr>
@@ -987,7 +969,6 @@
         const devices = getDevicesArray(fields);
         const isActive = fields.active?.booleanValue ?? true;
         const expiryDate = fields.expiryDate?.timestampValue;
-        const mobileEnabled = fields.mobileEnabled?.booleanValue ?? false;
         // Firestoreメタデータのタイムスタンプを使用
         const createdAt = doc.createTime;
 
@@ -1025,12 +1006,6 @@
             <span class="detail-value">${expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限'}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">📱 スマホ版</span>
-            <span class="detail-value">${mobileEnabled
-              ? '<span class="status-badge status-active">有効</span>'
-              : '<span class="status-badge status-inactive">無効</span>'}</span>
-          </div>
-          <div class="detail-row">
             <span class="detail-label">発行日</span>
             <span class="detail-value">${createdAt ? new Date(createdAt).toLocaleDateString('ja-JP') : '-'}</span>
           </div>
@@ -1059,9 +1034,6 @@
           <div class="action-buttons">
             <button class="btn-secondary" onclick="toggleLicenseStatus('${licenseKey}', ${!isActive})">
               ${isActive ? '🚫 無効化' : '✅ 有効化'}
-            </button>
-            <button class="btn-secondary" onclick="toggleMobileEnabled('${licenseKey}', ${!mobileEnabled})">
-              ${mobileEnabled ? '📵 スマホ版を無効化' : '📱 スマホ版を有効化'}
             </button>
             <button class="btn-danger" onclick="showDeleteConfirm('${licenseKey}')">🗑️ 削除</button>
           </div>
@@ -1137,34 +1109,6 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         alert(`ライセンスを${action}しました`);
-        showLicenseDetail(licenseKey);
-
-      } catch (error) {
-        alert(`エラー: ${error.message}`);
-      }
-    }
-
-    // スマホ版の有効/無効を切り替え
-    async function toggleMobileEnabled(licenseKey, newState) {
-      const action = newState ? '有効化' : '無効化';
-      if (!confirm(`このライセンスのスマホ版を${action}しますか？`)) return;
-
-      try {
-        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${LICENSE_COLLECTION}/${licenseKey}?updateMask.fieldPaths=mobileEnabled&key=${FIREBASE_CONFIG.apiKey}`;
-
-        const response = await fetch(url, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              mobileEnabled: { booleanValue: newState }
-            }
-          })
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        alert(`スマホ版を${action}しました`);
         showLicenseDetail(licenseKey);
 
       } catch (error) {
@@ -1250,7 +1194,6 @@
                 <th>ライセンスキー</th>
                 <th>購入者</th>
                 <th>デバイス</th>
-                <th>📱 スマホ</th>
                 <th>状態</th>
                 <th>有効期限</th>
                 <th>発行日</th>
@@ -1267,7 +1210,6 @@
           const devices = getDevicesArray(fields);
           const isActive = fields.active?.booleanValue ?? true;
           const expiryDate = fields.expiryDate?.timestampValue;
-          const mobileEnabled = fields.mobileEnabled?.booleanValue ?? false;
           // Firestoreメタデータのタイムスタンプを使用
           const createdAt = doc.createTime;
 
@@ -1284,16 +1226,12 @@
 
           const expiryText = expiryDate ? new Date(expiryDate).toLocaleDateString('ja-JP') : '無期限';
           const createdText = createdAt ? new Date(createdAt).toLocaleDateString('ja-JP') : '-';
-          const mobileText = mobileEnabled
-            ? '<span style="color: #48bb78;">✅</span>'
-            : '<span style="color: #4a5568;">—</span>';
 
           html += `
             <tr>
               <td><span class="license-key" onclick="showLicenseDetail('${licenseKey}')">${licenseKey}</span></td>
               <td>${userName}</td>
               <td>${devices.length}/${maxDevices}</td>
-              <td style="text-align: center;">${mobileText}</td>
               <td><span class="status-badge ${statusClass}">${statusText}</span></td>
               <td>${expiryText}</td>
               <td>${createdText}</td>
