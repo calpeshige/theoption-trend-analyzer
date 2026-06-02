@@ -1,11 +1,11 @@
 {
   "assetName": "BTC/USD",
-  "recordCount": 1282,
-  "periodStart": "2026-05-23T09:57:09.425Z",
-  "periodEnd": "2026-05-31T15:10:50.306Z",
+  "recordCount": 16389,
+  "periodStart": "2026-04-04T09:00:06.629Z",
+  "periodEnd": "2026-05-31T10:27:57.805Z",
   "hourCoverage": "7時間帯（0, 18, 19, 20, 21, 22, 23時）",
   "hourDistribution": [
-    37,
+    713,
     0,
     0,
     0,
@@ -23,16 +23,16 @@
     0,
     0,
     0,
-    12,
-    371,
-    296,
-    301,
-    139,
-    126
+    1985,
+    2594,
+    2775,
+    2792,
+    2927,
+    2603
   ],
-  "lastUpdated": "2026-06-01T23:03:20.327Z",
+  "lastUpdated": "2026-06-02T23:13:51.034Z",
   "releaseFilename": "BTCUSD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/BTCUSD_20000.json.gz",
-  "compressedSize": 3525383,
+  "compressedSize": 55744848,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-BTCUSD-latest/BTCUSD_20000.json.gz"
 }
