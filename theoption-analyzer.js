@@ -461,6 +461,7 @@ function initializeAnalyzer() {
     let lastRelaySnapshot = null;  // 前回転送したシグナル状態のスナップショット文字列
     let lastRelayWriteAt = 0;      // 前回Firestoreへ書き込んだ時刻
     let relaySeq = 0;              // 新規シグナル検知用の単調増加カウンタ
+    let lastRelaySignalDir = null; // 前回のエントリーシグナル方向（seq採番用）
     let currentFilterLevel = 2;  // v5.10.6: モメンタムフィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let currentPricePositionFilterLevel = 2;  // v5.12.4: 急変フィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let currentSignalMode = 'majority';  // 'majority'（多数決モード）| 'standard'（標準モード）
@@ -1628,45 +1629,72 @@ function initializeAnalyzer() {
     // （カウントダウンはスマホ側でentryAtからローカル計算するため毎秒書かない）
     // ========================================
     const RELAY_HEARTBEAT_INTERVAL = 30000;  // 無風時の生存確認間隔（30秒）
+    const RELAY_MIN_INTERVAL = 4000;          // 変化時でも最短この間隔でしか書き込まない（書込抑制）
 
     function maybeRelayToMobile(statusData, countdown) {
       if (!window.mobileRelay || !window.mobileRelay.isEnabled()) return;
 
       const cs = statusData.currentSignal;
-
-      // シグナル方向を抽出（tech優先 → ai → 強化シグナルを正規化）
-      let signalDir = 'NONE';
-      if (cs) {
-        if (cs.tech === 'HIGH' || cs.tech === 'LOW') {
-          signalDir = cs.tech;
-        } else if (cs.ai === 'HIGH' || cs.ai === 'LOW') {
-          signalDir = cs.ai;
-        } else if (cs.ai === 'ENHANCED_HIGH') {
-          signalDir = 'HIGH';
-        } else if (cs.ai === 'ENHANCED_LOW') {
-          signalDir = 'LOW';
-        }
-      }
-
       const asset = statusData.asset || '';
       const timeframe = statusData.currentTimeframe || 0;
       const isTrading = !!statusData.isTrading;
+
+      // --- テクニカル（signal20）: 常時取得 ---
       const s20 = statusData.signal20 || (cs && cs.signal20) || null;
       const starLevel = s20 && typeof s20.starLevel === 'number' ? s20.starLevel : 0;
-
-      // 変化検出用スナップショット
-      const snapshot = [signalDir, asset, timeframe, isTrading, starLevel].join('|');
-      const now = Date.now();
-      const isChange = snapshot !== lastRelaySnapshot;
-      const heartbeatDue = (now - lastRelayWriteAt) >= RELAY_HEARTBEAT_INTERVAL;
-
-      if (!isChange && !heartbeatDue) return;
-
-      // 新しいエントリーシグナル（HIGH/LOW）が出た時だけseqを増やす → スマホ側の新規通知トリガー
-      if (isChange && (signalDir === 'HIGH' || signalDir === 'LOW')) {
-        relaySeq++;
+      const highCount = s20 && typeof s20.highCount === 'number' ? s20.highCount : 0;
+      const lowCount = s20 && typeof s20.lowCount === 'number' ? s20.lowCount : 0;
+      let techDir = 'NEUTRAL';
+      if (s20 && (s20.signal === 'HIGH' || s20.signal === 'LOW')) {
+        techDir = s20.signal;
+      } else if (cs && (cs.tech === 'HIGH' || cs.tech === 'LOW')) {
+        techDir = cs.tech;
       }
 
+      // --- AI予測: 現在の時間枠の予測から常時取得（無ければcurrentSignalから） ---
+      let aiUpRate = null, aiDownRate = null;
+      const tfResult = timeframeResults[currentTimeframe];
+      const mlPred = tfResult && tfResult.ml && tfResult.ml.predictions
+        ? tfResult.ml.predictions[`${currentTimeframe}s`] : null;
+      if (mlPred && (typeof mlPred.upRate === 'number' || typeof mlPred.downRate === 'number')) {
+        aiUpRate = typeof mlPred.upRate === 'number' ? mlPred.upRate : 0;
+        aiDownRate = typeof mlPred.downRate === 'number' ? mlPred.downRate : 0;
+      } else if (cs) {
+        aiUpRate = typeof cs.aiUpRate === 'number' ? cs.aiUpRate : null;
+        aiDownRate = typeof cs.aiDownRate === 'number' ? cs.aiDownRate : null;
+      }
+      let aiDir = 'NONE';
+      if (aiUpRate != null && aiDownRate != null) {
+        if (aiUpRate >= 60) aiDir = 'HIGH';
+        else if (aiDownRate >= 60) aiDir = 'LOW';
+        else aiDir = 'NEUTRAL';
+      }
+
+      // --- エントリーシグナル（通知・強調用、tech優先 → ai → 強化を正規化） ---
+      let signalDir = 'NONE';
+      if (cs) {
+        if (cs.tech === 'HIGH' || cs.tech === 'LOW') signalDir = cs.tech;
+        else if (cs.ai === 'HIGH' || cs.ai === 'LOW') signalDir = cs.ai;
+        else if (cs.ai === 'ENHANCED_HIGH') signalDir = 'HIGH';
+        else if (cs.ai === 'ENHANCED_LOW') signalDir = 'LOW';
+      }
+
+      // 変化検出（テクニカル/AIの向き・エントリーシグナル・銘柄・時間枠・取引状態・星）
+      const snapshot = [signalDir, techDir, aiDir, asset, timeframe, isTrading, starLevel].join('|');
+      const now = Date.now();
+      const isChange = snapshot !== lastRelaySnapshot;
+      const sinceLast = now - lastRelayWriteAt;
+      const heartbeatDue = sinceLast >= RELAY_HEARTBEAT_INTERVAL;
+      const minIntervalOk = sinceLast >= RELAY_MIN_INTERVAL;
+
+      // 書込条件: (変化 かつ 最短間隔経過) または ハートビート
+      if (!((isChange && minIntervalOk) || heartbeatDue)) return;
+
+      // 新しいエントリーシグナル（HIGH/LOW）に切り替わった時だけseqを増やす → スマホ側の新規通知トリガー
+      if (signalDir !== lastRelaySignalDir && (signalDir === 'HIGH' || signalDir === 'LOW')) {
+        relaySeq++;
+      }
+      lastRelaySignalDir = signalDir;
       lastRelaySnapshot = snapshot;
       lastRelayWriteAt = now;
 
@@ -1675,7 +1703,6 @@ function initializeAnalyzer() {
       let expiresAt = null;
       if (signalDir === 'HIGH' || signalDir === 'LOW') {
         if (isTrading && statusData.tradingRemaining > 0) {
-          // 取引中: エントリー済み。期限 = 今 + 残り時間
           entryAt = new Date(now);
           expiresAt = new Date(now + statusData.tradingRemaining * 1000);
         } else {
@@ -1684,23 +1711,32 @@ function initializeAnalyzer() {
         }
       }
 
+      // 次の判定（エントリー）予定時刻 — 準備カウントダウン用（シグナル有無に関わらず常時）
+      const nextEntryAt = new Date(now + (countdown || 0) * 1000);
+
       const payload = {
         asset: asset,
         timeframe: timeframe,
         signalDir: signalDir,
+        // テクニカル
+        techDir: techDir,
         techConf: cs && typeof cs.techConfidence === 'number' ? cs.techConfidence : 0,
-        ai: cs && cs.ai ? String(cs.ai) : null,
-        aiConf: cs && typeof cs.aiConfidence === 'number' ? cs.aiConfidence : null,
-        aiUpRate: cs && typeof cs.aiUpRate === 'number' ? cs.aiUpRate : null,
-        aiDownRate: cs && typeof cs.aiDownRate === 'number' ? cs.aiDownRate : null,
         starLevel: starLevel,
-        highCount: s20 && typeof s20.highCount === 'number' ? s20.highCount : 0,
-        lowCount: s20 && typeof s20.lowCount === 'number' ? s20.lowCount : 0,
+        highCount: highCount,
+        lowCount: lowCount,
+        // AI予測
+        aiDir: aiDir,
+        aiUpRate: aiUpRate,
+        aiDownRate: aiDownRate,
+        aiConf: cs && typeof cs.aiConfidence === 'number' ? cs.aiConfidence : null,
         mlLevel: statusData.mlStats && typeof statusData.mlStats.learningLevel === 'number'
           ? statusData.mlStats.learningLevel : 0,
+        // カウントダウン
         entryAt: entryAt,
         expiresAt: expiresAt,
+        nextEntryAt: nextEntryAt,
         isTrading: isTrading,
+        tradingRemaining: isTrading ? (statusData.tradingRemaining || 0) : 0,
         countdown: typeof countdown === 'number' ? countdown : 0,
         updatedAt: new Date(now),
         seq: relaySeq,

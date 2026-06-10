@@ -33,30 +33,43 @@
 
   <!-- メイン画面 -->
   <main class="screen main-screen" id="main-screen" hidden>
-    <!-- 現在のシグナルカード -->
-    <section class="signal-card" id="signal-card">
-      <div class="signal-waiting" id="signal-waiting">
-        <div class="spinner"></div>
-        <span>PCからのシグナルを待機中…</span>
+    <!-- 準備カウントダウン -->
+    <section class="prep-bar" id="prep-bar">
+      <span class="prep-asset" id="prep-asset">--</span>
+      <div class="prep-count">
+        <span class="prep-label" id="prep-label">次の判定まで</span>
+        <span class="prep-value" id="prep-value">--</span>
       </div>
+      <span class="prep-tf" id="prep-tf">--</span>
+    </section>
 
-      <div class="signal-active" id="signal-active" hidden>
-        <div class="signal-asset" id="signal-asset">USD/JPY</div>
-        <div class="signal-dir" id="signal-dir">
-          <span class="signal-arrow" id="signal-arrow">▲</span>
-          <span class="signal-label" id="signal-label">HIGH</span>
-        </div>
-        <div class="signal-stars" id="signal-stars"></div>
-        <div class="signal-countdown" id="signal-countdown">
-          <span class="countdown-label" id="countdown-label">エントリーまで</span>
-          <span class="countdown-value" id="countdown-value">--</span>
-        </div>
-        <div class="signal-meta">
-          <div class="meta-item"><span class="meta-label">時間枠</span><span class="meta-value" id="meta-timeframe">--</span></div>
-          <div class="meta-item"><span class="meta-label">AI予測</span><span class="meta-value" id="meta-ai">--</span></div>
-          <div class="meta-item"><span class="meta-label">20指標</span><span class="meta-value" id="meta-s20">--</span></div>
-        </div>
+    <!-- エントリーシグナル強調（HIGH/LOW時のみ） -->
+    <section class="entry-banner" id="entry-banner" hidden>
+      <span class="entry-arrow" id="entry-arrow">▲</span>
+      <span class="entry-text" id="entry-text">エントリー HIGH</span>
+      <span class="entry-stars" id="entry-stars"></span>
+    </section>
+
+    <!-- テクニカル / AI予測 左右パネル -->
+    <section class="analysis-panels">
+      <div class="panel tech-panel" id="tech-panel">
+        <div class="panel-title">📊 テクニカル</div>
+        <div class="panel-dir" id="tech-dir">--</div>
+        <div class="panel-stars" id="tech-stars"></div>
+        <div class="panel-sub" id="tech-sub">20指標 --</div>
       </div>
+      <div class="panel ai-panel" id="ai-panel">
+        <div class="panel-title">🤖 AI予測</div>
+        <div class="panel-dir" id="ai-dir">--</div>
+        <div class="panel-rates" id="ai-rates">--</div>
+        <div class="panel-sub" id="ai-sub">学習 --</div>
+      </div>
+    </section>
+
+    <!-- 待機表示（PCシグナル未受信時） -->
+    <section class="waiting-note" id="waiting-note" hidden>
+      <div class="spinner"></div>
+      <span>PCからのデータを待機中…</span>
     </section>
 
     <!-- 履歴 -->

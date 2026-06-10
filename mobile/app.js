@@ -202,7 +202,7 @@ function startApp(channel) {
   if (unsubscribe) unsubscribe();
   const ref = doc(db, LIVE_COLLECTION, channel);
   unsubscribe = onSnapshot(ref, (snap) => {
-    if (!snap.exists()) { renderWaiting(); return; }
+    if (!snap.exists()) { renderNoData(); return; }
     handleSnapshot(snap.data());
   }, (err) => {
     console.error('[Mobile] 購読エラー:', err);
@@ -222,18 +222,24 @@ function handleSnapshot(d) {
     asset: d.asset || '',
     timeframe: d.timeframe || 0,
     signalDir: d.signalDir || 'NONE',
+    // テクニカル
+    techDir: d.techDir || 'NEUTRAL',
     techConf: num(d.techConf),
-    ai: d.ai || null,
-    aiConf: num(d.aiConf),
-    aiUpRate: num(d.aiUpRate),
-    aiDownRate: num(d.aiDownRate),
     starLevel: num(d.starLevel),
     highCount: num(d.highCount),
     lowCount: num(d.lowCount),
+    // AI予測
+    aiDir: d.aiDir || 'NONE',
+    aiUpRate: d.aiUpRate != null ? num(d.aiUpRate) : null,
+    aiDownRate: d.aiDownRate != null ? num(d.aiDownRate) : null,
+    aiConf: d.aiConf != null ? num(d.aiConf) : null,
     mlLevel: num(d.mlLevel),
+    // カウントダウン
     entryAt: toMillis(d.entryAt),
     expiresAt: toMillis(d.expiresAt),
+    nextEntryAt: toMillis(d.nextEntryAt),
     isTrading: !!d.isTrading,
+    tradingRemaining: num(d.tradingRemaining),
     updatedAt: toMillis(d.updatedAt),
     seq: num(d.seq),
     signalMode: d.signalMode || ''
@@ -261,73 +267,105 @@ function handleSnapshot(d) {
 // ========================================
 // 描画
 // ========================================
+const DIR_LABEL = { HIGH: '上昇', LOW: '下降', NEUTRAL: '中立', NONE: '—' };
+
 function render() {
-  if (!current) { renderWaiting(); return; }
+  const waitingNote = document.getElementById('waiting-note');
+  if (!current) {
+    waitingNote.hidden = false;
+    setPcStatus('待機中', null);
+    return;
+  }
+  waitingNote.hidden = true;
   updatePcStatus();
 
-  const now = Date.now();
-  const hasSignal = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
-  const notExpired = current.expiresAt && now < current.expiresAt;
+  // --- テクニカルパネル ---
+  const techPanel = document.getElementById('tech-panel');
+  setPanelDir(techPanel, document.getElementById('tech-dir'), current.techDir);
+  const techStars = Math.max(0, Math.min(3, current.starLevel));
+  document.getElementById('tech-stars').textContent =
+    techStars > 0 ? '★'.repeat(techStars) + '☆'.repeat(3 - techStars) : '☆☆☆';
+  document.getElementById('tech-sub').textContent =
+    (current.highCount || current.lowCount) ? `20指標 H${current.highCount} / L${current.lowCount}` : '20指標 集計中';
 
-  if (!hasSignal || !notExpired) { renderWaiting(true); return; }
+  // --- AIパネル ---
+  const aiPanel = document.getElementById('ai-panel');
+  setPanelDir(aiPanel, document.getElementById('ai-dir'), current.aiDir);
+  const ratesEl = document.getElementById('ai-rates');
+  if (current.aiUpRate != null && current.aiDownRate != null) {
+    ratesEl.textContent = `↑${Math.round(current.aiUpRate)}%　↓${Math.round(current.aiDownRate)}%`;
+  } else {
+    ratesEl.textContent = '判定準備中';
+  }
+  document.getElementById('ai-sub').textContent = `学習 ${current.mlLevel || 0}%`;
 
-  document.getElementById('signal-waiting').hidden = true;
-  document.getElementById('signal-active').hidden = false;
+  // --- エントリーシグナル強調 ---
+  const banner = document.getElementById('entry-banner');
+  const hasEntry = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
+  const notExpired = !current.expiresAt || Date.now() < current.expiresAt;
+  if (hasEntry && notExpired) {
+    banner.hidden = false;
+    banner.classList.toggle('high', current.signalDir === 'HIGH');
+    banner.classList.toggle('low', current.signalDir === 'LOW');
+    document.getElementById('entry-arrow').textContent = current.signalDir === 'HIGH' ? '▲' : '▼';
+    document.getElementById('entry-text').textContent =
+      current.signalDir === 'HIGH' ? 'エントリー HIGH（上昇）' : 'エントリー LOW（下降）';
+    const s = Math.max(0, Math.min(3, current.starLevel));
+    document.getElementById('entry-stars').textContent = s > 0 ? '★'.repeat(s) : '';
+  } else {
+    banner.hidden = true;
+  }
 
-  const card = document.getElementById('signal-card');
-  card.classList.toggle('high', current.signalDir === 'HIGH');
-  card.classList.toggle('low', current.signalDir === 'LOW');
-
-  document.getElementById('signal-asset').textContent = current.asset;
-  document.getElementById('signal-arrow').textContent = current.signalDir === 'HIGH' ? '▲' : '▼';
-  document.getElementById('signal-label').textContent = current.signalDir === 'HIGH' ? 'HIGH（上昇）' : 'LOW（下降）';
-
-  // 信頼度（星）
-  const starsEl = document.getElementById('signal-stars');
-  const stars = Math.max(0, Math.min(3, current.starLevel));
-  starsEl.textContent = stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '';
-
-  document.getElementById('meta-timeframe').textContent = formatTimeframe(current.timeframe);
-  const aiText = current.ai
-    ? `${normalizeAi(current.ai)}${current.aiUpRate != null ? ' ' + Math.round(current.signalDir === 'HIGH' ? current.aiUpRate : current.aiDownRate) + '%' : ''}`
-    : '--';
-  document.getElementById('meta-ai').textContent = aiText;
-  document.getElementById('meta-s20').textContent = (current.highCount || current.lowCount)
-    ? `H${current.highCount}/L${current.lowCount}` : '--';
-
-  tick(); // カウントダウン即時更新
+  tick(); // 準備カウントダウン即時更新
 }
 
-function renderWaiting(keepPcStatus) {
-  document.getElementById('signal-active').hidden = true;
-  document.getElementById('signal-waiting').hidden = false;
-  const card = document.getElementById('signal-card');
-  card.classList.remove('high', 'low');
-  if (keepPcStatus) updatePcStatus(); else setPcStatus('待機中', null);
+// PCがまだ一度も書き込んでいない（ドキュメント未存在）
+function renderNoData() {
+  document.getElementById('waiting-note').hidden = false;
+  document.getElementById('entry-banner').hidden = true;
+  setPcStatus('PC未送信', null);
 }
 
-// 毎秒のカウントダウン更新（通信なし）
+// パネルの方向表示（色・矢印）を設定
+function setPanelDir(panelEl, dirEl, dir) {
+  panelEl.classList.toggle('high', dir === 'HIGH');
+  panelEl.classList.toggle('low', dir === 'LOW');
+  const arrow = dir === 'HIGH' ? '▲ ' : dir === 'LOW' ? '▼ ' : '';
+  dirEl.textContent = arrow + (DIR_LABEL[dir] || '—');
+}
+
+// 毎秒の準備カウントダウン更新（通信なし・ローカル計算）
 function tick() {
   if (!current) return;
   const now = Date.now();
-  const hasSignal = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
-  if (!hasSignal) return;
+  const labelEl = document.getElementById('prep-label');
+  const valueEl = document.getElementById('prep-value');
+  document.getElementById('prep-asset').textContent = current.asset || '--';
+  document.getElementById('prep-tf').textContent = formatTimeframe(current.timeframe);
 
-  const valueEl = document.getElementById('countdown-value');
-  const labelEl = document.getElementById('countdown-label');
-  if (!valueEl) return;
-
-  if (current.entryAt && now < current.entryAt) {
-    labelEl.textContent = 'エントリーまで';
-    valueEl.textContent = Math.ceil((current.entryAt - now) / 1000) + '秒';
-  } else if (current.expiresAt && now < current.expiresAt) {
+  if (current.isTrading && current.expiresAt && now < current.expiresAt) {
     labelEl.textContent = '取引中 残り';
     valueEl.textContent = Math.ceil((current.expiresAt - now) / 1000) + '秒';
   } else {
-    // 期限切れ → 待機表示へ
-    renderWaiting(true);
+    const rem = prepRemaining(now);
+    labelEl.textContent = '次の判定まで';
+    valueEl.textContent = rem != null ? rem + '秒' : '--';
   }
   updatePcStatus();
+}
+
+// 準備カウントダウンの残り秒（nextEntryAtを基準に、過ぎたらtimeframe分ローリング）
+function prepRemaining(now) {
+  if (!current || !current.nextEntryAt) return null;
+  const tf = current.timeframe || 0;
+  let target = current.nextEntryAt;
+  let rem = Math.ceil((target - now) / 1000);
+  if (rem <= 0 && tf > 0) {
+    // 判定時刻を過ぎた場合は次サイクルへ（最大100回でガード）
+    let guard = 0;
+    while (rem <= 0 && guard < 100) { target += tf * 1000; rem = Math.ceil((target - now) / 1000); guard++; }
+  }
+  return rem > 0 ? rem : null;
 }
 
 function updatePcStatus() {
@@ -448,11 +486,6 @@ function toMillis(v) {
   if (v instanceof Date) return v.getTime();
   const t = new Date(v).getTime();
   return isNaN(t) ? null : t;
-}
-function normalizeAi(ai) {
-  if (ai === 'ENHANCED_HIGH' || ai === 'HIGH') return '上昇';
-  if (ai === 'ENHANCED_LOW' || ai === 'LOW') return '下降';
-  return ai;
 }
 function formatTimeframe(tf) {
   if (!tf) return '--';

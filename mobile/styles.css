@@ -79,19 +79,6 @@ body {
 .login-error { margin-top: 14px; color: var(--low); font-size: 13px; text-align: center; }
 .login-hint { margin-top: 14px; color: var(--text-dim); font-size: 12px; text-align: center; }
 
-/* ---- シグナルカード ---- */
-.signal-card {
-  background: var(--surface);
-  border: 2px solid var(--border);
-  border-radius: 18px;
-  padding: 28px 20px;
-  text-align: center;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-.signal-card.high { border-color: var(--high); box-shadow: 0 0 24px rgba(38,194,129,0.25); }
-.signal-card.low { border-color: var(--low); box-shadow: 0 0 24px rgba(255,91,110,0.25); }
-
-.signal-waiting { display: flex; flex-direction: column; align-items: center; gap: 16px; color: var(--text-dim); padding: 30px 0; }
 .spinner {
   width: 36px; height: 36px;
   border: 3px solid var(--border);
@@ -101,26 +88,62 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.signal-asset { font-size: 20px; font-weight: 700; color: var(--text-dim); margin-bottom: 10px; }
-.signal-dir { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
-.signal-arrow { font-size: 44px; line-height: 1; }
-.signal-label { font-size: 30px; font-weight: 800; }
-.signal-card.high .signal-arrow, .signal-card.high .signal-label { color: var(--high); }
-.signal-card.low .signal-arrow, .signal-card.low .signal-label { color: var(--low); }
-
-.signal-stars { font-size: 22px; color: #ffce54; letter-spacing: 3px; min-height: 26px; margin-bottom: 12px; }
-
-.signal-countdown {
-  display: flex; flex-direction: column; gap: 2px;
-  margin: 6px 0 18px;
+/* ---- 準備カウントダウン ---- */
+.prep-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
 }
-.countdown-label { font-size: 12px; color: var(--text-dim); }
-.countdown-value { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.prep-asset { font-size: 15px; font-weight: 700; }
+.prep-count { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.prep-label { font-size: 11px; color: var(--text-dim); }
+.prep-value { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.prep-tf { font-size: 13px; color: var(--text-dim); }
 
-.signal-meta { display: flex; justify-content: space-around; border-top: 1px solid var(--border); padding-top: 14px; }
-.meta-item { display: flex; flex-direction: column; gap: 4px; }
-.meta-label { font-size: 11px; color: var(--text-dim); }
-.meta-value { font-size: 14px; font-weight: 600; }
+/* ---- エントリー強調バナー ---- */
+.entry-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  font-weight: 800;
+  font-size: 18px;
+}
+.entry-banner.high { background: rgba(38,194,129,0.15); border: 1px solid var(--high); color: var(--high); }
+.entry-banner.low { background: rgba(255,91,110,0.15); border: 1px solid var(--low); color: var(--low); }
+.entry-arrow { font-size: 24px; }
+.entry-stars { color: #ffce54; letter-spacing: 2px; }
+
+/* ---- テクニカル / AI 左右パネル ---- */
+.analysis-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.panel {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 14px;
+  text-align: center;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.panel.high { border-color: var(--high); box-shadow: 0 0 16px rgba(38,194,129,0.2); }
+.panel.low { border-color: var(--low); box-shadow: 0 0 16px rgba(255,91,110,0.2); }
+.panel-title { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+.panel-dir { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+.panel.high .panel-dir { color: var(--high); }
+.panel.low .panel-dir { color: var(--low); }
+.panel-stars { font-size: 18px; color: #ffce54; letter-spacing: 2px; min-height: 22px; margin-bottom: 8px; }
+.panel-rates { font-size: 16px; font-weight: 700; min-height: 22px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.panel-sub { font-size: 12px; color: var(--text-dim); }
+
+/* ---- 待機表示 ---- */
+.waiting-note { display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--text-dim); padding: 24px 0; }
 
 /* ---- 履歴 ---- */
 .history-section { margin-top: 22px; }
