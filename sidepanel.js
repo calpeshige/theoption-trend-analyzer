@@ -641,7 +641,7 @@ function closeSettings() {
 // ========================================
 // スマホ用PWAの公開URL（このVercelプロジェクトに mobile/ をデプロイ。/m がPWA本体）
 // ※ 独自ドメインを使う場合はここを変更してください。
-const MOBILE_APP_BASE_URL = 'https://theoptiontrend.vercel.app';
+const MOBILE_APP_BASE_URL = 'https://theoption-trend-analyzer.vercel.app';
 
 let mobileRelayState = { enabled: false, pcKey: null, pairedMobile: null };
 
