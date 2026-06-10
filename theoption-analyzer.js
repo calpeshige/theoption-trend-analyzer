@@ -1679,8 +1679,14 @@ function initializeAnalyzer() {
         else if (cs.ai === 'ENHANCED_LOW') signalDir = 'LOW';
       }
 
-      // 変化検出（テクニカル/AIの向き・エントリーシグナル・銘柄・時間枠・取引状態・星）
-      const snapshot = [signalDir, techDir, aiDir, asset, timeframe, isTrading, starLevel].join('|');
+      // --- 急変検出（準備中の急落/急騰警告） ---
+      const ra = statusData.reversalAlert || { detected: false };
+      const reversalDetected = !!ra.detected;
+      const reversalDir = reversalDetected ? (ra.direction || null) : null;       // 'DROP'(急落) / 'RISE'(急騰)
+      const reversalAtr = reversalDetected ? String(ra.atrMultiple || '') : null;
+
+      // 変化検出（テクニカル/AIの向き・エントリーシグナル・急変・銘柄・時間枠・取引状態・星）
+      const snapshot = [signalDir, techDir, aiDir, reversalDetected ? reversalDir : '', asset, timeframe, isTrading, starLevel].join('|');
       const now = Date.now();
       const isChange = snapshot !== lastRelaySnapshot;
       const sinceLast = now - lastRelayWriteAt;
@@ -1731,6 +1737,10 @@ function initializeAnalyzer() {
         aiConf: cs && typeof cs.aiConfidence === 'number' ? cs.aiConfidence : null,
         mlLevel: statusData.mlStats && typeof statusData.mlStats.learningLevel === 'number'
           ? statusData.mlStats.learningLevel : 0,
+        // 急変検出（準備中の急落/急騰）
+        reversalDetected: reversalDetected,
+        reversalDir: reversalDir,
+        reversalAtr: reversalAtr,
         // カウントダウン
         entryAt: entryAt,
         expiresAt: expiresAt,

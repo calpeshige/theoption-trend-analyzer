@@ -123,6 +123,22 @@ body {
   50% { opacity: 0.7; }
 }
 
+/* ---- 急変検出（急落/急騰）警告 ---- */
+.reversal-alert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid #ff9800;
+  color: #ffb74d;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  animation: prep-pulse 0.8s ease-in-out infinite;
+}
+
 /* ---- エントリー強調バナー ---- */
 .entry-banner {
   display: flex;

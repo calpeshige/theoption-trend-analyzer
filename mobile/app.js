@@ -245,6 +245,10 @@ function handleSnapshot(d) {
     aiDownRate: d.aiDownRate != null ? num(d.aiDownRate) : null,
     aiConf: d.aiConf != null ? num(d.aiConf) : null,
     mlLevel: num(d.mlLevel),
+    // 急変検出
+    reversalDetected: !!d.reversalDetected,
+    reversalDir: d.reversalDir || null,
+    reversalAtr: d.reversalAtr || null,
     // カウントダウン
     entryAt: toMillis(d.entryAt),
     expiresAt: toMillis(d.expiresAt),
@@ -400,7 +404,22 @@ function tick() {
   valueEl.textContent = value;
 
   updateEntryBanner(now);
+  updateReversalAlert(preparing || trading);
   updatePcStatus();
+}
+
+// 急変検出（準備中/取引中の急落・急騰警告）。該当フェーズ以外では非表示。
+function updateReversalAlert(active) {
+  const el = document.getElementById('reversal-alert');
+  if (!el) return;
+  if (current && current.reversalDetected && active) {
+    const dirText = current.reversalDir === 'DROP' ? '急落' : '急騰';
+    const atr = current.reversalAtr ? ` (ATR×${current.reversalAtr})` : '';
+    document.getElementById('reversal-text').textContent = `⚠ ${dirText}検出${atr}`;
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
 }
 
 // 準備カウントダウンの残り秒（nextEntryAtを基準に、過ぎたらtimeframe分ローリング）
