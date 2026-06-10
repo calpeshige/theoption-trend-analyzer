@@ -31,6 +31,7 @@ echo "   → 名前から「(開発用)」を除去しました"
 # JSファイル（manifest.jsonに記載されているもの）
 echo "✅ 実行用JSファイルをコピー"
 cp license-manager.js "$RELEASE_DIR/"
+cp mobile-relay.js "$RELEASE_DIR/"
 cp trend-analyzer-engine.js "$RELEASE_DIR/"
 cp multi-indicator-system.js "$RELEASE_DIR/"
 cp price-pattern-analyzer.js "$RELEASE_DIR/"
@@ -61,6 +62,7 @@ echo "✅ sidepanel関連ファイルをコピー"
 cp sidepanel.html "$RELEASE_DIR/"
 cp sidepanel.css "$RELEASE_DIR/"
 cp sidepanel.js "$RELEASE_DIR/"
+cp qrcode.js "$RELEASE_DIR/"
 
 # popup関連
 echo "✅ popup関連ファイルをコピー"

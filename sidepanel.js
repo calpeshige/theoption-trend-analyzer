@@ -546,6 +546,37 @@ function setupEventListeners() {
     autoBackupToggle.addEventListener('click', handleAutoBackupToggle);
   }
 
+  // スマホ連携トグル
+  const mobileRelayToggle = document.getElementById('mobile-relay-toggle');
+  if (mobileRelayToggle) {
+    mobileRelayToggle.addEventListener('click', handleMobileRelayToggle);
+  }
+  const mobileRelayCopy = document.getElementById('mobile-relay-copy');
+  if (mobileRelayCopy) {
+    mobileRelayCopy.addEventListener('click', () => {
+      const urlInput = document.getElementById('mobile-relay-url');
+      if (urlInput && urlInput.value) {
+        navigator.clipboard.writeText(urlInput.value).then(() => {
+          mobileRelayCopy.textContent = 'コピー済';
+          setTimeout(() => { mobileRelayCopy.textContent = 'コピー'; }, 1500);
+        }).catch(() => {});
+      }
+    });
+  }
+  // PC版ライセンスキーのコピー
+  const pcLicenseCopy = document.getElementById('pc-license-copy');
+  if (pcLicenseCopy) {
+    pcLicenseCopy.addEventListener('click', () => {
+      const keyInput = document.getElementById('pc-license-key');
+      if (keyInput && keyInput.value && keyInput.value !== '--') {
+        navigator.clipboard.writeText(keyInput.value).then(() => {
+          pcLicenseCopy.textContent = 'コピー済';
+          setTimeout(() => { pcLicenseCopy.textContent = 'コピー'; }, 1500);
+        }).catch(() => {});
+      }
+    });
+  }
+
   // 手動バックアップボタン
   const manualBtn = document.getElementById('manual-backup-button');
   if (manualBtn) {
@@ -596,11 +627,120 @@ function setupEventListeners() {
 function openSettings() {
   document.getElementById('settings-overlay').classList.add('active');
   document.getElementById('settings-sheet').classList.add('active');
+  // スマホ連携の最新状態を取得して表示
+  refreshMobileRelayState();
 }
 
 function closeSettings() {
   document.getElementById('settings-overlay').classList.remove('active');
   document.getElementById('settings-sheet').classList.remove('active');
+}
+
+// ========================================
+// スマホ連携（mobile-relay）
+// ========================================
+// スマホ用PWAの公開URL（このVercelプロジェクトに mobile/ をデプロイ。/m がPWA本体）
+// ※ 独自ドメインを使う場合はここを変更してください。
+const MOBILE_APP_BASE_URL = 'https://theoptiontrend.vercel.app';
+
+let mobileRelayState = { enabled: false, pcKey: null, pairedMobile: null };
+
+// content scriptから連携状態を取得してUIに反映
+function refreshMobileRelayState() {
+  chrome.runtime.sendMessage({ type: 'GET_MOBILE_RELAY_STATE' }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success) {
+      renderMobileRelayState({ available: false });
+      renderPcLicenseKey(false);
+      return;
+    }
+    mobileRelayState = response.state || mobileRelayState;
+    renderMobileRelayState({ available: true });
+    renderPcLicenseKey(true);
+  });
+}
+
+// PC版ライセンスキーを設定画面下部に表示
+function renderPcLicenseKey(available) {
+  const keyInput = document.getElementById('pc-license-key');
+  if (!keyInput) return;
+  if (available === false) {
+    keyInput.value = 'TheOption取引画面を開いて再度お試しください';
+    return;
+  }
+  keyInput.value = mobileRelayState.pcKey || '未認証（ライセンス認証が必要です）';
+}
+
+// トグルクリック → ON/OFF切替
+function handleMobileRelayToggle() {
+  const enabling = !mobileRelayState.enabled;
+  chrome.runtime.sendMessage({ type: 'SET_MOBILE_RELAY', enabled: enabling }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success) {
+      return;
+    }
+    mobileRelayState.enabled = enabling;
+    // 切替後に最新のペア状態を取り直す
+    refreshMobileRelayState();
+  });
+}
+
+// 連携状態をUIへ描画（トグル・ステータス・QR・URL）
+function renderMobileRelayState({ available }) {
+  const toggle = document.getElementById('mobile-relay-toggle');
+  const panel = document.getElementById('mobile-relay-panel');
+  const status = document.getElementById('mobile-relay-status');
+  if (!toggle || !panel || !status) return;
+
+  toggle.classList.toggle('active', !!mobileRelayState.enabled);
+
+  if (!available) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  // OFFのときはパネルを隠す
+  if (!mobileRelayState.enabled) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'flex';
+
+  if (!mobileRelayState.pcKey) {
+    status.textContent = 'PC版ライセンス認証が必要です';
+    status.className = 'mobile-relay-status warn';
+    setMobileRelayQR(null);
+    return;
+  }
+  if (!mobileRelayState.pairedMobile) {
+    status.textContent = 'スマホ版ライセンス（MOB-）がペアリングされていません';
+    status.className = 'mobile-relay-status warn';
+    setMobileRelayQR(null);
+    return;
+  }
+
+  status.textContent = '✓ 連携中 — スマホでQRを読み取ってください';
+  status.className = 'mobile-relay-status ok';
+
+  const url = `${MOBILE_APP_BASE_URL}/mobile/?ch=${encodeURIComponent(mobileRelayState.pcKey)}`;
+  const urlInput = document.getElementById('mobile-relay-url');
+  if (urlInput) urlInput.value = url;
+  setMobileRelayQR(url);
+}
+
+// QRコードを描画（qrcode.js のグローバル qrcode を使用）
+function setMobileRelayQR(url) {
+  const container = document.getElementById('mobile-relay-qr');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!url || typeof qrcode === 'undefined') return;
+  try {
+    const qr = qrcode(0, 'M'); // typeNumber=0(自動), 誤り訂正レベルM
+    qr.addData(url);
+    qr.make();
+    container.innerHTML = qr.createImgTag(4, 0); // セルサイズ4px, マージン0
+  } catch (e) {
+    // QR生成失敗時はURL表示のみにフォールバック
+  }
 }
 
 // ダウンロードメニュー

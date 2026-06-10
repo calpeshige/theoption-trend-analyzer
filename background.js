@@ -316,6 +316,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // スマホ連携 ON/OFF・状態取得（content scriptのmobile-relayへ中継）
+  if (message.type === 'SET_MOBILE_RELAY' || message.type === 'GET_MOBILE_RELAY_STATE') {
+    chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, message).then(response => {
+          sendResponse(response || { success: true });
+        }).catch(error => {
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: false, error: 'TheOptionタブが見つかりません' });
+      }
+    });
+    return true;
+  }
+
   // 通貨ペア別データ一覧を取得（IndexedDBから）
   if (message.type === 'GET_ASSET_DATA_LIST') {
     chrome.tabs.query({ url: ['https://jp.theoption.com/*', 'https://theoption.com/*'] }, (tabs) => {

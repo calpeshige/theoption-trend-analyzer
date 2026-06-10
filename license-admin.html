@@ -956,13 +956,13 @@
           showResult('error', 'スマホ版単独発行の場合は、ペアにするPC版ライセンスキーが必須です');
           return;
         }
-        if (!pairedPcKeyInput.startsWith('THEO-')) {
-          showResult('error', 'ペアPC版ライセンスキーは THEO- で始まる必要があります');
+        if (!pairedPcKeyInput.startsWith('THEO-') && !pairedPcKeyInput.startsWith('TEST-')) {
+          showResult('error', 'ペアPC版ライセンスキーは THEO- (またはテスト用 TEST-) で始まる必要があります');
           return;
         }
       } else {
-        if (!licenseKey.startsWith('THEO-')) {
-          showResult('error', 'PC版ライセンスキーは THEO- で始まる必要があります。ランダム生成をやり直してください');
+        if (!licenseKey.startsWith('THEO-') && !licenseKey.startsWith('TEST-')) {
+          showResult('error', 'PC版ライセンスキーは THEO- (またはテスト用 TEST-) で始まる必要があります');
           return;
         }
       }
@@ -1043,8 +1043,8 @@
         showResultEl(resultEl, 'error', 'PC版ライセンスキーを入力してください');
         return;
       }
-      if (!pcKey.startsWith('THEO-')) {
-        showResultEl(resultEl, 'error', 'PC版ライセンスキーは THEO- で始まる必要があります');
+      if (!pcKey.startsWith('THEO-') && !pcKey.startsWith('TEST-')) {
+        showResultEl(resultEl, 'error', 'PC版ライセンスキーは THEO- (またはテスト用 TEST-) で始まる必要があります');
         return;
       }
 

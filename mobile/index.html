@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1420">
+  <title>TheOption シグナル</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TheOption">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <span class="app-title">📈 TheOption シグナル</span>
+    <span class="pc-status" id="pc-status">--</span>
+  </header>
+
+  <!-- ログイン画面 -->
+  <section class="screen login-screen" id="login-screen" hidden>
+    <div class="login-card">
+      <h1 class="login-title">スマホ連携</h1>
+      <p class="login-desc">PCで発行したスマホ版ライセンスキー（MOB-）を入力してください。</p>
+      <input type="text" class="login-input" id="license-input" placeholder="MOB-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button class="login-button" id="login-button">認証して接続</button>
+      <p class="login-error" id="login-error" hidden></p>
+      <p class="login-hint" id="login-hint"></p>
+    </div>
+  </section>
+
+  <!-- メイン画面 -->
+  <main class="screen main-screen" id="main-screen" hidden>
+    <!-- 現在のシグナルカード -->
+    <section class="signal-card" id="signal-card">
+      <div class="signal-waiting" id="signal-waiting">
+        <div class="spinner"></div>
+        <span>PCからのシグナルを待機中…</span>
+      </div>
+
+      <div class="signal-active" id="signal-active" hidden>
+        <div class="signal-asset" id="signal-asset">USD/JPY</div>
+        <div class="signal-dir" id="signal-dir">
+          <span class="signal-arrow" id="signal-arrow">▲</span>
+          <span class="signal-label" id="signal-label">HIGH</span>
+        </div>
+        <div class="signal-stars" id="signal-stars"></div>
+        <div class="signal-countdown" id="signal-countdown">
+          <span class="countdown-label" id="countdown-label">エントリーまで</span>
+          <span class="countdown-value" id="countdown-value">--</span>
+        </div>
+        <div class="signal-meta">
+          <div class="meta-item"><span class="meta-label">時間枠</span><span class="meta-value" id="meta-timeframe">--</span></div>
+          <div class="meta-item"><span class="meta-label">AI予測</span><span class="meta-value" id="meta-ai">--</span></div>
+          <div class="meta-item"><span class="meta-label">20指標</span><span class="meta-value" id="meta-s20">--</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 履歴 -->
+    <section class="history-section">
+      <h2 class="history-title">最近のシグナル</h2>
+      <ul class="history-list" id="history-list">
+        <li class="history-empty" id="history-empty">まだシグナルはありません</li>
+      </ul>
+    </section>
+
+    <!-- 設定 -->
+    <section class="settings-section">
+      <button class="settings-row" id="enable-sound-button">🔔 通知音・バイブを有効化</button>
+      <div class="install-hint" id="install-hint" hidden>
+        💡 iPhoneは <b>共有 → ホーム画面に追加</b> でアプリ化すると、画面を閉じても通知を受け取れます。
+      </div>
+      <button class="settings-row danger" id="logout-button">ログアウト</button>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
