@@ -28,6 +28,8 @@ let unsubscribe = null;
 let countdownTimer = null;
 let current = null;        // 現在のシグナルドキュメント（JS化済み）
 let lastSeq = null;        // 新規シグナル検知用
+let panelsHold = false;    // 取引終了後、次のシグナルまでテクニカル/AIをデフォルト表示に保持
+let wasTrading = false;    // 直前が取引中だったか（取引終了の検出用）
 let soundOn = localStorage.getItem(LS_SOUND) !== 'off';  // 通知音設定（デフォルトON）
 let audioCtx = null;       // 音声再生用（ユーザー操作で解禁）
 let audioUnlocked = false;
@@ -266,6 +268,7 @@ function handleSnapshot(d) {
   }
 
   if (isNewSignal) {
+    panelsHold = false; // 新しいシグナル → パネルのデフォルト保持を解除して表示
     pushHistory(data);
     notifyNewSignal(data);
   }
@@ -287,28 +290,37 @@ function render() {
   }
   waitingNote.hidden = true;
   updatePcStatus();
+  applyPanels();
+  tick(); // 準備カウントダウン・エントリーバナーを即時更新
+}
 
-  // --- テクニカルパネル ---
+// テクニカル/AIパネルの描画。panelsHold（取引終了後〜次シグナルまで）はデフォルト表示にする。
+function applyPanels() {
+  if (!current) return;
+  const hold = panelsHold;
+
+  // --- テクニカル ---
   const techPanel = document.getElementById('tech-panel');
-  setPanelDir(techPanel, document.getElementById('tech-dir'), current.techDir);
+  setPanelDir(techPanel, document.getElementById('tech-dir'), hold ? 'NONE' : current.techDir);
   const techStars = Math.max(0, Math.min(3, current.starLevel));
   document.getElementById('tech-stars').textContent =
-    techStars > 0 ? '★'.repeat(techStars) + '☆'.repeat(3 - techStars) : '☆☆☆';
+    (!hold && techStars > 0) ? '★'.repeat(techStars) + '☆'.repeat(3 - techStars) : '☆☆☆';
   document.getElementById('tech-sub').textContent =
-    (current.highCount || current.lowCount) ? `20指標 H${current.highCount} / L${current.lowCount}` : '20指標 集計中';
+    hold ? '20指標 待機中'
+         : ((current.highCount || current.lowCount) ? `20指標 H${current.highCount} / L${current.lowCount}` : '20指標 集計中');
 
-  // --- AIパネル ---
+  // --- AI予測 ---
   const aiPanel = document.getElementById('ai-panel');
-  setPanelDir(aiPanel, document.getElementById('ai-dir'), current.aiDir);
+  setPanelDir(aiPanel, document.getElementById('ai-dir'), hold ? 'NONE' : current.aiDir);
   const ratesEl = document.getElementById('ai-rates');
-  if (current.aiUpRate != null && current.aiDownRate != null) {
+  if (hold) {
+    ratesEl.textContent = '待機中';
+  } else if (current.aiUpRate != null && current.aiDownRate != null) {
     ratesEl.textContent = `↑${Math.round(current.aiUpRate)}%　↓${Math.round(current.aiDownRate)}%`;
   } else {
     ratesEl.textContent = '判定準備中';
   }
   document.getElementById('ai-sub').textContent = `学習 ${current.mlLevel || 0}%`;
-
-  tick(); // 準備カウントダウン・エントリーバナーを即時更新
 }
 
 // エントリーバナーの表示更新（期限切れで自動的に消す＝前回シグナルの残留防止）
@@ -359,6 +371,13 @@ function tick() {
   const hasEntry = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
   const trading = current.isTrading && current.expiresAt && now < current.expiresAt;
   const preparing = hasEntry && current.entryAt && now < current.entryAt;
+
+  // 取引終了を検出 → テクニカル/AIを即デフォルトへ（次シグナルまで保持）
+  if (wasTrading && !trading) {
+    panelsHold = true;
+    applyPanels();
+  }
+  wasTrading = trading;
 
   let phase, label, value;
   if (trading) {

@@ -2,7 +2,7 @@
 // ネットワーク優先（常に最新を取得し、オフライン時のみキャッシュにフォールバック）。
 // ※ 以前は cache-first だったため更新が反映されない不具合があった。キャッシュ名を上げて旧版を破棄する。
 
-const CACHE = 'theoption-mobile-v6';
+const CACHE = 'theoption-mobile-v7';
 const ASSETS = [
   './',
   './index.html',
