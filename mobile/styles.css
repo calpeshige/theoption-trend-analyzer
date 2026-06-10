@@ -152,8 +152,8 @@ body {
 .history-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 16px; }
 .history-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  gap: 10px;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 8px;
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -170,6 +170,20 @@ body {
 .history-item.high .hi-dir { color: var(--high); }
 .history-item.low .hi-dir { color: var(--low); }
 .hi-tf { color: var(--text-dim); }
+
+/* シグナルの出どころバッジ（テクニカル / AI / 両方） */
+.hi-src {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.hi-src.tech { background: rgba(74,144,226,0.2); color: #8ab8f0; }
+.hi-src.ai { background: rgba(159,122,234,0.2); color: #c4a5f5; }
+.hi-src.both { background: rgba(255,206,84,0.22); color: #ffce54; }
 
 /* ---- 設定 ---- */
 .settings-section { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }

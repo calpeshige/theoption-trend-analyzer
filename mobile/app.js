@@ -383,12 +383,17 @@ function setPcStatus(text, online) {
 // 履歴
 // ========================================
 function pushHistory(data) {
+  // このシグナルにテクニカル/AIのどちらが一致したか（両方一致＝両者がエントリー方向と同じ）
+  const techMatch = data.techDir === data.signalDir;
+  const aiMatch = data.aiDir === data.signalDir;
   const list = loadHistory();
   list.unshift({
     asset: data.asset,
     dir: data.signalDir,
     timeframe: data.timeframe,
     starLevel: data.starLevel,
+    tech: techMatch,
+    ai: aiMatch,
     time: Date.now()
   });
   const trimmed = list.slice(0, HISTORY_MAX);
@@ -410,10 +415,17 @@ function renderHistory(list) {
     const li = document.createElement('li');
     li.className = 'history-item ' + (h.dir === 'HIGH' ? 'high' : 'low');
     const arrow = h.dir === 'HIGH' ? '▲' : '▼';
+    // シグナルの出どころ（テクニカル/AI/両方）
+    let srcLabel, srcClass;
+    if (h.tech && h.ai) { srcLabel = 'テク+AI'; srcClass = 'both'; }
+    else if (h.tech) { srcLabel = 'テクニカル'; srcClass = 'tech'; }
+    else if (h.ai) { srcLabel = 'AI'; srcClass = 'ai'; }
+    else { srcLabel = '—'; srcClass = ''; }
     li.innerHTML = `
       <span class="hi-time">${formatClock(h.time)}</span>
       <span class="hi-asset">${h.asset}</span>
       <span class="hi-dir">${arrow} ${h.dir}</span>
+      <span class="hi-src ${srcClass}">${srcLabel}</span>
       <span class="hi-tf">${formatTimeframe(h.timeframe)}</span>`;
     ul.appendChild(li);
   }
