@@ -524,7 +524,7 @@
 
   <header class="site-header">
     <h1>Theoption Trading System</h1>
-    <div class="version">v5.13.0</div>
+    <div class="version">v5.14.0</div>
   </header>
 
   <nav class="tab-nav">
@@ -556,6 +556,7 @@
           <li><a href="#sec-download">データのダウンロード・バックアップ</a></li>
           <li><a href="#sec-community">コミュニティバックアップ</a></li>
           <li><a href="#sec-hourly">時間帯別データ管理</a></li>
+          <li><a href="#sec-mobile">スマホ連携（外出先で確認）</a></li>
           <li><a href="#sec-faq">よくある質問</a></li>
         </ol>
       </div>
@@ -1023,8 +1024,47 @@
         <li>例：深夜帯（1:00〜6:00）に取引しない場合、その時間帯のデータを削除</li>
       </ul>
 
-      <!-- 14. FAQ -->
-      <h2 id="sec-faq">15. よくある質問</h2>
+      <!-- 15. スマホ連携 -->
+      <h2 id="sec-mobile">15. スマホ連携（外出先で確認）</h2>
+      <p>PCで動いているシステムのシグナルを、<strong>スマホでリアルタイムに確認・通知</strong>できる機能です。スマホは単体では動かず、あくまでPCの分析結果を受信して表示する「コンパニオン」として動作します。外出先や離席中でも、PCの分析を手元で確認できます。</p>
+      <div class="note">
+        <strong>スマホ版は有料の追加機能です。</strong> 利用には専用の<strong>スマホ版ライセンスキー（MOB-で始まる）</strong>が必要です。スマホ版ライセンスは、お使いのPC版ライセンスとペアリングして発行します。
+      </div>
+
+      <h3>セットアップ手順</h3>
+      <ul>
+        <li><strong>① PC側で連携をON：</strong> サイドパネルの設定（歯車アイコン）→「📱 スマホ連携」をONにすると、QRコードと接続用URLが表示されます</li>
+        <li><strong>② スマホで開く：</strong> 表示されたQRコードをスマホのカメラで読み取る（またはURLを開く）</li>
+        <li><strong>③ 認証：</strong> スマホ版ライセンスキー（MOB-）を入力して接続。一度認証すれば次回以降は自動で接続します</li>
+      </ul>
+      <div class="note">
+        設定画面の一番下に<strong>「PC版ライセンスキー」</strong>が表示されます。スマホ版ライセンスを発行・ペアリングする際にご利用ください。
+      </div>
+
+      <h3>スマホ画面でわかること</h3>
+      <table>
+        <tr><th>表示</th><th>内容</th></tr>
+        <tr><td><strong>準備カウントダウン</strong></td><td>「分析中（グレー）／準備中（オレンジ）／取引中（赤）」を、次の判定までの秒数とともに表示。PC版と同じ色・タイミングです</td></tr>
+        <tr><td><strong>テクニカル / AI予測パネル</strong></td><td>20指標の多数決（テクニカル）とAI予測の上昇率/下降率を、左右に分けて表示します</td></tr>
+        <tr><td><strong>エントリーシグナル</strong></td><td>HIGH/LOWのシグナルが出ると強調バナーで表示。取引終了後はすぐにデフォルト表示へ戻ります</td></tr>
+        <tr><td><strong>急変検出</strong></td><td>準備中に急落・急騰を検出すると「⚠ 急落検出／急騰検出」を表示します</td></tr>
+        <tr><td><strong>最近のシグナル履歴</strong></td><td>直近のシグナルを、テクニカル/AI/両方のどれで出たかのバッジ付きで一覧表示します</td></tr>
+      </table>
+
+      <h3>通知音とアプリ化</h3>
+      <ul>
+        <li><strong>通知音 ON/OFF：</strong> 設定でシグナル発生時の通知音をON/OFFできます（バイブはありません）</li>
+        <li><strong>iPhoneの場合：</strong> Safariの「共有 → ホーム画面に追加」でアプリのように使えます</li>
+      </ul>
+
+      <h3>取引はワンタップで取引画面へ</h3>
+      <p>スマホ画面の「📈 〇〇/〇〇 を取引する」ボタンをタップすると、TheOptionの取引画面が開きます。<strong>金額の入力やHIGH/LOWの発注はご自身（手動）で</strong>行ってください。</p>
+      <div class="note">
+        <strong>ご注意：</strong> 本システムはエントリーの参考情報を表示する「サインツール」です。自動発注は行いません（TheOptionの利用規約で自動売買は禁止されています）。発注は必ずご自身で手動で行ってください。
+      </div>
+
+      <!-- 16. FAQ -->
+      <h2 id="sec-faq">16. よくある質問</h2>
 
       <div class="faq-item">
         <div class="faq-q">Q: シグナルが出るまでにどのくらいかかりますか？</div>
@@ -1085,6 +1125,22 @@
 
       <h2>アップデート履歴</h2>
       <p>新しいアップデートが上に表示されます。</p>
+
+      <!-- === v5.14.0 === -->
+      <div class="update-card">
+        <div class="update-version">2026年6月10日 — v5.14.0</div>
+        <h3>📱 スマホ連携機能を追加（外出先でシグナル確認）</h3>
+        <ul>
+          <li><strong>📱 スマホ連携（有料追加機能）</strong>: PCのシグナルをスマホにリアルタイム転送し、外出先や離席中でも確認・通知できる機能を追加。専用のスマホ版ライセンス（MOB-）で認証します</li>
+          <li><strong>かんたん接続</strong>: サイドパネル設定の「📱 スマホ連携」をON → 表示されたQRコードをスマホで読み取り → スマホ版キーで認証するだけ。設定下部にPC版ライセンスキーも表示されます</li>
+          <li><strong>準備カウントダウン</strong>: スマホでも「分析中／準備中／取引中」をPC版と同じ色で表示</li>
+          <li><strong>テクニカル / AI予測を左右に分けて表示</strong>: 20指標の多数決とAI予測（上昇率/下降率）を一目で確認できます</li>
+          <li><strong>急変検出の表示</strong>: 準備中の急落・急騰をスマホにも警告表示</li>
+          <li><strong>シグナル履歴</strong>: 直近のシグナルを「テクニカル/AI/両方」のバッジ付きで一覧表示</li>
+          <li><strong>通知音 ON/OFF</strong>: 通知音を選択可能（バイブは廃止）</li>
+          <li><strong>ワンタップで取引画面へ</strong>: スマホ画面から取引画面をワンタップで開けます（発注は手動）</li>
+        </ul>
+      </div>
 
       <!-- === v5.13.0 === -->
       <div class="update-card">
@@ -1332,24 +1388,21 @@
         <h3 style="margin-top: 32px;">最新バージョン</h3>
         <div class="release-card latest">
           <div class="release-header">
-            <span class="release-version">v5.13.0</span>
+            <span class="release-version">v5.14.0</span>
             <span class="release-latest-badge">最新</span>
-            <span class="release-date">2026年5月31日</span>
+            <span class="release-date">2026年6月10日</span>
           </div>
           <div class="release-notes">
             <ul>
-              <li>📊 「AIデータダウンロード」タブを新設 — コミュニティのデータを取得可能に</li>
-              <li>🤝 コミュニティバックアップ機能を新規追加</li>
-              <li>5日に1回、起動時にバックアップを促す通知を表示</li>
-              <li>「今すぐバックアップ」で手動実行も可能</li>
-              <li>選んだ通貨ペアのデータをローカル保存＆コミュニティに共有</li>
-              <li>JSONインポートが gzip圧縮(.gz) ファイルにも対応</li>
-              <li>取扱説明書ページのタブ状態保持、ライセンス管理ツール改善</li>
+              <li>📱 スマホ連携機能を追加 — PCのシグナルをスマホでリアルタイム確認・通知（有料追加機能）</li>
+              <li>QRコードで接続、スマホ版ライセンス（MOB-）で認証</li>
+              <li>準備カウントダウン、テクニカル/AI予測の左右表示、急変検出、シグナル履歴</li>
+              <li>通知音ON/OFF、ワンタップで取引画面へ（発注は手動）</li>
             </ul>
           </div>
-          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.13.0/theoption_trend_release.zip">
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.14.0/theoption_trend_release.zip">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            ダウンロード（v5.13.0）
+            ダウンロード（v5.14.0）
           </a>
         </div>
 
@@ -1358,6 +1411,25 @@
         <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
           過去のバージョンはトラブル発生時のロールバック用です。通常は最新版のご利用を推奨します。
         </p>
+
+        <div class="release-card">
+          <div class="release-header">
+            <span class="release-version">v5.13.0</span>
+            <span class="release-date">2026年5月31日</span>
+          </div>
+          <div class="release-notes">
+            <ul>
+              <li>📊 「AIデータダウンロード」タブを新設 — コミュニティのデータを取得可能に</li>
+              <li>🤝 コミュニティバックアップ機能を新規追加</li>
+              <li>5日に1回、起動時にバックアップを促す通知を表示</li>
+              <li>JSONインポートが gzip圧縮(.gz) ファイルにも対応</li>
+            </ul>
+          </div>
+          <a class="download-btn" href="https://github.com/calpeshige/theoption-releases/releases/download/v5.13.0/theoption_trend_release.zip">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            ダウンロード（v5.13.0）
+          </a>
+        </div>
 
         <div class="release-card">
           <div class="release-header">
@@ -1625,7 +1697,7 @@
   </div>
 
   <footer class="site-footer">
-    Theoption Trading System v5.13.0<br>
+    Theoption Trading System v5.14.0<br>
     本マニュアルの内容は予告なく変更される場合があります。
   </footer>
 
