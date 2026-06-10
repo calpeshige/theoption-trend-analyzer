@@ -20,6 +20,7 @@ const HISTORY_MAX = 10;
 // ---- localStorage キー ----
 const LS_AUTH = 'theoption_mobile_auth';        // { mobLicense, channel, deviceId, validatedAt }
 const LS_HISTORY = 'theoption_mobile_history';
+const LS_SOUND = 'theoption_mobile_sound';       // 通知音 ON/OFF（'off'でOFF、それ以外ON）
 
 // ---- 状態 ----
 let db = null;
@@ -27,8 +28,9 @@ let unsubscribe = null;
 let countdownTimer = null;
 let current = null;        // 現在のシグナルドキュメント（JS化済み）
 let lastSeq = null;        // 新規シグナル検知用
-let soundEnabled = false;
-let audioCtx = null;
+let soundOn = localStorage.getItem(LS_SOUND) !== 'off';  // 通知音設定（デフォルトON）
+let audioCtx = null;       // 音声再生用（ユーザー操作で解禁）
+let audioUnlocked = false;
 
 // ========================================
 // 起動
@@ -79,7 +81,7 @@ function showLogin(chFromUrl) {
     button.disabled = true;
     button.textContent = '認証中…';
     // ログインのタップ操作で音声を解禁（iOS/Android対策）
-    enableSound();
+    ensureAudio();
     const result = await validateLicense(key, chFromUrl);
     button.disabled = false;
     button.textContent = '認証して接続';
@@ -306,10 +308,14 @@ function render() {
   }
   document.getElementById('ai-sub').textContent = `学習 ${current.mlLevel || 0}%`;
 
-  // --- エントリーシグナル強調 ---
+  tick(); // 準備カウントダウン・エントリーバナーを即時更新
+}
+
+// エントリーバナーの表示更新（期限切れで自動的に消す＝前回シグナルの残留防止）
+function updateEntryBanner(now) {
   const banner = document.getElementById('entry-banner');
-  const hasEntry = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
-  const notExpired = !current.expiresAt || Date.now() < current.expiresAt;
+  const hasEntry = current && (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
+  const notExpired = current && (!current.expiresAt || now < current.expiresAt);
   if (hasEntry && notExpired) {
     banner.hidden = false;
     banner.classList.toggle('high', current.signalDir === 'HIGH');
@@ -322,8 +328,6 @@ function render() {
   } else {
     banner.hidden = true;
   }
-
-  tick(); // 準備カウントダウン即時更新
 }
 
 // PCがまだ一度も書き込んでいない（ドキュメント未存在）
@@ -342,22 +346,41 @@ function setPanelDir(panelEl, dirEl, dir) {
 }
 
 // 毎秒の準備カウントダウン更新（通信なし・ローカル計算）
+// 状態色をPC版に合わせる: 分析中=グレー / 準備中=オレンジ / 取引中=赤
 function tick() {
   if (!current) return;
   const now = Date.now();
+  const bar = document.getElementById('prep-bar');
   const labelEl = document.getElementById('prep-label');
   const valueEl = document.getElementById('prep-value');
   document.getElementById('prep-asset').textContent = current.asset || '--';
   document.getElementById('prep-tf').textContent = formatTimeframe(current.timeframe);
 
-  if (current.isTrading && current.expiresAt && now < current.expiresAt) {
-    labelEl.textContent = '取引中 残り';
-    valueEl.textContent = Math.ceil((current.expiresAt - now) / 1000) + '秒';
+  const hasEntry = (current.signalDir === 'HIGH' || current.signalDir === 'LOW');
+  const trading = current.isTrading && current.expiresAt && now < current.expiresAt;
+  const preparing = hasEntry && current.entryAt && now < current.entryAt;
+
+  let phase, label, value;
+  if (trading) {
+    phase = 'phase-trading';
+    label = '取引中 残り';
+    value = Math.ceil((current.expiresAt - now) / 1000) + '秒';
+  } else if (preparing) {
+    phase = 'phase-ready';
+    label = '準備中 エントリーまで';
+    value = Math.ceil((current.entryAt - now) / 1000) + '秒';
   } else {
+    phase = 'phase-analyzing';
+    label = '分析中 次の判定まで';
     const rem = prepRemaining(now);
-    labelEl.textContent = '次の判定まで';
-    valueEl.textContent = rem != null ? rem + '秒' : '--';
+    value = rem != null ? rem + '秒' : '--';
   }
+  bar.classList.remove('phase-analyzing', 'phase-ready', 'phase-trading');
+  bar.classList.add(phase);
+  labelEl.textContent = label;
+  valueEl.textContent = value;
+
+  updateEntryBanner(now);
   updatePcStatus();
 }
 
@@ -439,25 +462,33 @@ function renderHistory(list) {
 }
 
 // ========================================
-// 通知（アプリ内・音/バイブ）
+// 通知（アプリ内・音のみ。バイブは無し）
 // ========================================
 function notifyNewSignal(data) {
-  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-  playBeep(data.signalDir === 'HIGH');
+  if (soundOn) playBeep(data.signalDir === 'HIGH');
 }
 
-function enableSound() {
-  if (soundEnabled) return;
+// ユーザー操作時に音声を解禁（iOS/Android対策）。ONのときのみ。
+function ensureAudio() {
+  if (audioUnlocked || !soundOn) return;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    soundEnabled = true;
-    const btn = document.getElementById('enable-sound-button');
-    if (btn) { btn.textContent = '🔔 通知音・バイブ 有効'; btn.classList.add('enabled'); }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    audioUnlocked = true;
   } catch (e) { /* 非対応 */ }
 }
 
+// 通知音 ON/OFF を設定して保存・UI反映
+function setSound(on) {
+  soundOn = !!on;
+  localStorage.setItem(LS_SOUND, soundOn ? 'on' : 'off');
+  const toggle = document.getElementById('sound-toggle');
+  if (toggle) toggle.classList.toggle('on', soundOn);
+  if (soundOn) ensureAudio();
+}
+
 function playBeep(high) {
-  if (!soundEnabled || !audioCtx) return;
+  if (!soundOn || !audioCtx) return;
   try {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
@@ -477,7 +508,16 @@ function playBeep(high) {
 // メイン画面のコントロール配線
 // ========================================
 function wireMainControls(channel) {
-  document.getElementById('enable-sound-button').onclick = enableSound;
+  // 通知音トグル
+  const soundToggle = document.getElementById('sound-toggle');
+  if (soundToggle) {
+    soundToggle.classList.toggle('on', soundOn);
+    soundToggle.onclick = () => setSound(!soundOn);
+  }
+  // 最初のユーザー操作で音声を解禁（ONの場合）
+  const unlock = () => { ensureAudio(); document.removeEventListener('pointerdown', unlock); };
+  document.addEventListener('pointerdown', unlock, { once: true });
+
   document.getElementById('logout-button').onclick = () => {
     if (unsubscribe) unsubscribe();
     if (countdownTimer) clearInterval(countdownTimer);
