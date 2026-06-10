@@ -138,15 +138,22 @@ async function validateLicense(mobKey, chFromUrl) {
       console.warn('[Mobile] QRのチャンネルとライセンスのペアが不一致。ライセンス側を採用します。');
     }
 
-    // デバイス登録
+    // デバイス登録（スマホはキャッシュ削除で端末IDが変わるため「置き換え方式」）
     const maxDevices = parseInt(f.maxDevices?.integerValue ?? '1', 10);
     const devicesArr = (f.devices?.arrayValue?.values || []).map(v => v.stringValue);
     const deviceId = getOrCreateDeviceId();
     if (!devicesArr.includes(deviceId)) {
-      if (devicesArr.length >= maxDevices) {
-        return { ok: false, reason: `このライセンスは既に${maxDevices}台で使用中です` };
+      let newDevices;
+      if (devicesArr.length < maxDevices) {
+        // 空きあり → 追加登録
+        newDevices = [...devicesArr, deviceId];
+      } else {
+        // 上限到達 → 最も古い端末を新しい端末で置き換える（最新の maxDevices 台を保持）
+        // ※キャッシュ削除→再認証で締め出されないようにするため。同時利用は上限台数までに制限される。
+        const keep = maxDevices > 1 ? devicesArr.slice(-(maxDevices - 1)) : [];
+        newDevices = keep.concat(deviceId);
       }
-      const reg = await registerDevice(mobKey, [...devicesArr, deviceId]);
+      const reg = await registerDevice(mobKey, newDevices);
       if (!reg) return { ok: false, reason: 'デバイス登録に失敗しました' };
     }
 
