@@ -8,12 +8,20 @@
     {
       "src": "docs/*.html",
       "use": "@vercel/static"
+    },
+    {
+      "src": "mobile/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/",
       "dest": "/license-admin.html"
+    },
+    {
+      "src": "/mobile/?",
+      "dest": "/mobile/index.html"
     },
     {
       "src": "/license-admin.html",

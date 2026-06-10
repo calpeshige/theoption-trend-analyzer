@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // licensesコレクション
+    match /licenses/{licenseKey} {
+      // 読み取り: 誰でも可能（拡張機能のライセンス検証用）
+      allow read: if true;
+
+      // 書き込み: 許可（ライセンス管理ツール用）
+      allow write: if true;
+    }
+
+    // live_signals: PC拡張→スマホPWA のシグナル中継
+    // docId = PC版ライセンスキー（推測困難）。シグナル情報のみで個人情報は含めない。
+    match /live_signals/{channel} {
+      // 読み取り: スマホPWAが購読
+      allow read: if true;
+
+      // 書き込み: PC拡張が書き込み
+      allow write: if true;
+    }
+  }
+}

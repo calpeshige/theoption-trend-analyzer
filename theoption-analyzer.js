@@ -457,6 +457,10 @@ function initializeAnalyzer() {
     let advancedSignalEngine = null;  // v5.8.0: 高精度シグナルエンジン（30指標多数決）
     let signalEngine20 = null;  // v5.9.1: 20インジケータ多数決シグナルシステム
     let latestSignal20Result = null;  // v5.9.2: 最新のsignal20結果（sendAnalysisToSidePanelで使用）
+    // スマホ連携（mobile-relay.js）用: 変化検出とハートビート管理
+    let lastRelaySnapshot = null;  // 前回転送したシグナル状態のスナップショット文字列
+    let lastRelayWriteAt = 0;      // 前回Firestoreへ書き込んだ時刻
+    let relaySeq = 0;              // 新規シグナル検知用の単調増加カウンタ
     let currentFilterLevel = 2;  // v5.10.6: モメンタムフィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let currentPricePositionFilterLevel = 2;  // v5.12.4: 急変フィルタ強度（0=OFF, 1=弱, 2=中, 3=強）デフォルト:中
     let currentSignalMode = 'majority';  // 'majority'（多数決モード）| 'standard'（標準モード）
@@ -1606,9 +1610,105 @@ function initializeAnalyzer() {
         }).catch(() => {
           // サイドパネルが開いていない場合は無視
         });
+
+        // スマホ連携: シグナル変化時＋定期ハートビートのみFirestoreへ転送
+        try {
+          maybeRelayToMobile(statusData, countdown);
+        } catch (relayErr) {
+          // 連携エラーは本体処理に影響させない
+        }
       } catch (error) {
         // エラーは無視
       }
+    }
+
+    // ========================================
+    // スマホ連携: ライブシグナルをFirestoreへ中継
+    // 毎秒呼ばれるが、書き込みは「シグナル変化時」または「30秒ごとのハートビート」に限定
+    // （カウントダウンはスマホ側でentryAtからローカル計算するため毎秒書かない）
+    // ========================================
+    const RELAY_HEARTBEAT_INTERVAL = 30000;  // 無風時の生存確認間隔（30秒）
+
+    function maybeRelayToMobile(statusData, countdown) {
+      if (!window.mobileRelay || !window.mobileRelay.isEnabled()) return;
+
+      const cs = statusData.currentSignal;
+
+      // シグナル方向を抽出（tech優先 → ai → 強化シグナルを正規化）
+      let signalDir = 'NONE';
+      if (cs) {
+        if (cs.tech === 'HIGH' || cs.tech === 'LOW') {
+          signalDir = cs.tech;
+        } else if (cs.ai === 'HIGH' || cs.ai === 'LOW') {
+          signalDir = cs.ai;
+        } else if (cs.ai === 'ENHANCED_HIGH') {
+          signalDir = 'HIGH';
+        } else if (cs.ai === 'ENHANCED_LOW') {
+          signalDir = 'LOW';
+        }
+      }
+
+      const asset = statusData.asset || '';
+      const timeframe = statusData.currentTimeframe || 0;
+      const isTrading = !!statusData.isTrading;
+      const s20 = statusData.signal20 || (cs && cs.signal20) || null;
+      const starLevel = s20 && typeof s20.starLevel === 'number' ? s20.starLevel : 0;
+
+      // 変化検出用スナップショット
+      const snapshot = [signalDir, asset, timeframe, isTrading, starLevel].join('|');
+      const now = Date.now();
+      const isChange = snapshot !== lastRelaySnapshot;
+      const heartbeatDue = (now - lastRelayWriteAt) >= RELAY_HEARTBEAT_INTERVAL;
+
+      if (!isChange && !heartbeatDue) return;
+
+      // 新しいエントリーシグナル（HIGH/LOW）が出た時だけseqを増やす → スマホ側の新規通知トリガー
+      if (isChange && (signalDir === 'HIGH' || signalDir === 'LOW')) {
+        relaySeq++;
+      }
+
+      lastRelaySnapshot = snapshot;
+      lastRelayWriteAt = now;
+
+      // エントリー時刻・期限（スマホ側のローカルカウントダウンの基準）
+      let entryAt = null;
+      let expiresAt = null;
+      if (signalDir === 'HIGH' || signalDir === 'LOW') {
+        if (isTrading && statusData.tradingRemaining > 0) {
+          // 取引中: エントリー済み。期限 = 今 + 残り時間
+          entryAt = new Date(now);
+          expiresAt = new Date(now + statusData.tradingRemaining * 1000);
+        } else {
+          entryAt = new Date(now + (countdown || 0) * 1000);
+          expiresAt = new Date(entryAt.getTime() + timeframe * 1000);
+        }
+      }
+
+      const payload = {
+        asset: asset,
+        timeframe: timeframe,
+        signalDir: signalDir,
+        techConf: cs && typeof cs.techConfidence === 'number' ? cs.techConfidence : 0,
+        ai: cs && cs.ai ? String(cs.ai) : null,
+        aiConf: cs && typeof cs.aiConfidence === 'number' ? cs.aiConfidence : null,
+        aiUpRate: cs && typeof cs.aiUpRate === 'number' ? cs.aiUpRate : null,
+        aiDownRate: cs && typeof cs.aiDownRate === 'number' ? cs.aiDownRate : null,
+        starLevel: starLevel,
+        highCount: s20 && typeof s20.highCount === 'number' ? s20.highCount : 0,
+        lowCount: s20 && typeof s20.lowCount === 'number' ? s20.lowCount : 0,
+        mlLevel: statusData.mlStats && typeof statusData.mlStats.learningLevel === 'number'
+          ? statusData.mlStats.learningLevel : 0,
+        entryAt: entryAt,
+        expiresAt: expiresAt,
+        isTrading: isTrading,
+        countdown: typeof countdown === 'number' ? countdown : 0,
+        updatedAt: new Date(now),
+        seq: relaySeq,
+        pcOnline: true,
+        signalMode: statusData.signalMode || ''
+      };
+
+      window.mobileRelay.writeLiveSignal(payload);
     }
 
     // バックグラウンドからのメッセージを受信
@@ -2082,6 +2182,31 @@ function initializeAnalyzer() {
           originalConsoleLog(`[TheOption Analyzer] 🔄 シグナルモード変更: ${currentSignalMode}`);
           sendResponse({ success: true, mode: currentSignalMode });
           return;
+        }
+
+        // スマホ連携 ON/OFF
+        if (message.type === 'SET_MOBILE_RELAY') {
+          if (window.mobileRelay) {
+            window.mobileRelay.setEnabled(!!message.enabled);
+            // 変化検出をリセットして次回必ず送信させる
+            lastRelaySnapshot = null;
+            lastRelayWriteAt = 0;
+          }
+          sendResponse({ success: true, enabled: !!message.enabled });
+          return;
+        }
+
+        // スマホ連携の状態取得（連携ON/OFF・PCキー・ペアスマホ版の有無）
+        if (message.type === 'GET_MOBILE_RELAY_STATE') {
+          if (window.mobileRelay) {
+            (async () => {
+              await window.mobileRelay.refreshPairing(true);
+              sendResponse({ success: true, state: window.mobileRelay.getState() });
+            })();
+          } else {
+            sendResponse({ success: false, error: 'mobile-relay 未初期化' });
+          }
+          return true; // 非同期レスポンス
         }
 
         // 通貨ペア別データ一覧を取得（IndexedDBから）

@@ -31,6 +31,7 @@
       ],
       "js": [
         "license-manager.js",
+        "mobile-relay.js",
         "trend-analyzer-engine.js",
         "multi-indicator-system.js",
         "price-pattern-analyzer.js",

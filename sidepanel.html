@@ -506,6 +506,40 @@
             <option value="3">強</option>
           </select>
         </div>
+        <!-- スマホ連携設定 -->
+        <div class="setting-section">
+          <h3 class="download-section-title">📱 スマホ連携</h3>
+          <p class="download-section-note">PCのシグナルをスマホにリアルタイム送信します。スマホ版ライセンス（MOB-）が必要です。</p>
+
+          <div class="setting-item">
+            <div class="setting-item-content">
+              <span class="setting-item-label">スマホへ送信</span>
+              <span class="setting-item-description">シグナルをスマホに転送して通知</span>
+            </div>
+            <div class="toggle-switch" id="mobile-relay-toggle">
+              <div class="toggle-thumb"></div>
+            </div>
+          </div>
+
+          <div class="mobile-relay-panel" id="mobile-relay-panel" style="display:none;">
+            <div class="mobile-relay-status" id="mobile-relay-status">状態を確認中...</div>
+            <div class="mobile-relay-qr" id="mobile-relay-qr"></div>
+            <div class="mobile-relay-url-row">
+              <input type="text" class="mobile-relay-url" id="mobile-relay-url" readonly>
+              <button class="mobile-relay-copy" id="mobile-relay-copy">コピー</button>
+            </div>
+            <span class="setting-hint">スマホでこのQRコード／URLを開き、スマホ版ライセンスキーで認証してください。</span>
+          </div>
+        </div>
+        <!-- PC版ライセンスキー表示（ペアリング用） -->
+        <div class="setting-section">
+          <h3 class="download-section-title">🔑 PC版ライセンスキー</h3>
+          <p class="download-section-note">スマホ版ライセンスをペアリングする際に使用します。</p>
+          <div class="mobile-relay-url-row">
+            <input type="text" class="mobile-relay-url" id="pc-license-key" readonly value="--">
+            <button class="mobile-relay-copy" id="pc-license-copy">コピー</button>
+          </div>
+        </div>
       </div>
     </aside>
   </div>
@@ -590,6 +624,7 @@
     </div>
   </div>
 
+  <script src="qrcode.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
