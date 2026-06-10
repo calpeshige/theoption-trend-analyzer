@@ -411,17 +411,20 @@ function tick() {
   updatePcStatus();
 }
 
-// 急変検出（準備中/取引中の急落・急騰警告）。該当フェーズ以外では非表示。
+// 急変検出ボックス（テクニカル/AIの下に常設）。急変時のみ警告色＋文言、それ以外は状態表示。
 function updateReversalAlert(active) {
-  const el = document.getElementById('reversal-alert');
-  if (!el) return;
+  const box = document.getElementById('reversal-box');
+  const status = document.getElementById('reversal-status');
+  if (!box || !status) return;
   if (current && current.reversalDetected && active) {
     const dirText = current.reversalDir === 'DROP' ? '急落' : '急騰';
     const atr = current.reversalAtr ? ` (ATR×${current.reversalAtr})` : '';
-    document.getElementById('reversal-text').textContent = `⚠ ${dirText}検出${atr}`;
-    el.hidden = false;
+    status.textContent = `⚠ ${dirText}検出${atr}`;
+    box.classList.add('alert');
   } else {
-    el.hidden = true;
+    // 準備中/取引中で急変なし → 「異常なし」、それ以外（分析中）→ 「—」
+    status.textContent = active ? '異常なし' : '—';
+    box.classList.remove('alert');
   }
 }
 

@@ -123,21 +123,29 @@ body {
   50% { opacity: 0.7; }
 }
 
-/* ---- 急変検出（急落/急騰）警告 ---- */
-.reversal-alert {
+/* ---- 急変検出ボックス（テクニカル/AIの下に常設） ---- */
+.reversal-box {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: rgba(255, 152, 0, 0.15);
-  border: 1px solid #ff9800;
-  color: #ffb74d;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 12px 16px;
+  margin-top: 12px;
   margin-bottom: 12px;
-  font-weight: 700;
-  font-size: 15px;
+}
+.reversal-box-title { font-size: 13px; color: var(--text-dim); font-weight: 700; }
+.reversal-box-status { font-size: 15px; font-weight: 700; color: var(--text-dim); }
+
+/* 急変検出時のみ警告色＋点滅 */
+.reversal-box.alert {
+  background: rgba(255, 152, 0, 0.15);
+  border-color: #ff9800;
   animation: prep-pulse 0.8s ease-in-out infinite;
 }
+.reversal-box.alert .reversal-box-title,
+.reversal-box.alert .reversal-box-status { color: #ffb74d; }
 
 /* ---- エントリー強調バナー ---- */
 .entry-banner {
