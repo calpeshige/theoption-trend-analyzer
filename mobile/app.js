@@ -505,7 +505,18 @@ function clearAuth() { localStorage.removeItem(LS_AUTH); }
 // Service Worker 登録（オフラインシェル）
 // ========================================
 if ('serviceWorker' in navigator) {
+  // 既にSWが制御中の場合、新SWが有効化されたら一度だけリロードして最新を反映
+  if (navigator.serviceWorker.controller) {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+  }
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => reg.update())
+      .catch(() => {});
   });
 }

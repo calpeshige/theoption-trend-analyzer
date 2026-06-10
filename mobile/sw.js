@@ -1,7 +1,8 @@
 // TheOption シグナル PWA - Service Worker
-// P1ではオフラインシェル（最小キャッシュ）のみ。P2でプッシュ受信(onBackgroundMessage)を追加予定。
+// ネットワーク優先（常に最新を取得し、オフライン時のみキャッシュにフォールバック）。
+// ※ 以前は cache-first だったため更新が反映されない不具合があった。キャッシュ名を上げて旧版を破棄する。
 
-const CACHE = 'theoption-mobile-v1';
+const CACHE = 'theoption-mobile-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -12,27 +13,35 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // 新しいSWを即座に有効化（待機させない）
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).catch(() => {})
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Firestore/Firebase などの動的リクエストは常にネットワーク（キャッシュしない）
+  // Firestore/Firebase など外部リクエストはSWを介さずそのままネットワークへ
   if (url.origin !== self.location.origin) return;
+  if (event.request.method !== 'GET') return;
 
+  // ネットワーク優先: 最新を取得し、成功したらキャッシュも更新。失敗時のみキャッシュへフォールバック。
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
