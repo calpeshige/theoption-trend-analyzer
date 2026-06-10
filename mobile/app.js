@@ -295,6 +295,9 @@ function render() {
   waitingNote.hidden = true;
   updatePcStatus();
   applyPanels();
+  // 取引ボタンに現在の通貨ペアを表示（発注は手動）
+  const tradeBtn = document.getElementById('trade-button');
+  if (tradeBtn) tradeBtn.textContent = current.asset ? `📈 ${current.asset} を取引する` : '📈 TheOptionで取引する';
   tick(); // 準備カウントダウン・エントリーバナーを即時更新
 }
 

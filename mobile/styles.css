@@ -156,6 +156,22 @@ body {
 .entry-arrow { font-size: 24px; }
 .entry-stars { color: #ffce54; letter-spacing: 2px; }
 
+/* ---- TheOptionで取引ボタン ---- */
+.trade-button {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  background: linear-gradient(135deg, #4a90e2, #6a5acd);
+  color: #fff;
+  font-weight: 800;
+  font-size: 17px;
+  padding: 16px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 14px rgba(74, 144, 226, 0.35);
+}
+.trade-button:active { opacity: 0.85; transform: translateY(1px); }
+
 /* ---- テクニカル / AI 左右パネル ---- */
 .analysis-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .panel {
