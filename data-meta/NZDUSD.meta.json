@@ -1,8 +1,8 @@
 {
   "assetName": "NZD/USD",
-  "recordCount": 356,
+  "recordCount": 463,
   "periodStart": "2026-05-21T23:07:40.668Z",
-  "periodEnd": "2026-06-04T23:08:42.540Z",
+  "periodEnd": "2026-06-10T23:12:34.207Z",
   "hourCoverage": "1時間帯（8時）",
   "hourDistribution": [
     0,
@@ -13,7 +13,7 @@
     0,
     0,
     0,
-    356,
+    463,
     0,
     0,
     0,
@@ -30,9 +30,9 @@
     0,
     0
   ],
-  "lastUpdated": "2026-06-06T22:19:10.169Z",
+  "lastUpdated": "2026-06-11T23:15:57.917Z",
   "releaseFilename": "NZDUSD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/NZDUSD_20000.json.gz",
-  "compressedSize": 1376807,
+  "compressedSize": 1799983,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-NZDUSD-latest/NZDUSD_20000.json.gz"
 }
