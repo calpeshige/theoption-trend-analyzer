@@ -1,8 +1,8 @@
 {
   "assetName": "AUD/USD",
-  "recordCount": 2649,
+  "recordCount": 2351,
   "periodStart": "2026-02-13T11:54:58.544Z",
-  "periodEnd": "2026-04-01T12:44:43.328Z",
+  "periodEnd": "2026-02-17T09:15:05.309Z",
   "hourCoverage": "21時間帯（0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23時）",
   "hourDistribution": [
     105,
@@ -22,17 +22,17 @@
     60,
     60,
     60,
-    67,
-    33,
+    60,
+    26,
     0,
-    131,
-    403,
-    177,
+    20,
+    231,
+    176,
     234
   ],
-  "lastUpdated": "2026-06-14T22:17:57.449Z",
+  "lastUpdated": "2026-06-16T23:18:23.357Z",
   "releaseFilename": "AUDUSD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/AUDUSD_20000.json.gz",
-  "compressedSize": 9100876,
+  "compressedSize": 8423508,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-AUDUSD-latest/AUDUSD_20000.json.gz"
 }
