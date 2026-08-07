@@ -1,8 +1,8 @@
 {
   "assetName": "GBP/JPY",
-  "recordCount": 360,
+  "recordCount": 314,
   "periodStart": "2026-07-03T14:04:13.395Z",
-  "periodEnd": "2026-07-21T02:48:40.790Z",
+  "periodEnd": "2026-07-21T02:31:48.164Z",
   "hourCoverage": "3時間帯（0, 11, 23時）",
   "hourDistribution": [
     104,
@@ -16,7 +16,7 @@
     0,
     0,
     0,
-    48,
+    2,
     0,
     0,
     0,
@@ -30,9 +30,9 @@
     0,
     208
   ],
-  "lastUpdated": "2026-08-05T22:13:06.437Z",
+  "lastUpdated": "2026-08-07T01:03:39.365Z",
   "releaseFilename": "GBPJPY_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/GBPJPY_20000.json.gz",
-  "compressedSize": 1357380,
+  "compressedSize": 1259886,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-GBPJPY-latest/GBPJPY_20000.json.gz"
 }
