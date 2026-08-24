@@ -1,9 +1,9 @@
 {
   "assetName": "GBP/USD",
-  "recordCount": 130,
-  "periodStart": "2026-04-13T14:30:46.372Z",
-  "periodEnd": "2026-04-14T07:05:16.747Z",
-  "hourCoverage": "3時間帯（15, 16, 23時）",
+  "recordCount": 60,
+  "periodStart": "2026-08-20T22:50:30.441Z",
+  "periodEnd": "2026-08-20T23:14:19.443Z",
+  "hourCoverage": "2時間帯（7, 8時）",
   "hourDistribution": [
     0,
     0,
@@ -12,6 +12,8 @@
     0,
     0,
     0,
+    15,
+    45,
     0,
     0,
     0,
@@ -20,19 +22,17 @@
     0,
     0,
     0,
-    20,
-    21,
     0,
     0,
     0,
     0,
     0,
     0,
-    89
+    0
   ],
-  "lastUpdated": "2026-06-06T22:36:28.070Z",
+  "lastUpdated": "2026-08-24T21:35:29.324Z",
   "releaseFilename": "GBPUSD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/GBPUSD_20000.json.gz",
-  "compressedSize": 457039,
+  "compressedSize": 204376,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-GBPUSD-latest/GBPUSD_20000.json.gz"
 }
