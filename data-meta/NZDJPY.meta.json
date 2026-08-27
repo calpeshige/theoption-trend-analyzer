@@ -1,8 +1,8 @@
 {
   "assetName": "NZD/JPY",
-  "recordCount": 14174,
+  "recordCount": 15049,
   "periodStart": "2025-11-21T09:25:00.698Z",
-  "periodEnd": "2026-07-03T02:08:13.558Z",
+  "periodEnd": "2026-08-12T11:51:42.828Z",
   "hourCoverage": "22時間帯（0, 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23時）",
   "hourDistribution": [
     654,
@@ -21,18 +21,18 @@
     726,
     653,
     595,
-    581,
-    699,
-    804,
-    831,
-    788,
+    797,
+    942,
+    1032,
+    931,
+    843,
     769,
-    716,
+    749,
     763
   ],
-  "lastUpdated": "2026-08-24T21:35:20.136Z",
+  "lastUpdated": "2026-08-27T00:31:02.598Z",
   "releaseFilename": "NZDJPY_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/NZDJPY_20000.json.gz",
-  "compressedSize": 54823929,
+  "compressedSize": 58070953,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-NZDJPY-latest/NZDJPY_20000.json.gz"
 }
