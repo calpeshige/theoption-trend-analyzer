@@ -1,9 +1,9 @@
 {
   "assetName": "ETH/JPY",
-  "recordCount": 3,
+  "recordCount": 385,
   "periodStart": "2026-08-28T05:26:49.484Z",
-  "periodEnd": "2026-08-28T05:27:21.268Z",
-  "hourCoverage": "1時間帯（14時）",
+  "periodEnd": "2026-08-29T03:29:22.314Z",
+  "hourCoverage": "5時間帯（9, 10, 11, 12, 14時）",
   "hourDistribution": [
     0,
     0,
@@ -14,10 +14,10 @@
     0,
     0,
     0,
-    0,
-    0,
-    0,
-    0,
+    26,
+    146,
+    102,
+    108,
     0,
     3,
     0,
@@ -30,9 +30,9 @@
     0,
     0
   ],
-  "lastUpdated": "2026-08-29T03:05:26.678Z",
+  "lastUpdated": "2026-08-29T23:04:16.460Z",
   "releaseFilename": "ETHJPY_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/ETHJPY_20000.json.gz",
-  "compressedSize": 7955,
+  "compressedSize": 887259,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-ETHJPY-latest/ETHJPY_20000.json.gz"
 }

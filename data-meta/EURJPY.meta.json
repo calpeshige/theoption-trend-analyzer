@@ -1,13 +1,13 @@
 {
   "assetName": "EUR/JPY",
-  "recordCount": 1448,
+  "recordCount": 1452,
   "periodStart": "2025-11-26T02:53:00.606Z",
-  "periodEnd": "2026-06-12T10:05:10.109Z",
+  "periodEnd": "2026-08-28T17:31:42.619Z",
   "hourCoverage": "16時間帯（0, 2, 3, 4, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 23時）",
   "hourDistribution": [
     111,
     0,
-    48,
+    52,
     85,
     52,
     0,
@@ -30,9 +30,9 @@
     0,
     126
   ],
-  "lastUpdated": "2026-08-29T03:06:37.188Z",
+  "lastUpdated": "2026-08-29T23:04:11.994Z",
   "releaseFilename": "EURJPY_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/EURJPY_20000.json.gz",
-  "compressedSize": 3775294,
+  "compressedSize": 3784156,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-EURJPY-latest/EURJPY_20000.json.gz"
 }
