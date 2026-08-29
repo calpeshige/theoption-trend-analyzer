@@ -1,9 +1,9 @@
 {
   "assetName": "ETH/USD",
-  "recordCount": 694,
+  "recordCount": 697,
   "periodStart": "2025-11-29T19:35:00.300Z",
-  "periodEnd": "2025-12-07T04:16:54.826Z",
-  "hourCoverage": "9時間帯（3, 4, 8, 9, 10, 11, 12, 13, 23時）",
+  "periodEnd": "2026-08-28T05:26:18.477Z",
+  "hourCoverage": "10時間帯（3, 4, 8, 9, 10, 11, 12, 13, 14, 23時）",
   "hourDistribution": [
     0,
     0,
@@ -19,7 +19,7 @@
     87,
     90,
     25,
-    0,
+    3,
     0,
     0,
     0,
@@ -30,9 +30,9 @@
     0,
     3
   ],
-  "lastUpdated": "2026-08-27T00:33:03.829Z",
+  "lastUpdated": "2026-08-29T03:06:40.021Z",
   "releaseFilename": "ETHUSD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/ETHUSD_20000.json.gz",
-  "compressedSize": 2627674,
+  "compressedSize": 2634457,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-ETHUSD-latest/ETHUSD_20000.json.gz"
 }
