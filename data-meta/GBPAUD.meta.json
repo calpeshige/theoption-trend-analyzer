@@ -1,9 +1,9 @@
 {
   "assetName": "GBP/AUD",
-  "recordCount": 17,
-  "periodStart": "2026-02-18T07:49:08.050Z",
-  "periodEnd": "2026-02-18T07:53:14.819Z",
-  "hourCoverage": "1時間帯（16時）",
+  "recordCount": 1,
+  "periodStart": "2026-08-24T23:09:25.446Z",
+  "periodEnd": "2026-08-24T23:09:25.446Z",
+  "hourCoverage": "1時間帯（8時）",
   "hourDistribution": [
     0,
     0,
@@ -13,6 +13,7 @@
     0,
     0,
     0,
+    1,
     0,
     0,
     0,
@@ -21,7 +22,6 @@
     0,
     0,
     0,
-    17,
     0,
     0,
     0,
@@ -30,9 +30,9 @@
     0,
     0
   ],
-  "lastUpdated": "2026-06-12T22:31:16.958Z",
+  "lastUpdated": "2026-09-01T00:33:26.359Z",
   "releaseFilename": "GBPAUD_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/GBPAUD_20000.json.gz",
-  "compressedSize": 33646,
+  "compressedSize": 5066,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-GBPAUD-latest/GBPAUD_20000.json.gz"
 }
