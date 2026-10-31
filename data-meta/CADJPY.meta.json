@@ -1,8 +1,8 @@
 {
   "assetName": "CAD/JPY",
-  "recordCount": 1796,
+  "recordCount": 2056,
   "periodStart": "2026-05-24T22:00:13.733Z",
-  "periodEnd": "2026-07-02T23:04:02.250Z",
+  "periodEnd": "2026-10-29T00:52:34.841Z",
   "hourCoverage": "12時間帯（6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17時）",
   "hourDistribution": [
     0,
@@ -13,8 +13,8 @@
     0,
     20,
     517,
-    232,
-    106,
+    286,
+    312,
     158,
     110,
     191,
@@ -30,9 +30,9 @@
     0,
     0
   ],
-  "lastUpdated": "2026-10-17T23:27:40.385Z",
+  "lastUpdated": "2026-10-31T01:17:05.587Z",
   "releaseFilename": "CADJPY_20000.json.gz",
   "releaseFilePath": "/home/runner/work/theoption-trend-analyzer/theoption-trend-analyzer/.release-tmp/CADJPY_20000.json.gz",
-  "compressedSize": 5607484,
+  "compressedSize": 6384035,
   "downloadUrl": "https://github.com/calpeshige/theoption-trend-analyzer/releases/download/data-CADJPY-latest/CADJPY_20000.json.gz"
 }
